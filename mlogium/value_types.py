@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Callable
 
 
 class Type(ABC):
@@ -121,7 +122,7 @@ class ConcreteFunctionType(Type):
         self.attributes = attributes
 
     def __str__(self):
-        return f"fn {self.name}{FunctionType.format_type_named(self.named_params, ret)}"
+        return f"fn {self.name}{FunctionType.format_type_named(self.named_params, self.ret)}"
 
     def __eq__(self, other):
         return isinstance(other, FunctionType) and other.params == self.params and other.ret == self.ret
@@ -130,23 +131,26 @@ class ConcreteFunctionType(Type):
 class IntrinsicFunctionType(Type):
     name: str
     param_types: list[Type]
+    input_types: list[Type]
     params: list[tuple[Type, bool]]
     ret_type: Type
     inputs: list[int]
     outputs: list[int]
-    instruction_func: Callable[[str, tuple[Value, ...]], Instruction]
+    instruction_func: Callable
 
-    def __init__(self, name: name, params: list[tuple[Type, bool]], instruction_func: Callable[[str, tuple[Value, ...]], Instruction]):
+    def __init__(self, name: str, params: list[tuple[Type, bool]], instruction_func: Callable):
         self.name = name
         self.params = params
         self.param_types = [t for t, _ in params]
-        self.num_inputs = 0
-        self.num_outputs = 0
-        for i, (_, o) in enumerate(params):
+        self.inputs = []
+        self.outputs = []
+        self.input_types = []
+        for i, (t, o) in enumerate(params):
             if o:
                 self.outputs.append(i)
             else:
                 self.inputs.append(i)
+                self.input_types.append(t)
         self.instruction_func = instruction_func
         if len(self.outputs) == 0:
             self.ret_type = NullType()
@@ -156,10 +160,10 @@ class IntrinsicFunctionType(Type):
             self.ret_type = TupleType([self.param_types[i] for i in self.outputs])
 
     def __str__(self):
-        return f"fn {self.name}{FunctionType.format_type(self.param_types, self.ret_type)}"
+        return f"fn_intrinsic {self.name}{FunctionType.format_type(self.param_types, self.ret_type)}"
 
     def __eq__(self, other):
-        return isinstance(other, IntrinsicFunctionType) and self.name == other.name and self.params == other.param_types and self.instruction_func == other.instruction_func
+        return isinstance(other, IntrinsicFunctionType) and self.name == other.name and self.params == other.params
 
 
 class TupleType(Type):

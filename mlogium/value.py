@@ -30,7 +30,7 @@ class Value:
         return True
 
     def __str__(self):
-        return self.debug_str()
+        return self.impl.debug_str(self)
 
     @classmethod
     def null(cls) -> Value:
@@ -214,22 +214,56 @@ class ConcreteFunctionTypeImpl(TypeImpl):
         type_ = value.type
         assert isinstance(type_, ConcreteFunctionType)
 
-        with ctx.scope.function_call(f"{self.name}:{ctx.tmp_num()}"):
-            for (name, type_), val in zip(type_.named_params, params):
-                ctx.scope.declare(name, type_, False).assign(ctx, val)
+        with ctx.scope.function_call(f"{type_.name}:{ctx.tmp_num()}"):
+            for (name, val_type), val in zip(type_.named_params, params):
+                ctx.scope.declare(name, val_type, False).assign(ctx, val)
 
             ctx.generate_node(type_.attributes["code"])
 
-            return_val = Value.variable(ABI.return_value(self.name), type_.ret)
+            return_val = Value.variable(ABI.return_value(ctx.scope.get_function()), type_.ret)
             return_val.assign_default(ctx)
 
-            ctx.emit(Instruction.label(ABI.function_end(type_.name)))
+            ctx.emit(Instruction.label(ABI.function_end(ctx.scope.get_function())))
 
         return return_val
 
 
 class IntrinsicFunctionTypeImpl(TypeImpl):
-    pass
+    def callable(self, value: Value) -> bool:
+        return True
+
+    def params(self, value: Value) -> list[Type]:
+        type_ = value.type
+        assert isinstance(type_, IntrinsicFunctionType)
+        return type_.input_types
+
+    def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
+        assert len(self.params(value)) == len(params)
+        assert all(type_.contains(val.type) for type_, val in zip(self.params(value), params))
+
+        type_ = value.type
+        assert isinstance(type_, IntrinsicFunctionType)
+
+        params_all = []
+        input_i = 0
+        output_vars = []
+        for val_type, output in type_.params:
+            if output:
+                var = Value.variable(ctx.tmp(), val_type)
+                params_all.append(var)
+                output_vars.append(var)
+            else:
+                params_all.append(params[input_i])
+                input_i += 1
+
+        type_.instruction_func(ctx, *params_all)
+
+        if len(output_vars) == 0:
+            return Value.null()
+        elif len(output_vars) == 1:
+            return output_vars[0]
+        else:
+            return Value.tuple(ctx, output_vars)
 
 
 class TupleTypeImpl(TypeImpl):

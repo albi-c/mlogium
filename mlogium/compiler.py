@@ -6,6 +6,7 @@ from .instruction import Instruction
 from .compilation_context import CompilationContext
 from .error import CompilerError
 from .scope import ScopeStack
+from . import builtins
 
 
 class Compiler(AstVisitor[Value]):
@@ -22,7 +23,6 @@ class Compiler(AstVisitor[Value]):
 
     ctx: CompilationContext
     scope: ScopeStack
-    functions: dict[str, tuple[NamedFunctionType, Node]]
 
     def __init__(self):
         super().__init__()
@@ -31,6 +31,9 @@ class Compiler(AstVisitor[Value]):
         self.ctx = Compiler.CompilationContext(self, self.scope)
         self.functions = {}
 
+        self.scope.scopes.append(ScopeStack.Scope("<builtins>"))
+        for name, value in builtins.BUILTINS.items():
+            self.scope.scopes[-1].variables[name] = value
         self.scope.scopes.append(ScopeStack.Scope("<main>"))
 
     def emit(self, *instructions: Instruction):
@@ -155,7 +158,6 @@ class Compiler(AstVisitor[Value]):
 
     def visit_call_node(self, node: CallNode) -> Value:
         func = self.visit(node.value)
-        print(func.type, func, func.impl)
         if not func.callable():
             self._error(f"Not callable: '{func}'")
 
