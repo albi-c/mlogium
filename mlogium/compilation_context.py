@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from abc import ABC, abstractmethod
 from collections import defaultdict
 
@@ -27,15 +28,13 @@ class InstructionSection:
         return self.index
 
     def __repr__(self):
-        return f"InstructionSection({self.index})"
-
-    def emit(self, instructions: list[Instruction]):
-        self.instructions += instructions
+        return f"InstructionSection({self.index}, {self.prefix}, {self.suffix})"
 
 
 InstructionSection.FUNCTIONS = InstructionSection(
-    0, [Instruction.jump_always("__func_end")],
-    [Instruction.label("__func_end")]
+    0,
+    [Instruction.jump_always("__functions_end")],
+    [Instruction.label("__functions_end")]
 )
 InstructionSection.DEFAULT = InstructionSection(1)
 
@@ -43,15 +42,26 @@ InstructionSection.DEFAULT = InstructionSection(1)
 class CompilationContext:
     _instruction_sections: defaultdict[InstructionSection, list[Instruction]]
     _tmp_index: int
+    _section: InstructionSection
 
     def __init__(self, scope):
         self.scope = scope
 
         self._instruction_sections = defaultdict(list)
         self._tmp_index = 0
+        self._section = InstructionSection.DEFAULT
 
-    def emit(self, *instructions: Instruction, section: InstructionSection = InstructionSection.DEFAULT):
-        self._instruction_sections[section] += instructions
+    def emit(self, *instructions: Instruction):
+        self._instruction_sections[self._section] += instructions
+
+    @contextlib.contextmanager
+    def in_section(self, section: InstructionSection):
+        sect = self._section
+        self._section = section
+        try:
+            yield
+        finally:
+            self._section = sect
 
     def tmp(self) -> str:
         self._tmp_index += 1

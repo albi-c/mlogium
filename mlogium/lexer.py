@@ -38,7 +38,7 @@ class Lexer:
         "break": TokenType.KW_BREAK,
         "continue": TokenType.KW_CONTINUE,
         # "yield": TokenType.KW_YIELD,
-        # "in": TokenType.KW_IN,
+        "in": TokenType.KW_IN,
         "struct": TokenType.KW_STRUCT,
         # "match": TokenType.KW_MATCH,
         "enum": TokenType.KW_ENUM

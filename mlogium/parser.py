@@ -1,6 +1,5 @@
 from .tokens import Token, TokenType
 from .error import ParserError
-from .util import Position
 from .node import *
 
 from typing import Callable
@@ -83,6 +82,9 @@ class Parser:
 
             self.lookahead(TokenType.SEMICOLON)
 
+            if not self.has():
+                break
+
             code.append(self.parse_top_level_statement() if top_level else self.parse_statement())
 
         return BlockNode(self._current_pos() if not code else code[0].pos + code[-1].pos,
@@ -102,31 +104,26 @@ class Parser:
         elif tok.type in TokenType.KW_STRUCT:
             self.next()
             name = self.next(TokenType.ID).value
-            template = self._parse_template()
             self.next(TokenType.LBRACE)
 
-            attributes, static_attributes, methods = self._parse_struct_inner()
+            # attributes, static_attributes, methods = self._parse_struct_inner()
+            #
+            # return StructNode(tok.pos, tok.type == TokenType.KW_CLASS, name,
+            #                   attributes, static_attributes, methods)
 
-            return StructClassNode(tok.pos, tok.type == TokenType.KW_CLASS, name, template,
-                                   attributes, static_attributes, methods)
+            raise NotImplementedError
 
         elif tok.type == TokenType.KW_ENUM:
             self.next()
             name = self.next(TokenType.ID).value
-            options = self._parse_comma_separated(lambda: self.next(TokenType.ID), TokenType.LBRACE, TokenType.RBRACE)
+            options = self._parse_comma_separated(lambda: self.next(TokenType.ID).value, TokenType.LBRACE, TokenType.RBRACE)
             return EnumNode(tok.pos, name, options)
-            # options = {k: v for k, v in self._parse_comma_separated(self._parse_enum_option, TokenType.LBRACE, TokenType.RBRACE)}
-            # return EnumNode(tok.pos, name, options)
 
         return None
 
     def parse_top_level_statement(self) -> Node:
         if (node := self._parse_top_level_statement_or_none()) is not None:
             return node
-
-        # tok = self.lookahead()
-        #
-        # ParserError.unexpected_token(tok)
 
         return self.parse_statement()
 
@@ -300,10 +297,10 @@ class Parser:
             if self.lookahead(TokenType.ARROW):
                 ret = self.parse_type()
             else:
-                ret = None
+                ret = NullType()
             self.next(TokenType.LBRACE)
             code = self.parse_block(True)
-            return LambdaNode(tok.pos + code.pos, NamedFunctionType(params, ret), code)
+            return LambdaNode(tok.pos + code.pos, NamedParamFunctionType(params, ret), code)
 
         return self.parse_assignment()
 
@@ -397,7 +394,9 @@ class Parser:
                 node = IndexNode(node.pos, node, index)
 
             elif tok := self.lookahead(TokenType.DOT | TokenType.DOUBLE_COLON):
-                attr = self.next(TokenType.ID | TokenType.INTEGER)
+                attr = self.next(TokenType.ID | TokenType.NUMBER)
+                if attr.type == TokenType.NUMBER and "." in attr.value:
+                    ParserError.unexpected_token(attr)
                 node = AttributeNode(node.pos, node, attr.value, tok.type == TokenType.DOUBLE_COLON)
 
             else:

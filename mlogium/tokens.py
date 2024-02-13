@@ -17,7 +17,7 @@ class TokenType(enum.Flag):
     KW_FOR = enum.auto()
     KW_BREAK = enum.auto()
     KW_CONTINUE = enum.auto()
-    # KW_IN = enum.auto()
+    KW_IN = enum.auto()
     KW_STRUCT = enum.auto()
     # KW_MATCH = enum.auto()
     KW_ENUM = enum.auto()

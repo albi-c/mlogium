@@ -247,10 +247,10 @@ class FunctionNode(Node):
 
 
 class LambdaNode(Node):
-    type: NamedFunctionType
+    type: NamedParamFunctionType
     code: Node
 
-    def __init__(self, pos: Position, type_: NamedFunctionType, code: Node):
+    def __init__(self, pos: Position, type_: NamedParamFunctionType, code: Node):
         super().__init__(pos)
 
         self.type = type_
@@ -278,28 +278,27 @@ class ReturnNode(Node):
         return visitor.visit_return_node(self)
 
 
-# class StructNode(Node):
-#     name: str
-#     attributes: list[tuple[str, Type]]
-#     static_attributes: dict[str, tuple[Type | None, Node]]
-#     methods: list[tuple[str, NamedFunctionType, Node]]
-#
-#     def __init__(self, pos: Position, name: str,
-#                  attributes: list[tuple[str, Type]], static_attributes: dict[str, tuple[Type | None, Node]],
-#                  methods: list[tuple[str, NamedFunctionType, Node]]):
-#         super().__init__(pos)
-#
-#         self.name = name
-#         self.template = template
-#         self.attributes = attributes
-#         self.static_attributes = static_attributes
-#         self.methods = methods
-#
-#     def __str__(self):
-#         return f"struct {self.name} {{...}}"
-#
-#     def accept[T](self, visitor: AstVisitor[T]) -> T:
-#         return visitor.visit_struct_class_node(self)
+class StructNode(Node):
+    name: str
+    attributes: list[tuple[str, Type]]
+    static_attributes: dict[str, tuple[Type | None, Node]]
+    methods: list[tuple[str, NamedParamFunctionType, Node]]
+
+    def __init__(self, pos: Position, name: str,
+                 attributes: list[tuple[str, Type]], static_attributes: dict[str, tuple[Type | None, Node]],
+                 methods: list[tuple[str, NamedParamFunctionType, Node]]):
+        super().__init__(pos)
+
+        self.name = name
+        self.attributes = attributes
+        self.static_attributes = static_attributes
+        self.methods = methods
+
+    def __str__(self):
+        return f"struct {self.name} {{...}}"
+
+    def accept[T](self, visitor: AstVisitor[T]) -> T:
+        return visitor.visit_struct_class_node(self)
 
 
 class IfNode(Node):
@@ -342,9 +341,10 @@ class EnumNode(Node):
     name: str
     options: list[str]
 
-    def __init__(self, pos: Position, options: list[str]):
+    def __init__(self, pos: Position, name: str, options: list[str]):
         super().__init__(pos)
 
+        self.name = name
         self.options = options
 
     def __str__(self):

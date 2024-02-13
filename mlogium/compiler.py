@@ -3,7 +3,7 @@ from __future__ import annotations
 from .node import *
 from .value import *
 from .instruction import Instruction
-from .compilation_context import CompilationContext
+from .compilation_context import CompilationContext, InstructionSection
 from .error import CompilerError
 from .scope import ScopeStack
 from . import builtins
@@ -23,13 +23,14 @@ class Compiler(AstVisitor[Value]):
 
     ctx: CompilationContext
     scope: ScopeStack
+    functions_with_pointers: set[str]
 
     def __init__(self):
         super().__init__()
 
         self.scope = ScopeStack()
         self.ctx = Compiler.CompilationContext(self, self.scope)
-        self.functions = {}
+        self.functions_with_pointers = set()
 
         self.scope.scopes.append(ScopeStack.Scope("<builtins>"))
         for name, value in builtins.BUILTINS.items():
@@ -62,12 +63,6 @@ class Compiler(AstVisitor[Value]):
         if not self.scope.declare_special(name, value):
             self._error(f"Variable already exists: '{name}'")
         return value
-
-    def _var_assign(self, name: str, value: Value) -> Value:
-        if (var := self.scope.assign(self.ctx, name, value)) is None:
-            self._error(f"Variable not found: '{name}'")
-        var.assign(self.ctx, value)
-        return var
 
     def visit_block_node(self, node: BlockNode) -> Value:
         last_value = None
@@ -104,20 +99,38 @@ class Compiler(AstVisitor[Value]):
     def visit_declaration_node(self, node: DeclarationNode) -> Value:
         return self._declare_target(node.target, self.visit(node.value), False)
 
+    def _register_function(self, name: str, type_: NamedParamFunctionType, code: Node) -> Value:
+        if name in self.functions_with_pointers:
+            self._error(f"Function already defined: '{name}'")
+        self.functions_with_pointers.add(name)
+
+        val = Value(
+            ConcreteFunctionType(name, type_.named_params, type_.ret, {
+                "code": code
+            }),
+            name,
+            True
+        )
+
+        with self.ctx.in_section(InstructionSection.FUNCTIONS):
+            self.emit(Instruction.label(ABI.function_label(name)))
+            ret_addr = Value.variable(self.ctx.tmp(), BasicType("num"))
+            ret_addr.assign(self.ctx, Value.variable(ABI.function_return_address(), BasicType("num")))
+            params = [Value.variable(ABI.function_parameter(i), type_) for i, type_ in enumerate(val.params())]
+            ret = val.call(self.ctx, params)
+            Value.variable(ABI.function_return_value(), ret.type).assign(self.ctx, ret)
+            self.emit(Instruction.jump_addr(ret_addr.value))
+
+        return val
+
     def visit_function_node(self, node: FunctionNode) -> Value:
         return self._var_declare_special(
             node.name,
-            Value(
-                ConcreteFunctionType(node.name, node.type.named_params, node.type.ret, {
-                    "code": node.code
-                }),
-                node.name,
-                True
-            )
+            self._register_function(node.name, node.type, node.code)
         )
 
     def visit_lambda_node(self, node: LambdaNode) -> Value:
-        pass
+        return self._register_function(f"__lambda_{self.ctx.tmp_num()}", node.type, node.code)
 
     def visit_return_node(self, node: ReturnNode) -> Value:
         if (func := self.scope.get_function()) is None:

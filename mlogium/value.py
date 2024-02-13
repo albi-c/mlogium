@@ -218,10 +218,13 @@ class ConcreteFunctionTypeImpl(TypeImpl):
             for (name, val_type), val in zip(type_.named_params, params):
                 ctx.scope.declare(name, val_type, False).assign(ctx, val)
 
-            ctx.generate_node(type_.attributes["code"])
+            result = ctx.generate_node(type_.attributes["code"])
 
             return_val = Value.variable(ABI.return_value(ctx.scope.get_function()), type_.ret)
-            return_val.assign_default(ctx)
+            if return_val.type.contains(result.type):
+                return_val.assign(ctx, result)
+            else:
+                return_val.assign_default(ctx)
 
             ctx.emit(Instruction.label(ABI.function_end(ctx.scope.get_function())))
 
