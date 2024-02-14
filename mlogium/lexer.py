@@ -220,7 +220,8 @@ class Lexer:
             val += ch
 
         # is a float
-        if self.lookahead(".") and self.lookahead(Lexer.CH_INTEGER, 2, False):
+        if self.lookahead(".", take_if_matches=False) and self.lookahead(Lexer.CH_INTEGER, 2, False):
+            val += self.next()
             while ch := self.lookahead(Lexer.CH_INTEGER):
                 val += ch
 

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from .value_types import *
 
 
-@dataclass
+@dataclass(frozen=True)
 class InstructionBase:
     name: str
     params: list[Type]
@@ -18,20 +18,57 @@ class InstructionBase:
     constants: dict[int, str]
     _subcommands: dict[str, tuple[list[Type], list[int], bool, dict[int, str]]] | None
 
-    def __call__(self, *params: str) -> InstructionInstance:
+    def __call__(self, *params: Any) -> InstructionInstance:
         assert len(params) == len(self.params)
         return self.base_class(self, self.outputs, self.side_effects, self.constants, self.name, *params, **self.base_params)
 
-    def make_subcommand(self, name: str, *params: str) -> InstructionInstance:
+    def make_with_constants(self, *params: Any) -> InstructionInstance:
+        assert len(params) == len(self.params) - len(self.constants)
+
+        par = []
+        i = 0
+        for pi in range(len(self.params)):
+            if pi in self.constants:
+                par.append(self.constants[pi])
+            else:
+                par.append(params[i])
+                i += 1
+        return self(*par)
+
+    def make_subcommand(self, name: str, *params: Any) -> InstructionInstance:
+        assert self.has_subcommands()
+
         types_, outputs, side_effects, constants = self._subcommands[name]
         assert len(params) == len(types_)
-        return self.base_class(self, outputs, side_effects, constants, self.name, *params, **self.base_params)
+        return self.base_class(self, outputs, side_effects, constants, self.name, name, *params, **self.base_params)
+
+    def make_subcommand_with_constants(self, name: str, *params: Any) -> InstructionInstance:
+        assert self.has_subcommands()
+
+        types_, outputs, side_effects, constants = self._subcommands[name]
+        assert len(params) == len(types_)
+
+        par = []
+        i = 0
+        for pi in range(len(types_)):
+            if pi in constants:
+                par.append(constants[pi])
+            else:
+                par.append(params[i])
+                i += 1
+
+        return self.make_subcommand(name, *par)
 
     def has_subcommands(self) -> bool:
         return self._subcommands is not None
 
     def subcommands(self) -> dict[str, tuple[list[Type], list[int], bool, dict[int, str]]]:
         return self._subcommands
+
+
+class DebugInstructionBase(InstructionBase):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
 
 class InstructionInstance:
@@ -44,7 +81,7 @@ class InstructionInstance:
     constants: dict[int, str]
 
     def __init__(self, base: InstructionBase, outputs: list[int], side_effects: bool, constants: dict[int, str],
-                 name: str, *params: str, internal: bool = False, **_):
+                 name: str, *params: Any, internal: bool = False, **_):
         self.name = name
         self.params = list(map(str, params))
         self.internal = internal
@@ -72,6 +109,9 @@ class LinkerInstructionInstance(InstructionInstance):
         return self.translator(self)
 
 
+ALL_INSTRUCTIONS_BASES: list[InstructionBase] = []
+
+
 class Instruction:
     def __init__(self, *_, **__):
         raise TypeError("Not instantiable")
@@ -82,7 +122,9 @@ class Instruction:
         outputs = outputs if outputs is not None else []
         base = base if base is not None else InstructionInstance
         constants = constants if constants is not None else {}
-        return InstructionBase(name, params, side_effects, outputs, base, base_params, constants, None)
+        ib = DebugInstructionBase(name, params, side_effects, outputs, base, base_params, constants, None)
+        ALL_INSTRUCTIONS_BASES.append(ib)
+        return ib
 
     @staticmethod
     def _make_with_subcommands(name: str, default_side_effects: bool, default_outputs: list[int],
@@ -104,7 +146,9 @@ class Instruction:
             else:
                 subcommands_processed[n] = s
 
-        return InstructionBase(name, [], False, [], base, base_params, constants, subcommands_processed)
+        ib = DebugInstructionBase(name, [], False, [], base, base_params, constants, subcommands_processed)
+        ALL_INSTRUCTIONS_BASES.append(ib)
+        return ib
 
     read = _make("read", [Type.NUM, Type.BLOCK, Type.NUM], False, [0])
     write = _make("write", [Type.NUM, Type.BLOCK, Type.NUM], True)
@@ -137,7 +181,8 @@ class Instruction:
     radar = _make("radar", [Type.ANY, Type.ANY, Type.ANY, Type.ANY, Type.BLOCK, Type.NUM, Type.UNIT],
                   False, [6])
     # TODO: enum of sensable values
-    sensor = _make_with_subcommands("sensor", False, [0], [])
+    sensor = _make("sensor", [Type.ANY, UnionType([Type.BLOCK, Type.UNIT]), Type.ANY], False, [0])
+    # sensor = _make_with_subcommands("sensor", False, [0], [])
 
     set = _make("set", [Type.ANY, Type.ANY], True, [0], internal=True)
     op = _make("op", [Type.ANY, Type.NUM, Type.NUM, Type.NUM], False, [1], internal=True)

@@ -190,7 +190,10 @@ class Compiler(AstVisitor[Value]):
         pass
 
     def visit_attribute_node(self, node: AttributeNode) -> Value:
-        pass
+        value = self.visit(node.value)
+        if (val := value.getattr(self.ctx, node.attr, node.static)) is None:
+            self._error(f"Value '{value}' has no{' static' if node.static else ''} attribute '{node.attr}'")
+        return val
 
     def visit_number_value_node(self, node: NumberValueNode) -> Value:
         return Value.number(node.value)

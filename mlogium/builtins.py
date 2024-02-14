@@ -1,6 +1,7 @@
 from typing import Callable
 
 from .value import *
+from .instruction import ALL_INSTRUCTIONS_BASES
 
 
 BUILTIN_VARS = {
@@ -51,26 +52,41 @@ def builtin_intrinsic(func: Callable, params: list[Type], outputs: set[int] = No
     )
 
 
-BUILTIN_FUNCTIONS = {
-    "read"
-}
+BUILTIN_FUNCTIONS = {}
 
 
-BUILTINS = {
-    "print": Value(IntrinsicFunctionType(
-        "print",
-        [
-            (AnyType(), False)
-        ],
-        lambda ctx, val: ctx.emit(*(Instruction.print(s) for s in val.to_strings(ctx)))
-    ), "print"),
-    "add": Value(IntrinsicFunctionType(
-        "add",
-        [
-            (BasicType("num"), True),
-            (BasicType("num"), False),
-            (BasicType("num"), False)
-        ],
-        lambda ctx, *values: ctx.emit(Instruction.op("add", *values))
-    ), "add")
-}
+for base in ALL_INSTRUCTIONS_BASES:
+    if base.base_params.get("internal", False):
+        continue
+
+    if base.has_subcommands():
+        subcommands = {}
+        for name, (params, outputs, side_effects, _) in base.subcommands().items():
+            subcommands[name] = IntrinsicFunctionType(
+                f"{base.name}.{name}",
+                [(type_, i in outputs) for i, type_ in enumerate(params)],
+                lambda ctx, *values, base_=base, name_=name: ctx.emit(base_.make_subcommand_with_constants(name_, *values)),
+                subcommand=name
+            )
+        BUILTIN_FUNCTIONS[base.name] = Value(IntrinsicSubcommandFunctionType(base.name, subcommands), base.name)
+
+    else:
+        BUILTIN_FUNCTIONS[base.name] = Value(IntrinsicFunctionType(
+            base.name,
+            [(type_, i in base.outputs) for i, type_ in enumerate(base.params)],
+            lambda ctx, *values: ctx.emit(base.make_with_constants(*values))
+        ), base.name)
+
+
+BUILTINS = BUILTIN_VARS | BUILTIN_FUNCTIONS
+
+
+BUILTINS["add"] = Value(IntrinsicFunctionType(
+    "add",
+    [
+        (BasicType("num"), True),
+        (BasicType("num"), False),
+        (BasicType("num"), False)
+    ],
+    lambda ctx, *values: ctx.emit(Instruction.op("add", *values))
+), "add")

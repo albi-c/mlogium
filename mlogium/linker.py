@@ -1,9 +1,9 @@
-from .instruction import Instruction
+from .instruction import InstructionInstance
 
 
 class Linker:
     @staticmethod
-    def _find_labels(instructions: list[Instruction]) -> tuple[list[Instruction], dict[str, int]]:
+    def _find_labels(instructions: list[InstructionInstance]) -> tuple[list[InstructionInstance], dict[str, int]]:
         labels = {}
         i = 0
         for ins in instructions:
@@ -15,7 +15,7 @@ class Linker:
         return [ins.translate_in_linker() for ins in instructions if ins.name != "$label"], labels
 
     @classmethod
-    def link(cls, instructions: list[Instruction]) -> str:
+    def link(cls, instructions: list[InstructionInstance]) -> str:
         instructions, labels = cls._find_labels(instructions)
         generated = []
         for ins in instructions:

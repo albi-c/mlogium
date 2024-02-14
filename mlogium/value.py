@@ -106,6 +106,9 @@ class Value:
         assert self.callable()
         return self.impl.call(ctx, self, params)
 
+    def getattr(self, ctx: CompilationContext, name: str, static: bool) -> Value | None:
+        return self.impl.getattr(ctx, self, name, static)
+
 
 class TypeImpl:
     def debug_str(self, value: Value) -> str:
@@ -137,6 +140,9 @@ class TypeImpl:
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
         raise NotImplementedError
+
+    def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
+        return None
 
 
 class AnyTypeImpl(TypeImpl):
@@ -269,6 +275,15 @@ class IntrinsicFunctionTypeImpl(TypeImpl):
             return Value.tuple(ctx, output_vars)
 
 
+class IntrinsicSubcommandFunctionTypeImpl(TypeImpl):
+    def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
+        if not static:
+            type_ = value.type
+            assert isinstance(type_, IntrinsicSubcommandFunctionType)
+            func_type = type_.subcommands.get(name)
+            return Value(func_type, f"{type_.name}.{name}")
+
+
 class TupleTypeImpl(TypeImpl):
     def unpack(self, ctx: CompilationContext, value: Value) -> list[Value] | None:
         type_ = value.type
@@ -309,6 +324,7 @@ TypeImplRegistry.add_impls({
     FunctionType: AnonymousFunctionTypeImpl(),
     ConcreteFunctionType: ConcreteFunctionTypeImpl(),
     IntrinsicFunctionType: IntrinsicFunctionTypeImpl(),
+    IntrinsicSubcommandFunctionType: IntrinsicSubcommandFunctionTypeImpl(),
     TupleType: TupleTypeImpl(),
     NullType: TypeImpl()
 })

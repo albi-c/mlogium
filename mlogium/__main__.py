@@ -16,11 +16,17 @@ let func: fn(num, num) -> num = do_add;
 apply_func(|a: num, b: num| -> num { return add(a, b) });
 
 print(do_add(2, apply_func(func)));
-print(do_add(1, 2));"""
+print(do_add(1, 2));
+
+draw.clear(1, 2, 3);"""
 
 tokens = Lexer().lex(CODE, "<main>")
 ast = Parser(tokens).parse()
 compiler = Compiler()
-compiler.visit(ast)
+try:
+    compiler.visit(ast)
+except AssertionError as e:
+    compiler.current_node.pos.print()
+    raise e
 result = Linker.link(compiler.ctx.get_instructions())
 print(result)

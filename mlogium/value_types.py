@@ -152,8 +152,9 @@ class IntrinsicFunctionType(Type):
     inputs: list[int]
     outputs: list[int]
     instruction_func: Callable
+    subcommand: str | None
 
-    def __init__(self, name: str, params: list[tuple[Type, bool]], instruction_func: Callable):
+    def __init__(self, name: str, params: list[tuple[Type, bool]], instruction_func: Callable, *, subcommand: str = None):
         self.name = name
         self.params = params
         self.param_types = [t for t, _ in params]
@@ -173,12 +174,28 @@ class IntrinsicFunctionType(Type):
             self.ret_type = self.param_types[self.outputs[0]]
         else:
             self.ret_type = TupleType([self.param_types[i] for i in self.outputs])
+        self.subcommand = subcommand
 
     def __str__(self):
         return f"fn_intrinsic {self.name}{FunctionType.format_type(self.param_types, self.ret_type)}"
 
     def __eq__(self, other):
         return isinstance(other, IntrinsicFunctionType) and self.name == other.name and self.params == other.params
+
+
+class IntrinsicSubcommandFunctionType(Type):
+    name: str
+    subcommands: dict[str, IntrinsicFunctionType]
+
+    def __init__(self, name: str, subcommands: dict[str, IntrinsicFunctionType]):
+        self.name = name
+        self.subcommands = subcommands
+
+    def __str__(self):
+        return f"fn_intrinsic {self.name}.({', '.join(self.subcommands.keys())})"
+
+    def __eq__(self, other):
+        return isinstance(other, IntrinsicSubcommandFunctionType) and self.name == other.name and self.subcommands == other.subcommands
 
 
 class TupleType(Type):
