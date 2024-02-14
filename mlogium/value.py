@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from .value_types import *
 from .compilation_context import CompilationContext
-from .instruction import Instruction
+from .instruction import InstructionInstance, Instruction
 from .abi import ABI
 
 
@@ -34,15 +34,15 @@ class Value:
 
     @classmethod
     def null(cls) -> Value:
-        return cls(NullType(), "null")
+        return cls(Type.NULL, "null")
 
     @classmethod
     def number(cls, value: int | float) -> Value:
-        return cls(BasicType("num"), str(value))
+        return cls(Type.NUM, str(value))
 
     @classmethod
     def string(cls, value: str) -> Value:
-        return cls(BasicType("str"), value)
+        return cls(Type.STR, value)
 
     @classmethod
     def variable(cls, name: str, type_: Type, const: bool = False, *, const_on_write: bool = False) -> Value:

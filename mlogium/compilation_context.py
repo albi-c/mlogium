@@ -4,19 +4,19 @@ import contextlib
 from abc import ABC, abstractmethod
 from collections import defaultdict
 
-from .instruction import *
+from .instruction import InstructionInstance, Instruction
 from .node import Node
 
 
 class InstructionSection:
     index: int
-    prefix: list[Instruction]
-    suffix: list[Instruction]
+    prefix: list[InstructionInstance]
+    suffix: list[InstructionInstance]
 
     FUNCTIONS: InstructionSection
     DEFAULT: InstructionSection
 
-    def __init__(self, value: int, prefix: list[Instruction] = None, suffix: list[Instruction] = None):
+    def __init__(self, value: int, prefix: list[InstructionInstance] = None, suffix: list[InstructionInstance] = None):
         self.index = value
         self.prefix = prefix if prefix is not None else []
         self.suffix = suffix if suffix is not None else []
@@ -40,7 +40,7 @@ InstructionSection.DEFAULT = InstructionSection(1)
 
 
 class CompilationContext:
-    _instruction_sections: defaultdict[InstructionSection, list[Instruction]]
+    _instruction_sections: defaultdict[InstructionSection, list[InstructionInstance]]
     _tmp_index: int
     _section: InstructionSection
 
@@ -51,7 +51,7 @@ class CompilationContext:
         self._tmp_index = 0
         self._section = InstructionSection.DEFAULT
 
-    def emit(self, *instructions: Instruction):
+    def emit(self, *instructions: InstructionInstance):
         self._instruction_sections[self._section] += instructions
 
     @contextlib.contextmanager
@@ -71,7 +71,7 @@ class CompilationContext:
         self._tmp_index += 1
         return self._tmp_index
 
-    def get_instructions(self) -> list[Instruction]:
+    def get_instructions(self) -> list[InstructionInstance]:
         instructions = []
         for section in sorted(self._instruction_sections.keys(), key=lambda x: x.index):
             instructions += section.prefix

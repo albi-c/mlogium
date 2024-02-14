@@ -5,6 +5,21 @@ from typing import Callable
 
 
 class Type(ABC):
+    NUM: Type
+    STR: Type
+    NULL: Type
+    BLOCK: Type
+    UNIT: Type
+    TEAM: Type
+    UNIT_TYPE: Type
+    ITEM_TYPE: Type
+    BLOCK_TYPE: Type
+    LIQUID_TYPE: Type
+    CONTROLLER: Type
+    COLOR: Type
+    CONTENT: Type
+    ANY: Type
+
     @abstractmethod
     def __str__(self):
         raise NotImplementedError
@@ -185,3 +200,25 @@ class NullType(TupleType):
 
     def __str__(self):
         return "()"
+
+
+Type.NUM = BasicType("num")
+Type.STR = BasicType("str")
+Type.NULL = NullType()
+
+Type.BLOCK = BasicType("Block")
+Type.UNIT = BasicType("Unit")
+Type.TEAM = BasicType("Team")
+
+Type.UNIT_TYPE = BasicType("UnitType")
+Type.ITEM_TYPE = BasicType("ItemType")
+Type.BLOCK_TYPE = BasicType("BlockType")
+Type.LIQUID_TYPE = BasicType("LiquidType")
+
+Type.CONTROLLER = BasicType("Controller")
+
+Type.COLOR = BasicType("Color")
+
+Type.CONTENT = UnionType([Type.UNIT_TYPE, Type.ITEM_TYPE, Type.BLOCK_TYPE, Type.LIQUID_TYPE])
+
+Type.ANY = AnyType()
