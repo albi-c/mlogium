@@ -5,20 +5,20 @@ from typing import Callable
 
 
 class Type(ABC):
-    NUM: Type
-    STR: Type
-    NULL: Type
-    BLOCK: Type
-    UNIT: Type
-    TEAM: Type
-    UNIT_TYPE: Type
-    ITEM_TYPE: Type
-    BLOCK_TYPE: Type
-    LIQUID_TYPE: Type
-    CONTROLLER: Type
-    COLOR: Type
-    CONTENT: Type
-    ANY: Type
+    NUM: BasicType
+    STR: BasicType
+    NULL: NullType
+    BLOCK: BasicType
+    UNIT: BasicType
+    TEAM: BasicType
+    UNIT_TYPE: BasicType
+    ITEM_TYPE: BasicType
+    BLOCK_TYPE: BasicType
+    LIQUID_TYPE: BasicType
+    CONTROLLER: BasicType
+    COLOR: BasicType
+    CONTENT: UnionType
+    ANY: AnyType
 
     @abstractmethod
     def __str__(self):
@@ -30,6 +30,9 @@ class Type(ABC):
 
     def contains(self, other: Type) -> bool:
         return other == self
+
+    def is_opaque(self) -> bool:
+        return False
 
 
 class AnyType(Type):
@@ -55,13 +58,8 @@ class BasicType(Type):
     def __eq__(self, other):
         return isinstance(other, BasicType) and other.name == self.name
 
-
-class OpaqueType(BasicType):
-    def __eq__(self, other):
-        return False
-
-    def contains(self, other: Type) -> bool:
-        return False
+    def is_opaque(self) -> bool:
+        return self.name.startswith("$")
 
 
 class UnionType(Type):
@@ -81,6 +79,9 @@ class UnionType(Type):
             return all(t in self.types for t in other.types)
 
         return other in self.types
+
+    def is_opaque(self) -> bool:
+        return any(type_.is_opaque() for type_ in self.types)
 
 
 class FunctionType(Type):

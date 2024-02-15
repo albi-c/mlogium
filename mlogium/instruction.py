@@ -5,6 +5,7 @@ from typing import Callable, Any
 from dataclasses import dataclass
 
 from .value_types import *
+from . import enums
 
 
 @dataclass(frozen=True)
@@ -81,7 +82,7 @@ class InstructionInstance:
     constants: dict[int, str]
 
     def __init__(self, base: InstructionBase, outputs: list[int], side_effects: bool, constants: dict[int, str],
-                 name: str, *params: Any, internal: bool = False, **_):
+                 name: str, *params: Any, internal: bool = False, param_process: Callable[[list[str]], list[str]] = None, **_):
         self.name = name
         self.params = list(map(str, params))
         self.internal = internal
@@ -89,6 +90,8 @@ class InstructionInstance:
         self.outputs = outputs
         self.side_effects = side_effects
         self.constants = constants
+        if param_process is not None:
+            self.params = param_process(self.params)
 
     def __str__(self):
         return f"{self.name} {" ".join(self.params)}"
@@ -140,11 +143,11 @@ class Instruction:
             if isinstance(s, list):
                 subcommands_processed[n] = (s, default_outputs, default_side_effects, {})
             elif len(s) == 2:
-                subcommands_processed[n] = (*s, default_side_effects, {})
+                subcommands_processed[n] = (s[0], s[1], default_side_effects, {})
             elif len(s) == 3:
-                subcommands_processed[n] = (*s, {})
+                subcommands_processed[n] = (s[0], s[2], s[1], {})
             else:
-                subcommands_processed[n] = s
+                subcommands_processed[n] = (s[0], s[2], s[1], s[3])
 
         ib = DebugInstructionBase(name, [], False, [], base, base_params, constants, subcommands_processed)
         ALL_INSTRUCTIONS_BASES.append(ib)
@@ -177,12 +180,11 @@ class Instruction:
         ("config", [Type.BLOCK, Type.CONTENT]),
         ("color", [Type.BLOCK, Type.NUM])
     ])
-    # TODO: enum types
-    radar = _make("radar", [Type.ANY, Type.ANY, Type.ANY, Type.ANY, Type.BLOCK, Type.NUM, Type.UNIT],
+    radar = _make("radar", [BasicType("$RadarFilter")] * 3 + [BasicType("$RadarSort"), Type.BLOCK, Type.NUM, Type.UNIT],
                   False, [6])
-    # TODO: enum of sensable values
-    sensor = _make("sensor", [Type.ANY, UnionType([Type.BLOCK, Type.UNIT]), Type.ANY], False, [0])
-    # sensor = _make_with_subcommands("sensor", False, [0], [])
+    sensor = _make_with_subcommands("sensor", False, [0], [
+        (name, ([type_, UnionType([Type.BLOCK, Type.UNIT])], False, [0])) for name, type_ in enums.ENUM_SENSABLE.items()
+    ], param_process=lambda params: [params[1], params[2], "@" + params[0]])
 
     set = _make("set", [Type.ANY, Type.ANY], True, [0], internal=True)
     op = _make("op", [Type.ANY, Type.NUM, Type.NUM, Type.NUM], False, [1], internal=True)
@@ -222,11 +224,13 @@ class Instruction:
         ("within", ([Type.NUM] * 4, [3])),
         ("unbind", []),
     ])
-    # TODO: enum types
-    uradar = _make("uradar", [Type.ANY, Type.ANY, Type.ANY, Type.ANY, Type.ANY, Type.NUM, Type.UNIT],
+    uradar = _make("uradar", [BasicType("$RadarFilter")] * 3 + [BasicType("$RadarSort"), Type.ANY, Type.NUM, Type.UNIT],
                    False, [6], constants={5: "0"})
     ulocate = _make_with_subcommands("ulocate", False, [], [
-
+        ("ore", ([Type.ANY, Type.ANY, Type.BLOCK_TYPE, Type.NUM, Type.NUM, Type.NUM, Type.NUM], False, [3, 4, 5], {0: "_", 1: "_"})),
+        ("building", ([BasicType("$LocateType"), Type.NUM, Type.ANY, Type.NUM, Type.NUM, Type.NUM, Type.BLOCK], False, [3, 4, 5, 6], {2: "_"})),
+        ("spawn", ([Type.ANY, Type.ANY, Type.ANY, Type.NUM, Type.NUM, Type.NUM, Type.BLOCK], False, [3, 4, 5, 6], {0: "_", 1: "_", 2: "_"})),
+        ("damaged", ([Type.ANY, Type.ANY, Type.ANY, Type.NUM, Type.NUM, Type.NUM, Type.BLOCK], False, [3, 4, 5, 6], {0: "_", 1: "_", 2: "_"}))
     ])
 
     label = _make("$label", [Type.ANY], True, internal=True)

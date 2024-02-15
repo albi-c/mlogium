@@ -21,6 +21,9 @@ class Compiler(AstVisitor[Value]):
         def generate_node(self, node: Node) -> Value:
             return self.compiler.visit(node)
 
+        def error(self, msg: str):
+            self.compiler._error(msg)
+
     ctx: CompilationContext
     scope: ScopeStack
     functions_with_pointers: set[str]
@@ -37,6 +40,10 @@ class Compiler(AstVisitor[Value]):
             self.scope.scopes[-1].variables[name] = value
         self.scope.scopes.append(ScopeStack.Scope("<main>"))
 
+    def compile(self, node: Node):
+        TypeImplRegistry.reset_basic_type_impls()
+        self.visit(node)
+
     def emit(self, *instructions: Instruction):
         self.ctx.emit(*instructions)
 
@@ -51,6 +58,8 @@ class Compiler(AstVisitor[Value]):
     def _var_declare(self, name: str, type_: Type | None, value: Value, const: bool) -> Value:
         if type_ is None:
             type_ = value.type
+        if type_.is_opaque():
+            self._error(f"Cannot declare variable of opaque type")
         if (var := self.scope.declare(name, type_, const)) is None:
             self._error(f"Variable already exists: '{name}'")
         val = value.into(self.ctx, type_)

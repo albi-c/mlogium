@@ -2,6 +2,7 @@ from typing import Callable
 
 from .value import *
 from .instruction import ALL_INSTRUCTIONS_BASES
+from . import enums
 
 
 BUILTIN_VARS = {
@@ -54,7 +55,6 @@ def builtin_intrinsic(func: Callable, params: list[Type], outputs: set[int] = No
 
 BUILTIN_FUNCTIONS = {}
 
-
 for base in ALL_INSTRUCTIONS_BASES:
     if base.base_params.get("internal", False):
         continue
@@ -62,6 +62,7 @@ for base in ALL_INSTRUCTIONS_BASES:
     if base.has_subcommands():
         subcommands = {}
         for name, (params, outputs, side_effects, _) in base.subcommands().items():
+            print(base.name, name, params, outputs, side_effects)
             subcommands[name] = IntrinsicFunctionType(
                 f"{base.name}.{name}",
                 [(type_, i in outputs) for i, type_ in enumerate(params)],
@@ -74,19 +75,48 @@ for base in ALL_INSTRUCTIONS_BASES:
         BUILTIN_FUNCTIONS[base.name] = Value(IntrinsicFunctionType(
             base.name,
             [(type_, i in base.outputs) for i, type_ in enumerate(base.params)],
-            lambda ctx, *values: ctx.emit(base.make_with_constants(*values))
+            lambda ctx, *values, base_=base: ctx.emit(base_.make_with_constants(*values))
         ), base.name)
 
 
-BUILTINS = BUILTIN_VARS | BUILTIN_FUNCTIONS
+BUILTIN_ENUMS = {}
+
+for name, (values, prefix, opaque) in enums.ALL_ENUMS.items():
+    BUILTIN_ENUMS[name] = Value(BasicType(f"${name}Base"), name, impl=EnumBaseTypeImpl(name, values, prefix, opaque))
 
 
-BUILTINS["add"] = Value(IntrinsicFunctionType(
-    "add",
-    [
-        (BasicType("num"), True),
-        (BasicType("num"), False),
-        (BasicType("num"), False)
-    ],
-    lambda ctx, *values: ctx.emit(Instruction.op("add", *values))
-), "add")
+BUILTIN_OPERATIONS = {}
+
+for op, args in {
+    "max": 2,
+    "min": 2,
+    "angle": 2,
+    "len": 2,
+    "noise": 2,
+    "abs": 1,
+    "log": 1,
+    "log10": 1,
+    "floor": 1,
+    "ceil": 1,
+    "sqrt": 1,
+    "rand": 1,
+    "sin": 1,
+    "cos": 1,
+    "tan": 1,
+    "asin": 1,
+    "acos": 1,
+    "atan": 1
+}.items():
+    BUILTIN_OPERATIONS[op] = Value(IntrinsicFunctionType(
+        op,
+        [(BasicType("num"), True)] + args * [(BasicType("num"), False)],
+        lambda ctx, *values, op_=op: ctx.emit(Instruction.op(op_, *values))
+    ), op)
+
+
+BUILTIN_SPECIAL = {
+    "ExternBlock": Value(BasicType("$ExternBlockSource"), "ExternBlockSource", True, impl=ExternBlockTypeImpl())
+}
+
+
+BUILTINS = BUILTIN_VARS | BUILTIN_FUNCTIONS | BUILTIN_ENUMS | BUILTIN_OPERATIONS | BUILTIN_SPECIAL

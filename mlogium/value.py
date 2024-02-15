@@ -15,9 +15,9 @@ class Value:
     const_on_write: bool
 
     def __init__(self, type_: Type, value: str, const: bool = True, *,
-                 const_on_write: bool = False):
+                 const_on_write: bool = False, impl: TypeImpl = None):
         self.type = type_
-        self.impl = TypeImplRegistry.get_impl(type(self.type))
+        self.impl = TypeImplRegistry.get_impl(self.type) if impl is None else impl
         self.value = value
         self.const = const
         self.const_on_write = const_on_write
@@ -74,6 +74,9 @@ class Value:
     def assign(self, ctx: CompilationContext, other: Value):
         if self.const:
             raise TypeError("Assignment to constant")
+
+        if self.type.is_opaque():
+            ctx.error(f"Cannot assign to opaque type")
 
         assert other is not None
         assert self.assignable_type().contains(other.type)
@@ -300,26 +303,68 @@ class TupleTypeImpl(TypeImpl):
             val.assign_default(ctx)
 
 
+class EnumBaseTypeImpl(TypeImpl):
+    name: str
+    values: set[str]
+    has_prefix: bool
+    is_opaque: bool
+
+    def __init__(self, name: str, values: set[str], has_prefix: bool, is_opaque: bool):
+        self.name = name
+        self.values = values
+        self.has_prefix = has_prefix
+        self.is_opaque = is_opaque
+
+    def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
+        if static:
+            if name == "_len":
+                return Value.number(len(self.values))
+
+            elif name in self.values:
+                return Value.variable(("@" if self.has_prefix else "") + name,
+                                      BasicType(("$" if self.is_opaque else "") + self.name), True)
+
+
+class ExternBlockTypeImpl(TypeImpl):
+    def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
+        if static:
+            return Value.variable(name, Type.BLOCK, True)
+
+
 class TypeImplRegistry:
+    _default_basic_type_implementations: dict[str, TypeImpl] = {}
+    _basic_type_implementations: dict[str, TypeImpl] = {}
     _implementations: dict[type[Type], TypeImpl] = {}
 
     @classmethod
-    def get_impl(cls, type_: type[Type]) -> TypeImpl:
-        return cls._implementations[type_]
-
-    @classmethod
-    def add_impl(cls, type_: type[Type], impl: TypeImpl):
-        cls._implementations[type_] = impl
+    def get_impl(cls, type_: Type) -> TypeImpl:
+        if isinstance(type_, BasicType):
+            if type_.name in cls._default_basic_type_implementations:
+                return cls._default_basic_type_implementations[type_.name]
+            elif type_.name in cls._basic_type_implementations:
+                return cls._basic_type_implementations[type_.name]
+        return cls._implementations[type(type_)]
 
     @classmethod
     def add_impls(cls, impls: dict[type[Type], TypeImpl]):
         cls._implementations |= impls
 
+    @classmethod
+    def reset_basic_type_impls(cls):
+        cls._basic_type_implementations = {}
+
+    @classmethod
+    def add_basic_type_impl(cls, name: str, impl: TypeImpl):
+        cls._basic_type_implementations[name] = impl
+
+    @classmethod
+    def add_default_basic_type_impls(cls, impls: dict[str, TypeImpl]):
+        cls._default_basic_type_implementations |= impls
+
 
 TypeImplRegistry.add_impls({
     AnyType: AnyTypeImpl(),
     BasicType: TypeImpl(),
-    OpaqueType: TypeImpl(),
     UnionTypeImpl: UnionTypeImpl(),
     FunctionType: AnonymousFunctionTypeImpl(),
     ConcreteFunctionType: ConcreteFunctionTypeImpl(),
@@ -328,3 +373,5 @@ TypeImplRegistry.add_impls({
     TupleType: TupleTypeImpl(),
     NullType: TypeImpl()
 })
+
+TypeImplRegistry.add_default_basic_type_impls({})

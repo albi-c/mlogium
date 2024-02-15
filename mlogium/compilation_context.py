@@ -82,3 +82,7 @@ class CompilationContext:
     @abstractmethod
     def generate_node(self, node: Node):
         raise NotImplementedError
+
+    @abstractmethod
+    def error(self, msg: str):
+        raise NotImplementedError
