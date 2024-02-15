@@ -173,10 +173,19 @@ class Compiler(AstVisitor[Value]):
         pass
 
     def visit_binary_op_node(self, node: BinaryOpNode) -> Value:
-        pass
+        left = self.visit(node.left)
+        right = self.visit(node.right)
+        result = left.binary_op(self.ctx, node.op, right)
+        if result is None:
+            self._error(f"Unsupported operation: {left.type} {node.op} {right.type}")
+        return result
 
     def visit_unary_op_node(self, node: UnaryOpNode) -> Value:
-        pass
+        value = self.visit(node.value)
+        result = value.unary_op(self.ctx, node.op)
+        if result is None:
+            self._error(f"Unsupported operation: {node.op} {value.type}")
+        return result
 
     def visit_call_node(self, node: CallNode) -> Value:
         func = self.visit(node.value)

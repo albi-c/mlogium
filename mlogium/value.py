@@ -112,6 +112,12 @@ class Value:
     def getattr(self, ctx: CompilationContext, name: str, static: bool) -> Value | None:
         return self.impl.getattr(ctx, self, name, static)
 
+    def unary_op(self, ctx: CompilationContext, op: str) -> Value | None:
+        return self.impl.unary_op(ctx, self, op)
+
+    def binary_op(self, ctx: CompilationContext, op: str, other: Value) -> Value | None:
+        return self.impl.binary_op(ctx, self, op, other)
+
 
 class TypeImpl:
     def debug_str(self, value: Value) -> str:
@@ -146,6 +152,70 @@ class TypeImpl:
 
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         return None
+
+    def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> Value | None:
+        return None
+
+    def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
+        if op == "=":
+            if (val := other.into(ctx, value.assignable_type())) is None:
+                ctx.error(f"Incompatible types: {value.type}, {other.type}")
+            value.assign(ctx, val)
+            return value
+
+        elif op.endswith("="):
+            value.assign(ctx, value.binary_op(ctx, op[:-1], other))
+            return value
+
+        return None
+
+
+class NumberTypeImpl(TypeImpl):
+    UNARY_OPS = {
+        "-": lambda result, value: ("sub", result, "0", value),
+        "!": lambda result, value: ("equal", result, value, "0"),
+        "~": lambda result, value: ("flip", result, value, "_")
+    }
+
+    BINARY_OPS = {
+        "+": "add",
+        "-": "sub",
+        "*": "mul",
+        "/": "div",
+        "//": "idiv",
+        "%": "mod",
+        "**": "pow",
+        "==": "equal",
+        "!=": "notEqual",
+        "&&": "land",
+        "||": "or",
+        "<": "lessThan",
+        "<=": "lessThanEq",
+        ">": "greaterThan",
+        ">=": "greaterThanEq",
+        "===": "strictEqual",
+        "<<": "shl",
+        ">>": "shr",
+        "|": "or",
+        "&": "and",
+        "^": "xor"
+    }
+
+    def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> Value | None:
+        if op in self.UNARY_OPS:
+            tmp = Value.variable(ctx.tmp(), Type.NUM)
+            ctx.emit(Instruction.op(*(self.UNARY_OPS[op](tmp.value, value.value))))
+            return tmp
+
+        return super().unary_op(ctx, value, op)
+
+    def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
+        if (other := other.into(ctx, Type.NUM)) is not None and op in self.BINARY_OPS:
+            tmp = Value.variable(ctx.tmp(), Type.NUM)
+            ctx.emit(Instruction.op(self.BINARY_OPS[op], tmp.value, value.value, other.value))
+            return tmp
+
+        return super().binary_op(ctx, value, op, other)
 
 
 class AnyTypeImpl(TypeImpl):
@@ -374,4 +444,6 @@ TypeImplRegistry.add_impls({
     NullType: TypeImpl()
 })
 
-TypeImplRegistry.add_default_basic_type_impls({})
+TypeImplRegistry.add_default_basic_type_impls({
+    "num": NumberTypeImpl()
+})

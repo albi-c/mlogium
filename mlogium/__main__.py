@@ -26,7 +26,9 @@ let block2 = getlink(5);
 
 print(sensor.copper(block2));
 
-let unit = radar(RadarFilter::any, RadarFilter::any, RadarFilter::any, RadarSort::distance, block, 1);"""
+let unit = radar(RadarFilter::any, RadarFilter::any, RadarFilter::any, RadarSort::distance, block, 1);
+
+print(80 + ~12);"""
 
 tokens = Lexer().lex(CODE, "<main>")
 ast = Parser(tokens).parse()

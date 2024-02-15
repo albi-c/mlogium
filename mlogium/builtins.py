@@ -62,7 +62,6 @@ for base in ALL_INSTRUCTIONS_BASES:
     if base.has_subcommands():
         subcommands = {}
         for name, (params, outputs, side_effects, _) in base.subcommands().items():
-            print(base.name, name, params, outputs, side_effects)
             subcommands[name] = IntrinsicFunctionType(
                 f"{base.name}.{name}",
                 [(type_, i in outputs) for i, type_ in enumerate(params)],
