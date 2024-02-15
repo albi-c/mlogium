@@ -257,6 +257,8 @@ class Lexer:
         self.next()
 
         if self.lookahead("="):
+            if self.lookahead("="):
+                return self.make_token(TokenType.OPERATOR, "===")
             return self.make_token(TokenType.OPERATOR, "==")
 
         return self.make_token(TokenType.ASSIGNMENT, "=")
@@ -265,6 +267,8 @@ class Lexer:
         val = self.next()
 
         if val == "!" and self.lookahead("="):
+            if self.lookahead("="):
+                return self.make_token(TokenType.OPERATOR, "!==")
             return self.make_token(TokenType.OPERATOR, "!=")
 
         # ++, **, ...

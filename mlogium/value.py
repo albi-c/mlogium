@@ -120,6 +120,12 @@ class Value:
 
 
 class TypeImpl:
+    EQUALITY_OPS = {
+        "==": "equal",
+        "!=": "notEqual",
+        "===": "strictEqual"
+    }
+
     def debug_str(self, value: Value) -> str:
         return value.value
 
@@ -163,6 +169,14 @@ class TypeImpl:
             value.assign(ctx, val)
             return value
 
+        elif op in self.EQUALITY_OPS:
+            tmp = Value.variable(ctx.tmp(), Type.NUM)
+            ctx.emit(Instruction.op(self.EQUALITY_OPS[op], tmp.value, value.value, other.value))
+            return tmp
+
+        elif op == "!==":
+            return value.binary_op(ctx, "===", other).unary_op(ctx, "!")
+
         elif op.endswith("="):
             value.assign(ctx, value.binary_op(ctx, op[:-1], other))
             return value
@@ -185,15 +199,12 @@ class NumberTypeImpl(TypeImpl):
         "//": "idiv",
         "%": "mod",
         "**": "pow",
-        "==": "equal",
-        "!=": "notEqual",
         "&&": "land",
         "||": "or",
         "<": "lessThan",
         "<=": "lessThanEq",
         ">": "greaterThan",
         ">=": "greaterThanEq",
-        "===": "strictEqual",
         "<<": "shl",
         ">>": "shr",
         "|": "or",

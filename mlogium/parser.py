@@ -360,7 +360,7 @@ class Parser:
     #     return self._parse_binary_op(("in",), self.parse_comparison, TokenType.KW_IN, True)
 
     def parse_comparison(self) -> Node:
-        return self._parse_binary_op(("<", ">", "<=", ">=", "==", "!="), self.parse_bitwise_binary)
+        return self._parse_binary_op(("<", ">", "<=", ">=", "==", "!=", "===", "!=="), self.parse_bitwise_binary)
 
     def parse_bitwise_binary(self) -> Node:
         return self._parse_binary_op(("|", "&", "^"), self.parse_bitwise_shift)
