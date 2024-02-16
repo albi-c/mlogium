@@ -229,14 +229,16 @@ class Compiler(AstVisitor[Value]):
         params = []
         for type_, param in zip(param_types, node.params):
             value = self.visit(param)
-            if (val := value.into(self.ctx, type_)) is None:
-                self._error(f"Incompatible types: {type_}, {value.type}")
-            params.append(val)
+            params.append(value.into_req(self.ctx, type_))
 
         return func.call(self.ctx, params)
 
     def visit_index_node(self, node: IndexNode) -> Value:
-        pass
+        value = self.visit(node.value)
+        index = self.visit(node.index)
+        if (result := value.index_at(self.ctx, index)) is None:
+            self._error(f"Not indexable: '{value}'")
+        return result
 
     def visit_attribute_node(self, node: AttributeNode) -> Value:
         value = self.visit(node.value)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import types
 
 from .value_types import *
 from .compilation_context import CompilationContext
@@ -65,6 +66,11 @@ class Value:
 
         return self.impl.into(ctx, self, type_)
 
+    def into_req(self, ctx: CompilationContext, type_: Type | None) -> Value:
+        if (value := self.into(ctx, type_)) is None:
+            ctx.error(f"Incompatible types: {type_}, {self.type}")
+        return value
+
     def unpack(self, ctx: CompilationContext) -> list[Value] | None:
         return self.impl.unpack(ctx, self)
 
@@ -75,15 +81,12 @@ class Value:
         if self.const:
             raise TypeError("Assignment to constant")
 
-        if self.type.is_opaque():
-            ctx.error(f"Cannot assign to opaque type")
+        if self.type.is_opaque() and not self.assignable_type().contains(other.type):
+            ctx.error(f"Cannot assign {other.type} to opaque type")
 
         assert other is not None
 
-        if (val := other.into(ctx, self.assignable_type())) is None:
-            ctx.error(f"Incompatible types: {self.type}, {other.type}")
-
-        self.impl.assign(ctx, self, val)
+        self.impl.assign(ctx, self, other.into_req(ctx, self.assignable_type()))
 
         if self.const_on_write:
             self.const = True
@@ -120,6 +123,19 @@ class Value:
     def binary_op(self, ctx: CompilationContext, op: str, other: Value) -> Value | None:
         return self.impl.binary_op(ctx, self, op, other)
 
+    def index_at(self, ctx: CompilationContext, index: Value) -> Value | None:
+        return self.impl.index_at(ctx, self, index)
+
+    def memcell_length(self, ctx: CompilationContext) -> int:
+        return self.impl.memcell_length(ctx, self)
+
+    def memcell_serialize(self, ctx: CompilationContext) -> list[str]:
+        return self.impl.memcell_serialize(ctx, self)
+
+    def memcell_deserialize(self, ctx: CompilationContext, values: list[str]):
+        assert len(values) == self.memcell_length(ctx)
+        return self.impl.memcell_deserialize(ctx, self, values)
+
 
 class TypeImpl:
     EQUALITY_OPS = {
@@ -138,6 +154,8 @@ class TypeImpl:
         return None
 
     def assignable_type(self, value: Value) -> Type:
+        if value.type.is_opaque():
+            return Type.NULL
         return value.type
 
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
@@ -183,6 +201,18 @@ class TypeImpl:
 
         return None
 
+    def index_at(self, ctx: CompilationContext, value: Value, index: Value) -> Value | None:
+        return None
+
+    def memcell_length(self, ctx: CompilationContext, value: Value) -> int:
+        return 1
+
+    def memcell_serialize(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [value.value]
+
+    def memcell_deserialize(self, ctx: CompilationContext, value: Value, values: list[str]):
+        value.assign(ctx, Value.variable(values[0], value.assignable_type()))
+
 
 class NumberTypeImpl(TypeImpl):
     UNARY_OPS = {
@@ -227,6 +257,12 @@ class NumberTypeImpl(TypeImpl):
             return tmp
 
         return super().binary_op(ctx, value, op, other)
+
+
+class BlockTypeImpl(TypeImpl):
+    def index_at(self, ctx: CompilationContext, value: Value, index: Value) -> Value | None:
+        index = index.into_req(ctx, Type.NUM)
+        return Value(BasicType("$CellRef"), value.value, False, impl=IndexReferenceTypeImpl(index.value))
 
 
 class AnyTypeImpl(TypeImpl):
@@ -383,6 +419,19 @@ class TupleTypeImpl(TypeImpl):
         for val in self.unpack(ctx, value):
             val.assign_default(ctx)
 
+    def memcell_length(self, ctx: CompilationContext, value: Value) -> int:
+        return sum(val.memcell_length(ctx) for val in value.unpack(ctx))
+
+    def memcell_serialize(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [v for val in value.unpack(ctx) for v in val.memcell_serialize(ctx)]
+
+    def memcell_deserialize(self, ctx: CompilationContext, value: Value, values: list[str]):
+        i = 0
+        for val in value.unpack(ctx):
+            length = val.memcell_length(ctx)
+            val.memcell_deserialize(ctx, values[i:i+length])
+            i += length
+
 
 class EnumBaseTypeImpl(TypeImpl):
     name: str
@@ -410,6 +459,44 @@ class ExternBlockTypeImpl(TypeImpl):
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         if static:
             return Value.variable(name, Type.BLOCK, True)
+
+
+class IndexReferenceTypeImpl(TypeImpl):
+    index: str
+
+    def __init__(self, index: str):
+        self.index = index
+
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        val = Value.variable(ctx.tmp(), type_)
+        values = []
+        for _ in range(val.memcell_length(ctx)):
+            v = ctx.tmp()
+            new_index = ctx.tmp()
+            ctx.emit(
+                Instruction.read(v, value.value, self.index),
+                Instruction.op("add", new_index, self.index, "1")
+            )
+            self.index = new_index
+            values.append(v)
+        val.memcell_deserialize(ctx, values)
+        return val
+
+    def assignable_type(self, value: Value) -> Type:
+        return AnyType()
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        if other.type == BasicType("$CellRef"):
+            other = other.into(ctx, Type.NUM)
+
+        values = other.memcell_serialize(ctx)
+        for val in values:
+            new_index = ctx.tmp()
+            ctx.emit(
+                Instruction.write(val, value.value, self.index),
+                Instruction.op("add", new_index, self.index, "1")
+            )
+            self.index = new_index
 
 
 class TypeImplRegistry:
@@ -456,5 +543,6 @@ TypeImplRegistry.add_impls({
 })
 
 TypeImplRegistry.add_default_basic_type_impls({
-    "num": NumberTypeImpl()
+    Type.NUM.name: NumberTypeImpl(),
+    Type.BLOCK.name: BlockTypeImpl()
 })
