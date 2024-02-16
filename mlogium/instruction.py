@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import types
-from typing import Callable, Any
+from typing import Any
 from dataclasses import dataclass
 
 from .value_types import *
@@ -21,7 +20,8 @@ class InstructionBase:
 
     def __call__(self, *params: Any) -> InstructionInstance:
         assert len(params) == len(self.params)
-        return self.base_class(self, self.outputs, self.side_effects, self.constants, self.name, *params, **self.base_params)
+        return self.base_class(self, self.outputs, self.side_effects, self.constants, self.name,
+                               *params, **self.base_params)
 
     def make_with_constants(self, *params: Any) -> InstructionInstance:
         assert len(params) == len(self.params) - len(self.constants)
@@ -82,7 +82,8 @@ class InstructionInstance:
     constants: dict[int, str]
 
     def __init__(self, base: InstructionBase, outputs: list[int], side_effects: bool, constants: dict[int, str],
-                 name: str, *params: Any, internal: bool = False, param_process: Callable[[list[str]], list[str]] = None, **_):
+                 name: str, *params: Any, internal: bool = False,
+                 param_process: Callable[[list[str]], list[str]] = None, **_):
         self.name = name
         self.params = list(map(str, params))
         self.internal = internal
@@ -101,9 +102,9 @@ class InstructionInstance:
 
 
 class LinkerInstructionInstance(InstructionInstance):
-    translator: Callable[[LinkerInstruction], InstructionInstance]
+    translator: Callable[[LinkerInstructionInstance], InstructionInstance]
 
-    def __init__(self, *args, translator: Callable[[LinkerInstruction], InstructionInstance], **kwargs):
+    def __init__(self, *args, translator: Callable[[LinkerInstructionInstance], InstructionInstance], **kwargs):
         super().__init__(*args, **kwargs)
 
         self.translator = translator
@@ -199,7 +200,8 @@ class Instruction:
     wait = _make("wait", [Type.NUM], True)
     stop = _make("stop", [], True)
     end = _make("end", [], True)
-    jump = _make("jump", [Type.ANY] * 4, True, internal=True)
+    jump = _make("jump", [Type.ANY] * 4, True, internal=True, base=LinkerInstructionInstance,
+                 translator=lambda ins: Instruction.jump("$" + ins.params[0], *ins.params[1:]))
 
     ubind = _make("ubind", [Type.UNIT_TYPE], True)
     ucontrol = _make_with_subcommands("ucontrol", True, [], [
@@ -237,7 +239,8 @@ class Instruction:
     get_instruction_pointer_offset = _make("$get_instruction_pointer_offset",
                                            [Type.NUM, Type.NUM], False, [0], internal=True,
                                            base=LinkerInstructionInstance,
-                                           translator=lambda ins: Instruction.op("add", ins.params[0], "@counter", ins.params[1]))
+                                           translator=lambda ins: Instruction.op("add", ins.params[0],
+                                                                                 "@counter", ins.params[1]))
     jump_always = _make("$jump_always", [Type.ANY], True, internal=True, base=LinkerInstructionInstance,
                         translator=lambda ins: Instruction.jump("$" + ins.params[0], "always", "_", "_"))
     jump_addr = _make("$jump_addr", [Type.NUM], True, internal=True, base=LinkerInstructionInstance,

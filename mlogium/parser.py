@@ -116,7 +116,8 @@ class Parser:
         elif tok.type == TokenType.KW_ENUM:
             self.next()
             name = self.next(TokenType.ID).value
-            options = self._parse_comma_separated(lambda: self.next(TokenType.ID).value, TokenType.LBRACE, TokenType.RBRACE)
+            options = self._parse_comma_separated(lambda: self.next(TokenType.ID).value, TokenType.LBRACE,
+                                                  TokenType.RBRACE)
             return EnumNode(tok.pos, name, options)
 
         return None
@@ -292,16 +293,6 @@ class Parser:
         return type_
 
     def parse_value(self) -> Node:
-        if tok := self.lookahead(TokenType.OPERATOR, "|"):
-            params = self._parse_comma_separated(self._parse_name_with_type, None, TokenType.OPERATOR, "|")
-            if self.lookahead(TokenType.ARROW):
-                ret = self.parse_type()
-            else:
-                ret = NullType()
-            self.next(TokenType.LBRACE)
-            code = self.parse_block(True)
-            return LambdaNode(tok.pos + code.pos, NamedParamFunctionType(params, ret), code)
-
         return self.parse_assignment()
 
     def _parse_binary_op(self, values: tuple[str, ...] | None, func: Callable[[], Node],
@@ -441,10 +432,9 @@ class Parser:
     #     return VariablePattern(name)
 
     def parse_atom(self) -> Node:
-        tok = self.lookahead()
+        tok = self.next()
 
         if tok.type == TokenType.KW_IF:
-            self.next()
             cond = self.parse_value()
             code_if = self.parse_statement()
             pos = tok.pos + code_if.pos
@@ -455,36 +445,10 @@ class Parser:
                 code_else = None
             return IfNode(pos, cond, code_if, code_else)
 
-        # elif tok.type == TokenType.KW_MATCH:
-        #     self.next()
-        #     value = self.parse_value()
-        #     self.next(TokenType.LBRACE)
-        #
-        #     patterns = []
-        #     has_any_pattern = False
-        #     while self.has():
-        #         if self.lookahead(TokenType.RBRACE):
-        #             break
-        #
-        #         pattern_list = [self._parse_pattern()]
-        #         while self.lookahead(TokenType.OPERATOR, "|"):
-        #             pattern_list.append(self._parse_pattern())
-        #         has_any_pattern = has_any_pattern or any(isinstance(pattern, AnyPattern) for pattern in pattern_list)
-        #         self.next(TokenType.ARROW)
-        #         patterns.append((pattern_list, self.parse_value()))
-        #         self.lookahead(TokenType.COMMA)
-        #
-        #     if not has_any_pattern:
-        #         ParserError.custom(tok.pos, f"Match must cover all cases")
-        #
-        #     return MatchNode(tok.pos, value, patterns)
-
         elif tok.type == TokenType.LBRACE:
-            self.next()
             return self.parse_block(True)
 
         elif tok.type == TokenType.LPAREN:
-            self.next()
             if self.lookahead(TokenType.RPAREN):
                 return TupleValueNode(tok.pos, [])
             val = self.parse_value()
@@ -494,9 +458,7 @@ class Parser:
                 self.next(TokenType.RPAREN)
                 return val
 
-        tok = self.next()
-
-        if tok.type == TokenType.NUMBER:
+        elif tok.type == TokenType.NUMBER:
             number = float(tok.value)
             if number.is_integer():
                 number = int(number)
@@ -512,5 +474,24 @@ class Parser:
 
         elif tok.type == TokenType.ID:
             return VariableValueNode(tok.pos, tok.value)
+
+        elif tok.type == TokenType.OPERATOR and tok.value == "|":
+            params = self._parse_comma_separated(self._parse_name_with_type, None, TokenType.OPERATOR, "|")
+            if self.lookahead(TokenType.ARROW):
+                ret = self.parse_type()
+            else:
+                ret = NullType()
+            self.next(TokenType.LBRACE)
+            code = self.parse_block(True)
+            return LambdaNode(tok.pos + code.pos, NamedParamFunctionType(params, ret), code)
+
+        elif tok.type == TokenType.OPERATOR and tok.value == "||":
+            if self.lookahead(TokenType.ARROW):
+                ret = self.parse_type()
+            else:
+                ret = NullType()
+            self.next(TokenType.LBRACE)
+            code = self.parse_block(True)
+            return LambdaNode(tok.pos + code.pos, NamedParamFunctionType([], ret), code)
 
         ParserError.unexpected_token(tok)

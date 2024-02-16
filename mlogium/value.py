@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from .value_types import *
 from .compilation_context import CompilationContext
-from .instruction import InstructionInstance, Instruction
+from .instruction import Instruction
 from .abi import ABI
 
 
@@ -79,9 +79,11 @@ class Value:
             ctx.error(f"Cannot assign to opaque type")
 
         assert other is not None
-        assert self.assignable_type().contains(other.type)
 
-        self.impl.assign(ctx, self, other)
+        if (val := other.into(ctx, self.assignable_type())) is None:
+            ctx.error(f"Incompatible types: {self.type}, {other.type}")
+
+        self.impl.assign(ctx, self, val)
 
         if self.const_on_write:
             self.const = True
@@ -164,9 +166,7 @@ class TypeImpl:
 
     def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
         if op == "=":
-            if (val := other.into(ctx, value.assignable_type())) is None:
-                ctx.error(f"Incompatible types: {value.type}, {other.type}")
-            value.assign(ctx, val)
+            value.assign(ctx, other)
             return value
 
         elif op in self.EQUALITY_OPS:

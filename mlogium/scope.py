@@ -17,13 +17,18 @@ class ScopeStack:
 
     scopes: list[Scope]
     functions: list[str]
+    loops: list[str]
 
     def __init__(self):
         self.scopes = []
         self.functions = []
+        self.loops = []
 
     def get_function(self) -> str | None:
         return self.functions[-1] if len(self.functions) > 0 else None
+
+    def get_loop(self) -> str | None:
+        return self.loops[-1] if len(self.loops) > 0 else None
 
     @contextlib.contextmanager
     def __call__(self, name: str):
@@ -42,6 +47,16 @@ class ScopeStack:
         finally:
             self.scopes.pop(-1)
             self.functions.pop(-1)
+
+    @contextlib.contextmanager
+    def loop(self, name: str):
+        self.scopes.append(ScopeStack.Scope(name))
+        self.loops.append(name)
+        try:
+            yield
+        finally:
+            self.scopes.pop(-1)
+            self.loops.pop(-1)
 
     def get(self, name: str) -> Value | None:
         for scope in reversed(self.scopes):

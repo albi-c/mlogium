@@ -62,10 +62,7 @@ class Compiler(AstVisitor[Value]):
             self._error(f"Cannot declare variable of opaque type")
         if (var := self.scope.declare(name, type_, const)) is None:
             self._error(f"Variable already exists: '{name}'")
-        val = value.into(self.ctx, type_)
-        if val is None:
-            self._error(f"Incompatible types: {type_}, {value.type}")
-        var.assign(self.ctx, val)
+        var.assign(self.ctx, value)
         return var
 
     def _var_declare_special(self, name: str, value: Value) -> Value:
@@ -74,7 +71,7 @@ class Compiler(AstVisitor[Value]):
         return value
 
     def visit_block_node(self, node: BlockNode) -> Value:
-        last_value = None
+        last_value = Value.null()
         for n in node.code:
             last_value = self.visit(n)
         if node.returns_last:
@@ -155,22 +152,56 @@ class Compiler(AstVisitor[Value]):
         pass
 
     def visit_if_node(self, node: IfNode) -> Value:
-        pass
+        condition = self.visit(node.cond)
+        end_true_branch = self.ctx.tmp()
+        end_false_branch = "" if node.code_else is None else self.ctx.tmp()
+        self.emit(Instruction.jump(end_true_branch, "equal", condition.value, "0"))
+        with self.scope(end_true_branch):
+            true_value = self.visit(node.code_if)
+            result = Value.variable(self.ctx.tmp(), true_value.type)
+            result.assign(self.ctx, true_value)
+            if end_false_branch:
+                self.emit(Instruction.jump_always(end_false_branch))
+        self.emit(Instruction.label(end_true_branch))
+        if end_false_branch:
+            with self.scope(end_false_branch):
+                code_else = node.code_else
+                assert isinstance(code_else, Node)
+                result.assign(self.ctx, self.visit(code_else))
+            self.emit(Instruction.label(end_false_branch))
+
+        return result
 
     def visit_enum_node(self, node: EnumNode) -> Value:
         pass
 
     def visit_while_node(self, node: WhileNode) -> Value:
-        pass
+        name = self.ctx.tmp()
+        self.emit(Instruction.label(name + "_continue"))
+        cond = self.visit(node.cond)
+        self.emit(Instruction.jump(name + "_break", "equal", cond.value, "0"))
+        with self.scope.loop(name):
+            self.visit(node.code)
+        self.emit(
+            Instruction.jump_always(name + "_continue"),
+            Instruction.label(name + "_break")
+        )
+        return Value.null()
 
     def visit_for_node(self, node: ForNode) -> Value:
         pass
 
     def visit_break_node(self, node: BreakNode) -> Value:
-        pass
+        if (name := self.scope.get_loop()) is None:
+            self._error(f"Break statement must be in a loop")
+        self.emit(Instruction.jump_always(name + "_break"))
+        return Value.null()
 
     def visit_continue_node(self, node: ContinueNode) -> Value:
-        pass
+        if (name := self.scope.get_loop()) is None:
+            self._error(f"Continue statement must be in a loop")
+        self.emit(Instruction.jump_always(name + "_continue"))
+        return Value.null()
 
     def visit_binary_op_node(self, node: BinaryOpNode) -> Value:
         left = self.visit(node.left)

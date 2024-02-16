@@ -23,6 +23,8 @@ class Linker:
             for p in ins.params:
                 if p.startswith("$"):
                     lab = labels[p[1:]]
+                    if lab == len(instructions):
+                        lab = 0
                     ln += f" {lab}"
                 else:
                     ln += f" {p}"
