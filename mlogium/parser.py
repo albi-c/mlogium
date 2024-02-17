@@ -90,23 +90,23 @@ class Parser:
         return BlockNode(self._current_pos() if not code else code[0].pos + code[-1].pos,
                          code, returns_last and not top_level)
 
-    def _parse_struct_inner(self) -> tuple[list[SingleAssignmentTarget], list[tuple[SingleAssignmentTarget, Node]], list[tuple[bool, str, NamedParamFunctionType, Node]], list[tuple[str, NamedParamFunctionType, Node]]]:
+    def _parse_struct_inner(self) -> tuple[list[SingleAssignmentTarget], list[tuple[bool, SingleAssignmentTarget, Node]], list[tuple[bool, str, NamedParamFunctionType, Node]], list[tuple[str, NamedParamFunctionType, Node]]]:
         fields: list[SingleAssignmentTarget] = []
-        static_fields: list[tuple[SingleAssignmentTarget, Node]] = []
+        static_fields: list[tuple[bool, SingleAssignmentTarget, Node]] = []
         methods: list[tuple[bool, str, NamedParamFunctionType, Node]] = []
         static_methods: list[tuple[str, NamedParamFunctionType, Node]] = []
 
         while self.has() and not self.lookahead(TokenType.RBRACE, take_if_matches=False):
             if self.lookahead(TokenType.KW_STATIC):
-                if self.lookahead(TokenType.KW_LET):
+                if (const := bool(self.lookahead(TokenType.KW_CONST))) or self.lookahead(TokenType.KW_LET):
                     name = self.next(TokenType.ID).value
                     if self.lookahead(TokenType.COLON):
                         type_ = self.parse_type()
                     else:
                         type_ = None
-                    self.next(TokenType.OPERATOR, "=")
+                    self.next(TokenType.ASSIGNMENT, "=")
                     value = self.parse_value()
-                    static_fields.append((SingleAssignmentTarget(name, type_), value))
+                    static_fields.append((const, SingleAssignmentTarget(name, type_), value))
 
                 else:
                     self.next(TokenType.KW_FN)
@@ -214,13 +214,15 @@ class Parser:
 
         tok = self.lookahead()
 
-        if tok.type == TokenType.KW_LET:
+        if tok.type in TokenType.KW_LET | TokenType.KW_CONST:
+            const = tok.type == TokenType.KW_CONST
+
             self.next()
 
             target = self._parse_assignment_target(tok.pos)
             self.next(TokenType.ASSIGNMENT, "=")
             val = self.parse_value()
-            return DeclarationNode(tok.pos + val.pos, target, val)
+            return DeclarationNode(tok.pos + val.pos, const, target, val)
 
         elif tok.type == TokenType.KW_WHILE:
             self.next()

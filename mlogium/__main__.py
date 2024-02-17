@@ -31,6 +31,25 @@ let unit = radar(RadarFilter::any, RadarFilter::any, RadarFilter::any, RadarSort
 print(80 + ~12);
 print("ab" !== 12);"""
 
+CODE = """\
+struct Vec2 {
+    let x: num;
+    let y: num;
+    
+    static const size = 2;
+    
+    const fn add(other: Vec2) -> Vec2 {
+        Vec2(self.x + other.x, self.y + other.y)
+    }
+    
+    static fn add(a: Vec2, b: Vec2) -> Vec2 {
+        Vec2(a.x + b.x, a.y + b.y)
+    }
+}
+
+const v = Vec2(5, 9);
+print(Vec2::add(v, Vec2(1, -2)));"""
+
 tokens = Lexer().lex(CODE, "<main>")
 ast = Parser(tokens).parse()
 compiler = Compiler()

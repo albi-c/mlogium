@@ -182,6 +182,8 @@ class TypeImpl:
 
     def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
         if op == "=":
+            if value.const:
+                ctx.error(f"Assignment to constant")
             value.assign(ctx, other)
             return value
 
@@ -537,6 +539,9 @@ class StructBaseTypeImpl(TypeImpl):
 
         return value
 
+    def register_type(self):
+        TypeImplRegistry.add_basic_type_impl(self.name, self._instance_impl)
+
 
 class StructInstanceTypeImpl(TypeImpl):
     fields: dict[str, Type]
@@ -568,6 +573,10 @@ class StructInstanceTypeImpl(TypeImpl):
                     ctx.error(f"Cannot call method '{name}' on const object")
 
                 return method[1]
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        for field in self.fields.keys():
+            value.getattr(ctx, field, False).assign(ctx, other.getattr(ctx, field, False))
 
 
 class TypeImplRegistry:

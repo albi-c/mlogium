@@ -103,7 +103,30 @@ class Compiler(AstVisitor[Value]):
         return value
 
     def visit_declaration_node(self, node: DeclarationNode) -> Value:
-        return self._declare_target(node.target, self.visit(node.value), False)
+        return self._declare_target(node.target, self.visit(node.value), node.const)
+
+    def _make_function_value(self, name: str, type_: NamedParamFunctionType, code: Node) -> Value:
+        if name in self.functions_with_pointers:
+            self._error(f"Function already defined: '{name}'")
+        self.functions_with_pointers.add(name)
+
+        return Value(
+            ConcreteFunctionType(name, type_.named_params, type_.ret, {
+                "code": code
+            }),
+            name,
+            True
+        )
+
+    def _register_function_value(self, name: str, val: Value):
+        with self.ctx.in_section(InstructionSection.FUNCTIONS):
+            self.emit(Instruction.label(ABI.function_label(name)))
+            ret_addr = Value.variable(self.ctx.tmp(), BasicType("num"))
+            ret_addr.assign(self.ctx, Value.variable(ABI.function_return_address(), BasicType("num")))
+            params = [Value.variable(ABI.function_parameter(i), type_) for i, type_ in enumerate(val.params())]
+            ret = val.call(self.ctx, params)
+            Value.variable(ABI.function_return_value(), ret.type).assign(self.ctx, ret)
+            self.emit(Instruction.jump_addr(ret_addr.value))
 
     def _register_function(self, name: str, type_: NamedParamFunctionType, code: Node) -> Value:
         if name in self.functions_with_pointers:
@@ -149,7 +172,49 @@ class Compiler(AstVisitor[Value]):
         return Value.null()
 
     def visit_struct_node(self, node: StructNode) -> Value:
-        pass
+        fields = []
+        methods = {}
+        names = set()
+        static_values = {}
+        static_functions = []
+
+        for const, name, type_, code in node.methods:
+            if name in names:
+                self._error(f"Struct already has field '{name}'")
+            names.add(name)
+
+        for target in node.fields:
+            if target.name in names:
+                self._error(f"Struct already has field '{target.name}'")
+            names.add(target.name)
+            fields.append((target.name, target.type))
+
+        for name, type_, code in node.static_methods:
+            if name in static_values:
+                self._error(f"Struct already has attribute '{name}'")
+            val = self._make_function_value(ABI.static_attribute(node.name, name), type_, code)
+            static_values[name] = val
+            static_functions.append((name, val))
+
+        for const, target, value in node.static_fields:
+            if target.name in static_values:
+                self._error(f"Struct already has attribute '{target.name}'")
+            names.add(target.name)
+            val = self.visit(value)
+            var = Value.variable(self.ctx.tmp(), val.type, const_on_write=const)
+            var.assign(self.ctx, val)
+            static_values[target.name] = var
+
+        struct = Value(BasicType("$StructBase_" + node.name), node.name, impl=StructBaseTypeImpl(
+            node.name, fields, methods, static_values))
+        self._var_declare_special(node.name, struct)
+
+        struct.impl.register_type()
+
+        for name, val in static_functions:
+            self._register_function_value(name, val)
+
+        return struct
 
     def visit_if_node(self, node: IfNode) -> Value:
         condition = self.visit(node.cond)

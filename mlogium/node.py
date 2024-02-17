@@ -211,12 +211,14 @@ class UnpackAssignmentTarget(AssignmentTarget):
 
 
 class DeclarationNode(Node):
+    const: bool
     target: AssignmentTarget
     value: Node
 
-    def __init__(self, pos: Position, target: AssignmentTarget, value: Node):
+    def __init__(self, pos: Position, const: bool, target: AssignmentTarget, value: Node):
         super().__init__(pos)
 
+        self.const = const
         self.target = target
         self.value = value
 
@@ -281,12 +283,12 @@ class ReturnNode(Node):
 class StructNode(Node):
     name: str
     fields: list[SingleAssignmentTarget]
-    static_fields: list[tuple[SingleAssignmentTarget, Node]]
+    static_fields: list[tuple[bool, SingleAssignmentTarget, Node]]
     methods: list[tuple[bool, str, NamedParamFunctionType, Node]]
     static_methods: list[tuple[str, NamedParamFunctionType, Node]]
 
     def __init__(self, pos: Position, name: str,
-                 fields: list[SingleAssignmentTarget], static_fields: list[tuple[SingleAssignmentTarget, Node]],
+                 fields: list[SingleAssignmentTarget], static_fields: list[tuple[bool, SingleAssignmentTarget, Node]],
                  methods: list[tuple[bool, str, NamedParamFunctionType, Node]],
                  static_methods: list[tuple[str, NamedParamFunctionType, Node]]):
         super().__init__(pos)
