@@ -378,18 +378,18 @@ class WhileNode(Node):
 
 class ForNode(Node):
     target: AssignmentTarget
-    iterator: Node
+    iterable: Node
     code: Node
 
-    def __init__(self, pos: Position, target: AssignmentTarget, iterator: Node, code: Node):
+    def __init__(self, pos: Position, target: AssignmentTarget, iterable: Node, code: Node):
         super().__init__(pos)
 
         self.target = target
-        self.iterator = iterator
+        self.iterable = iterable
         self.code = code
 
     def __str__(self):
-        return f"for {self.target} in {self.iterator} {self.code}"
+        return f"for {self.target} in {self.iterable} {self.code}"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_for_node(self)
@@ -561,17 +561,17 @@ class TupleValueNode(Node):
 
 
 class RangeValueNode(Node):
-    start: Node | None
-    end: Node | None
+    start: Node
+    end: Node
 
-    def __init__(self, pos: Position, start: Node | None, end: Node | None):
+    def __init__(self, pos: Position, start: Node, end: Node):
         super().__init__(pos)
 
         self.start = start
         self.end = end
 
     def __str__(self):
-        return f"{self.start if self.start is not None else ''}..{self.end if self.end is not None else ''}"
+        return f"{self.start}..{self.end}"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_range_value_node(self)

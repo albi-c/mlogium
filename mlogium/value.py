@@ -137,6 +137,9 @@ class Value:
         assert len(values) == self.memcell_length(ctx)
         return self.impl.memcell_deserialize(ctx, self, values)
 
+    def iterate(self, ctx: CompilationContext) -> ValueIterator | None:
+        return self.impl.iterate(ctx, self)
+
 
 class TypeImpl:
     EQUALITY_OPS = {
@@ -218,6 +221,9 @@ class TypeImpl:
 
     def memcell_deserialize(self, ctx: CompilationContext, value: Value, values: list[str]):
         value.assign(ctx, Value.variable(values[0], value.assignable_type()))
+
+    def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
+        return None
 
 
 class NumberTypeImpl(TypeImpl):
@@ -649,6 +655,51 @@ class StructMethodTypeImpl(ConcreteFunctionTypeImpl):
         return None
 
 
+class RangeTypeImpl(TypeImpl):
+    def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
+        if not static:
+            if name == "start":
+                return Value.variable(ABI.attribute(value.value, "start"), Type.NUM, value.const)
+            elif name == "end":
+                return Value.variable(ABI.attribute(value.value, "end"), Type.NUM, value.const)
+
+    def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
+        return RangeValueIterator(ctx, value.getattr(ctx, "start", False), value.getattr(ctx, "end", False))
+
+
+class ValueIterator:
+    @abstractmethod
+    def has_value(self, ctx: CompilationContext) -> Value:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_current(self, ctx: CompilationContext) -> Value:
+        raise NotImplementedError
+
+    @abstractmethod
+    def to_next(self, ctx: CompilationContext):
+        raise NotImplementedError
+
+
+class RangeValueIterator(ValueIterator):
+    index: Value
+    end_index: Value
+
+    def __init__(self, ctx: CompilationContext, start_index: Value, end_index: Value):
+        self.index = Value.variable(ctx.tmp(), Type.NUM)
+        self.index.assign(ctx, start_index.into_req(ctx, self.index.assignable_type()))
+        self.end_index = end_index
+
+    def has_value(self, ctx: CompilationContext) -> Value:
+        return self.index.binary_op(ctx, "<", self.end_index)
+
+    def get_current(self, ctx: CompilationContext) -> Value:
+        return self.index
+
+    def to_next(self, ctx: CompilationContext):
+        ctx.emit(Instruction.op("add", self.index.value, self.index.value, "1"))
+
+
 class TypeImplRegistry:
     _default_basic_type_implementations: dict[str, TypeImpl] = {}
     _basic_type_implementations: dict[str, TypeImpl] = {}
@@ -694,5 +745,6 @@ TypeImplRegistry.add_impls({
 
 TypeImplRegistry.add_default_basic_type_impls({
     Type.NUM.name: NumberTypeImpl(),
-    Type.BLOCK.name: BlockTypeImpl()
+    Type.BLOCK.name: BlockTypeImpl(),
+    Type.RANGE.name: RangeTypeImpl()
 })

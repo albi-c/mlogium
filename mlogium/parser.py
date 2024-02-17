@@ -374,15 +374,9 @@ class Parser:
         return self._parse_binary_op(None, self.parse_range, TokenType.ASSIGNMENT, True)
 
     def parse_range(self) -> Node:
-        if tok := self.lookahead(TokenType.DOUBLE_DOT):
-            val = self.parse_logical_or()
-            return RangeValueNode(tok.pos + val.pos, None, val)
-
         val = self.parse_logical_or()
 
         if self.lookahead(TokenType.DOUBLE_DOT):
-            if tok := self.lookahead(TokenType.ID, "_"):
-                return RangeValueNode(val.pos + tok.pos, val, None)
             end = self.parse_logical_or()
             return RangeValueNode(val.pos + end.pos, val, end)
 

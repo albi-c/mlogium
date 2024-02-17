@@ -207,10 +207,6 @@ class Compiler(AstVisitor[Value]):
                 self._error(f"Struct already has attribute '{target.name}'")
             names.add(target.name)
             static_variables.append((const, target, value))
-            # val = self.visit(value)
-            # var = Value.variable(self.ctx.tmp(), val.type, const_on_write=const)
-            # var.assign(self.ctx, val)
-            # static_values[target.name] = var
 
         struct = Value(BasicType("$StructBase_" + node.name), node.name, impl=StructBaseTypeImpl(
             node.name, fields, methods, static_values))
@@ -272,7 +268,25 @@ class Compiler(AstVisitor[Value]):
         return Value.null()
 
     def visit_for_node(self, node: ForNode) -> Value:
-        pass
+        name = self.ctx.tmp()
+        iterable = self.visit(node.iterable)
+        iterator = iterable.iterate(self.ctx)
+        if iterator is None:
+            self._error(f"Not iterable: {iterable.type}")
+        self.emit(
+            Instruction.label(name + "_start"),
+            Instruction.jump(name + "_break", "equal", iterator.has_value(self.ctx).value, "0")
+        )
+        with self.scope.loop(name):
+            self._declare_target(node.target, iterator.get_current(self.ctx), iterable.const)
+            self.visit(node.code)
+        self.emit(Instruction.label(name + "_continue"))
+        iterator.to_next(self.ctx)
+        self.emit(
+            Instruction.jump_always(name + "_start"),
+            Instruction.label(name + "_break")
+        )
+        return Value.null()
 
     def visit_break_node(self, node: BreakNode) -> Value:
         if (name := self.scope.get_loop()) is None:
@@ -342,4 +356,7 @@ class Compiler(AstVisitor[Value]):
         return Value.tuple(self.ctx, [self.visit(val) for val in node.values])
 
     def visit_range_value_node(self, node: RangeValueNode) -> Value:
-        pass
+        value = Value.variable(self.ctx.tmp(), Type.RANGE)
+        value.getattr(self.ctx, "start", False).assign(self.ctx, self.visit(node.start))
+        value.getattr(self.ctx, "end", False).assign(self.ctx, self.visit(node.end))
+        return value

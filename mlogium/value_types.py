@@ -18,6 +18,7 @@ class Type(ABC):
     CONTROLLER: BasicType
     COLOR: BasicType
     CONTENT: UnionType
+    RANGE: BasicType
     ANY: AnyType
 
     @abstractmethod
@@ -241,5 +242,7 @@ Type.CONTROLLER = BasicType("Controller")
 Type.COLOR = BasicType("Color")
 
 Type.CONTENT = UnionType([Type.UNIT_TYPE, Type.ITEM_TYPE, Type.BLOCK_TYPE, Type.LIQUID_TYPE])
+
+Type.RANGE = BasicType("Range")
 
 Type.ANY = AnyType()

@@ -48,6 +48,11 @@ struct Vec2 {
 let v = Vec2(1, 2);
 print(v.iadd(Vec2(4, 3)));"""
 
+CODE = """\
+for (i in 0..12) {
+    print(i);
+}"""
+
 tokens = Lexer().lex(CODE, "<main>")
 ast = Parser(tokens).parse()
 compiler = Compiler()
