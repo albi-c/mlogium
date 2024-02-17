@@ -177,6 +177,7 @@ class Compiler(AstVisitor[Value]):
         names = set()
         static_values = {}
         functions_to_register = []
+        static_variables = []
 
         for const, name, type_, code in node.methods:
             if name in names:
@@ -205,10 +206,11 @@ class Compiler(AstVisitor[Value]):
             if target.name in static_values:
                 self._error(f"Struct already has attribute '{target.name}'")
             names.add(target.name)
-            val = self.visit(value)
-            var = Value.variable(self.ctx.tmp(), val.type, const_on_write=const)
-            var.assign(self.ctx, val)
-            static_values[target.name] = var
+            static_variables.append((const, target, value))
+            # val = self.visit(value)
+            # var = Value.variable(self.ctx.tmp(), val.type, const_on_write=const)
+            # var.assign(self.ctx, val)
+            # static_values[target.name] = var
 
         struct = Value(BasicType("$StructBase_" + node.name), node.name, impl=StructBaseTypeImpl(
             node.name, fields, methods, static_values))
@@ -217,6 +219,12 @@ class Compiler(AstVisitor[Value]):
         impl = struct.impl
         assert isinstance(impl, StructBaseTypeImpl)
         impl.register_type()
+
+        for const, target, value in static_variables:
+            val = self.visit(value)
+            var = Value.variable(self.ctx.tmp(), val.type, const_on_write=const)
+            var.assign(self.ctx, val)
+            static_values[target.name] = var
 
         for name, val in functions_to_register:
             self._register_function_value(name, val)
@@ -245,7 +253,10 @@ class Compiler(AstVisitor[Value]):
         return result
 
     def visit_enum_node(self, node: EnumNode) -> Value:
-        pass
+        val = Value(BasicType("$Enum_" + node.name), node.name,
+                    impl=CustomEnumBaseTypeImpl(node.name, {name: i for i, name in enumerate(node.options)}))
+        self._var_declare_special(node.name, val)
+        return val
 
     def visit_while_node(self, node: WhileNode) -> Value:
         name = self.ctx.tmp()

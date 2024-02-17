@@ -468,6 +468,40 @@ class EnumBaseTypeImpl(TypeImpl):
                                       BasicType(("$" if self.is_opaque else "") + self.name), True)
 
 
+class CustomEnumBaseTypeImpl(TypeImpl):
+    name: str
+    values: dict[str, int]
+
+    def __init__(self, name: str, values: dict[str, int]):
+        self.name = name
+        self.values = values
+
+    def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
+        if static:
+            if name == "_len":
+                return Value.number(len(self.values))
+
+            elif name in self.values:
+                return Value(BasicType(self.name), str(self.values[name]))
+
+    def callable(self, value: Value) -> bool:
+        return True
+
+    def params(self, value: Value) -> list[Type]:
+        return [Type.NUM]
+
+    def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
+        assert len(params) == 1
+        assert Type.NUM.contains(params[0].type)
+        return Value(BasicType(self.name), params[0].value)
+
+
+class CustomEnumInstanceTypeImpl(TypeImpl):
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        if type_ == Type.NUM:
+            return Value.number(int(value.value))
+
+
 class ExternBlockTypeImpl(TypeImpl):
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         if static:
