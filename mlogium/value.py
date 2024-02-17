@@ -31,6 +31,9 @@ class Value:
     def __str__(self):
         return self.impl.debug_str(self)
 
+    def __repr__(self):
+        return f"Value({self.type}, {self.value})"
+
     @classmethod
     def null(cls) -> Value:
         return cls(Type.NULL, "null")
@@ -106,7 +109,7 @@ class Value:
 
     def params(self) -> list[Type]:
         assert self.callable()
-        return self.impl.params(self)
+        return self.impl.params_public(self)
 
     def call(self, ctx: CompilationContext, params: list[Value]) -> Value:
         assert self.callable()
@@ -170,6 +173,9 @@ class TypeImpl:
 
     def params(self, value: Value) -> list[Type]:
         raise NotImplementedError
+
+    def params_public(self, value: Value) -> list[Type]:
+        return self.params(value)
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
         raise NotImplementedError
@@ -333,6 +339,9 @@ class ConcreteFunctionTypeImpl(TypeImpl):
         assert isinstance(type_, ConcreteFunctionType)
         return type_.params
 
+    def reference_params(self) -> tuple[int, ...]:
+        return tuple()
+
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
         assert len(self.params(value)) == len(params)
         assert all(type_.contains(val.type) for type_, val in zip(self.params(value), params))
@@ -341,8 +350,12 @@ class ConcreteFunctionTypeImpl(TypeImpl):
         assert isinstance(type_, ConcreteFunctionType)
 
         with ctx.scope.function_call(f"{type_.name}:{ctx.tmp_num()}"):
-            for (name, val_type), val in zip(type_.named_params, params):
-                ctx.scope.declare(name, val_type, False).assign(ctx, val)
+            ref_params = self.reference_params()
+            for i, ((name, val_type), val) in enumerate(zip(type_.named_params, params)):
+                if i in ref_params:
+                    ctx.scope.declare_special(name, val)
+                else:
+                    ctx.scope.declare(name, val_type, False).assign(ctx, val)
 
             result = ctx.generate_node(type_.attributes["code"])
 
@@ -563,8 +576,6 @@ class StructInstanceTypeImpl(TypeImpl):
                 return Value(self.fields[name], ABI.attribute(value.value, name), value.const)
 
             else:
-                # TODO: capture self
-
                 method = self.methods.get(name)
                 if method is None:
                     return None
@@ -572,11 +583,36 @@ class StructInstanceTypeImpl(TypeImpl):
                 if value.const and not method[0]:
                     ctx.error(f"Cannot call method '{name}' on const object")
 
-                return method[1]
+                val = method[1]
+                return Value(val.type, val.value, method[0], impl=StructMethodTypeImpl(value, method[0]))
 
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
         for field in self.fields.keys():
             value.getattr(ctx, field, False).assign(ctx, other.getattr(ctx, field, False))
+
+
+class StructMethodTypeImpl(ConcreteFunctionTypeImpl):
+    instance: Value
+    const: bool
+
+    def __init__(self, instance: Value, const: bool):
+        self.instance = instance
+        self.const = const
+
+    def params(self, value: Value) -> list[Type]:
+        return super().params(value)
+
+    def params_public(self, value: Value) -> list[Type]:
+        return super().params_public(value)[1:]
+
+    def reference_params(self) -> tuple[int, ...]:
+        return (0,)
+
+    def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
+        return super().call(ctx, value, [self.instance] + params)
+
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        return None
 
 
 class TypeImplRegistry:

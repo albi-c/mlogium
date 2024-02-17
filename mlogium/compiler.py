@@ -176,12 +176,16 @@ class Compiler(AstVisitor[Value]):
         methods = {}
         names = set()
         static_values = {}
-        static_functions = []
+        functions_to_register = []
 
         for const, name, type_, code in node.methods:
             if name in names:
                 self._error(f"Struct already has field '{name}'")
             names.add(name)
+            name_ = ABI.attribute(node.name, name)
+            type_modified = NamedParamFunctionType([("self", BasicType(node.name))] + type_.named_params, type_.ret)
+            val = self._make_function_value(name_, type_modified, code)
+            methods[name] = (const, val)
 
         for target in node.fields:
             if target.name in names:
@@ -192,9 +196,10 @@ class Compiler(AstVisitor[Value]):
         for name, type_, code in node.static_methods:
             if name in static_values:
                 self._error(f"Struct already has attribute '{name}'")
-            val = self._make_function_value(ABI.static_attribute(node.name, name), type_, code)
+            name_ = ABI.static_attribute(node.name, name)
+            val = self._make_function_value(name_, type_, code)
             static_values[name] = val
-            static_functions.append((name, val))
+            functions_to_register.append((name_, val))
 
         for const, target, value in node.static_fields:
             if target.name in static_values:
@@ -209,9 +214,11 @@ class Compiler(AstVisitor[Value]):
             node.name, fields, methods, static_values))
         self._var_declare_special(node.name, struct)
 
-        struct.impl.register_type()
+        impl = struct.impl
+        assert isinstance(impl, StructBaseTypeImpl)
+        impl.register_type()
 
-        for name, val in static_functions:
+        for name, val in functions_to_register:
             self._register_function_value(name, val)
 
         return struct

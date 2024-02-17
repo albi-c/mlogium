@@ -36,19 +36,17 @@ struct Vec2 {
     let x: num;
     let y: num;
     
-    static const size = 2;
-    
     const fn add(other: Vec2) -> Vec2 {
         Vec2(self.x + other.x, self.y + other.y)
     }
     
-    static fn add(a: Vec2, b: Vec2) -> Vec2 {
-        Vec2(a.x + b.x, a.y + b.y)
+    fn iadd(other: Vec2) {
+        self = self.add(other);
     }
 }
 
-const v = Vec2(5, 9);
-print(Vec2::add(v, Vec2(1, -2)));"""
+let v = Vec2(1, 2);
+print(v.iadd(Vec2(4, 3)));"""
 
 tokens = Lexer().lex(CODE, "<main>")
 ast = Parser(tokens).parse()
@@ -61,6 +59,6 @@ except AssertionError as e:
 except PositionedException as e:
     print(e.msg)
     e.pos.print()
-    exit(1)
+    raise e
 result = Linker.link(compiler.ctx.get_instructions())
 print(result)
