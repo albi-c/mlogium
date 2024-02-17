@@ -280,25 +280,28 @@ class ReturnNode(Node):
 
 class StructNode(Node):
     name: str
-    attributes: list[tuple[str, Type]]
-    static_attributes: dict[str, tuple[Type | None, Node]]
-    methods: list[tuple[str, NamedParamFunctionType, Node]]
+    fields: list[SingleAssignmentTarget]
+    static_fields: list[tuple[SingleAssignmentTarget, Node]]
+    methods: list[tuple[bool, str, NamedParamFunctionType, Node]]
+    static_methods: list[tuple[str, NamedParamFunctionType, Node]]
 
     def __init__(self, pos: Position, name: str,
-                 attributes: list[tuple[str, Type]], static_attributes: dict[str, tuple[Type | None, Node]],
-                 methods: list[tuple[str, NamedParamFunctionType, Node]]):
+                 fields: list[SingleAssignmentTarget], static_fields: list[tuple[SingleAssignmentTarget, Node]],
+                 methods: list[tuple[bool, str, NamedParamFunctionType, Node]],
+                 static_methods: list[tuple[str, NamedParamFunctionType, Node]]):
         super().__init__(pos)
 
         self.name = name
-        self.attributes = attributes
-        self.static_attributes = static_attributes
+        self.fields = fields
+        self.static_fields = static_fields
         self.methods = methods
+        self.static_methods = static_methods
 
     def __str__(self):
         return f"struct {self.name} {{...}}"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
-        return visitor.visit_struct_class_node(self)
+        return visitor.visit_struct_node(self)
 
 
 class IfNode(Node):

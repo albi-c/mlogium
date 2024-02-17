@@ -24,6 +24,10 @@ class ABI:
         return f"{name}.{attrib}"
 
     @staticmethod
+    def static_attribute(name: str, attrib: str) -> str:
+        return f"{name}::{attrib}"
+
+    @staticmethod
     def function_parameter(i: int) -> str:
         return f"__func_param_{i}"
 

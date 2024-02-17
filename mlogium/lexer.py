@@ -41,7 +41,8 @@ class Lexer:
         "in": TokenType.KW_IN,
         "struct": TokenType.KW_STRUCT,
         # "match": TokenType.KW_MATCH,
-        "enum": TokenType.KW_ENUM
+        "enum": TokenType.KW_ENUM,
+        "static": TokenType.KW_STATIC
     }
 
     def _reset(self, code: str, filename: str, start_pos: tuple[int, int, list[str] | None] = (0, 0, None)):
@@ -56,7 +57,8 @@ class Lexer:
         self.filename = filename
 
     def make_pos(self, length: int) -> Position:
-        return Position(self.p_line, self.p_char - length, self.p_char - 1, self.p_code_lines[self.p_line], self.filename)
+        return Position(self.p_line, self.p_char - length, self.p_char - 1,
+                        self.p_code_lines[self.p_line], self.filename)
 
     def make_token(self, type_: TokenType, value: str) -> Token:
         return Token(type_, value, self.make_pos(len(value)))

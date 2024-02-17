@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import types
-
 from .value_types import *
 from .compilation_context import CompilationContext
 from .instruction import Instruction
@@ -497,6 +495,79 @@ class IndexReferenceTypeImpl(TypeImpl):
                 Instruction.op("add", new_index, self.index, "1")
             )
             self.index = new_index
+
+
+class StructBaseTypeImpl(TypeImpl):
+    name: str
+    fields: list[tuple[str, Type]]
+    field_types: list[Type]
+    methods: dict[str, tuple[bool, Value]]
+    static_values: dict[str, Value]
+    _instance_impl: StructInstanceTypeImpl
+
+    def __init__(self, name: str, fields: list[tuple[str, Type]], methods: dict[str, tuple[bool, Value]],
+                 static_values: dict[str, Value]):
+        self.name = name
+        self.fields = fields
+        self.field_types = [t for _, t in fields]
+        self.methods = methods
+        self.static_values = static_values
+
+        self._instance_impl = StructInstanceTypeImpl(self.fields, self.methods, self.static_values)
+
+    def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
+        if static:
+            return self.static_values.get(name)
+
+    def callable(self, value: Value = None) -> bool:
+        return True
+
+    def params(self, value: Value = None) -> list[Type]:
+        return self.field_types
+
+    def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
+        assert len(self.params()) == len(params)
+        assert all(type_.contains(val.type) for type_, val in zip(self.params(), params))
+
+        value = Value.variable(ctx.tmp(), BasicType(self.name))
+        for (name, _), val in zip(self.fields, params):
+            attr = value.getattr(ctx, name, False)
+            assert attr is not None
+            attr.assign(ctx, val)
+
+        return value
+
+
+class StructInstanceTypeImpl(TypeImpl):
+    fields: dict[str, Type]
+    methods: dict[str, tuple[bool, Value]]
+    static_values: dict[str, Value]
+
+    def __init__(self, fields: list[tuple[str, Type]], methods: dict[str, tuple[bool, Value]],
+                 static_values: dict[str, Value]):
+        self.fields = {k: v for k, v in fields}
+        self.methods = methods
+        self.static_values = static_values
+
+    def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
+        if static:
+            return self.static_values.get(name)
+
+        else:
+            if name in self.fields:
+                return Value(self.fields[name], ABI.attribute(value.value, name), value.const)
+
+            else:
+                # TODO: capture self
+
+                method = self.methods.get(name)
+                if method is None:
+                    return None
+
+                if value.const and not method[0]:
+                    ctx.error(f"Cannot call method '{name}' on const object")
+
+                return method[1]
 
 
 class TypeImplRegistry:

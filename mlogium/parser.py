@@ -90,6 +90,57 @@ class Parser:
         return BlockNode(self._current_pos() if not code else code[0].pos + code[-1].pos,
                          code, returns_last and not top_level)
 
+    def _parse_struct_inner(self) -> tuple[list[SingleAssignmentTarget], list[tuple[SingleAssignmentTarget, Node]], list[tuple[bool, str, NamedParamFunctionType, Node]], list[tuple[str, NamedParamFunctionType, Node]]]:
+        fields: list[SingleAssignmentTarget] = []
+        static_fields: list[tuple[SingleAssignmentTarget, Node]] = []
+        methods: list[tuple[bool, str, NamedParamFunctionType, Node]] = []
+        static_methods: list[tuple[str, NamedParamFunctionType, Node]] = []
+
+        while self.has() and not self.lookahead(TokenType.RBRACE, take_if_matches=False):
+            if self.lookahead(TokenType.KW_STATIC):
+                if self.lookahead(TokenType.KW_LET):
+                    name = self.next(TokenType.ID).value
+                    if self.lookahead(TokenType.COLON):
+                        type_ = self.parse_type()
+                    else:
+                        type_ = None
+                    self.next(TokenType.OPERATOR, "=")
+                    value = self.parse_value()
+                    static_fields.append((SingleAssignmentTarget(name, type_), value))
+
+                else:
+                    self.next(TokenType.KW_FN)
+                    name = self.next(TokenType.ID).value
+                    type_ = self._parse_named_func_type()
+                    self.next(TokenType.LBRACE)
+                    code = self.parse_block(True)
+                    static_methods.append((name, type_, code))
+
+            else:
+                if self.lookahead(TokenType.KW_LET):
+                    name = self.next(TokenType.ID).value
+                    if self.lookahead(TokenType.COLON):
+                        type_ = self.parse_type()
+                    else:
+                        type_ = None
+                    fields.append(SingleAssignmentTarget(name, type_))
+
+                else:
+                    const = bool(self.lookahead(TokenType.KW_CONST))
+                    self.next(TokenType.KW_FN)
+                    name = self.next(TokenType.ID).value
+                    type_ = self._parse_named_func_type()
+                    self.next(TokenType.LBRACE)
+                    code = self.parse_block(True)
+                    methods.append((const, name, type_, code))
+
+            while self.lookahead(TokenType.SEMICOLON):
+                pass
+
+        self.next(TokenType.RBRACE)
+
+        return fields, static_fields, methods, static_methods
+
     def _parse_top_level_statement_or_none(self) -> Node | None:
         tok = self.lookahead()
 
@@ -106,12 +157,9 @@ class Parser:
             name = self.next(TokenType.ID).value
             self.next(TokenType.LBRACE)
 
-            # attributes, static_attributes, methods = self._parse_struct_inner()
-            #
-            # return StructNode(tok.pos, tok.type == TokenType.KW_CLASS, name,
-            #                   attributes, static_attributes, methods)
+            fields, static_fields, methods, static_methods = self._parse_struct_inner()
 
-            raise NotImplementedError
+            return StructNode(tok.pos, name, fields, static_fields, methods, static_methods)
 
         elif tok.type == TokenType.KW_ENUM:
             self.next()
