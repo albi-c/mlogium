@@ -32,27 +32,27 @@ let unit = radar(RadarFilter::any, RadarFilter::any, RadarFilter::any, RadarSort
 print(80 + ~12);
 print("ab" !== 12);"""
 
-CODE = """\
-struct Vec2 {
-    let x: num;
-    let y: num;
+# CODE = """\
+# struct Vec2 {
+#     let x: num;
+#     let y: num;
+#
+#     const fn add(other: Vec2) -> Vec2 {
+#         Vec2(self.x + other.x, self.y + other.y)
+#     }
+#
+#     fn iadd(other: Vec2) {
+#         self = self.add(other);
+#     }
+# }
+#
+# let v = Vec2(1, 2);
+# let v2 = v.add(Vec2(4, -4));
+# print(v2.x);
+# print(v2.y);"""
 
-    const fn add(other: Vec2) -> Vec2 {
-        Vec2(self.x + other.x, self.y + other.y)
-    }
-
-    fn iadd(other: Vec2) {
-        self = self.add(other);
-    }
-}
-
-let v = Vec2(1, 2);
-let v2 = v.add(Vec2(4, -4));
-print(v2.x);
-print(v2.y);"""
-
-CODE = """\
-print(if 1 < 2 { 1 } else { 2 });"""
+# CODE = """\
+# print(if 1 < 2 { 1 } else { 2 });"""
 
 # CODE = """\
 # for (i in 0..12) {
@@ -60,8 +60,9 @@ print(if 1 < 2 { 1 } else { 2 });"""
 # }"""
 
 # CODE = """\
-# let func: fn() = || {};"""
-#
+# let func: fn(num) = |x: num| { print(x); };
+# func(2);"""
+
 # CODE = """\
 # if (true) {
 #     print(1);

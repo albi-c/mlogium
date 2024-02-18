@@ -1,12 +1,64 @@
-from collections import defaultdict
-from typing import Callable
-import math
+from __future__ import annotations
 
-from .instruction import Instruction, InstructionInstance
+from collections import defaultdict
+from typing import Callable, Iterable
+import math
+import itertools
+
+from .instruction import Instruction, InstructionInstance, InstructionBase
+
+
+class Block(list[InstructionInstance]):
+    predecessors: set[Block]
+    successors: set[Block]
+    variables: dict[str, int]
+    assignments: set[str]
+    is_ssa: bool
+    add_phi: list[InstructionInstance]
+    referenced: bool
+
+    def __init__(self):
+        super().__init__()
+
+        self.predecessors = set()
+        self.successors = set()
+        self.variables = {}
+        self.assignments = set()
+        self.is_ssa = False
+        self.add_phi = []
+        self.referenced = False
+
+    def __eq__(self, other):
+        return isinstance(other, Block) and id(self) == id(other)
+
+    def __hash__(self):
+        return id(self)
+
+
+class Phi(InstructionInstance):
+    name = "$phi"
+
+    variable: str
+    output: str
+    input_blocks: set[Block]
+
+    def __init__(self, variable: str, output: str, input_blocks: set[Block]):
+        super().__init__(Instruction.noop, [0], False, {}, Phi.name, internal=True)
+
+        self.variable = variable
+        self.output = output
+        self.input_blocks = input_blocks
+
+    def __str__(self):
+        return f"phi {self.output} = {self.variable} [{", ".join(map(str, self.input_blocks))}]"
+
+    def translate_in_linker(self) -> InstructionInstance:
+        raise TypeError("Phi instruction must be converted")
 
 
 class Optimizer:
     type Instructions = list[InstructionInstance]
+    type Blocks = list[Block]
 
     JUMP_TRANSLATION: dict[str, str] = {
         "equal": "notEqual",
@@ -97,10 +149,297 @@ class Optimizer:
 
         while cls._optimize_set_op(code) or cls._precalculate_op_jump(code):
             pass
+        cls._remove_noops(code)
 
+        blocks = cls._make_blocks(code)
+        cls._eval_block_jumps(blocks)
+        cls._find_assignments(blocks)
+        cls._optimize_block_jumps(blocks)
+        cls._make_ssa(blocks)
+        while (cls._propagate_constants(blocks) or cls._precalculate_op_jump_blocks(blocks)
+               or cls._eliminate_common_subexpressions(blocks)):
+            pass
+        cls._resolve_ssa(blocks)
+        code = [ins for block in blocks for ins in block]
+
+        cls._remove_noops(code)
+        cls._optimize_jumps(code)
+        cls._remove_noops(code)
+
+        while cls._optimize_set_op(code) or cls._precalculate_op_jump(code):
+            pass
         cls._remove_noops(code)
 
         return code
+
+    @classmethod
+    def _is_label(cls, ins: InstructionInstance):
+        return ins.name in (Instruction.label.name, Instruction.get_instruction_pointer_offset.name)
+
+    @classmethod
+    def _is_jump(cls, ins: InstructionInstance):
+        return ins.name in (Instruction.jump.name, Instruction.jump_addr.name)
+
+    @classmethod
+    def _make_blocks(cls, code: Instructions) -> Blocks:
+        blocks: Blocks = [Block()]
+        for ins in code:
+            if cls._is_label(ins):
+                blocks.append(Block())
+
+            blocks[-1].append(ins)
+
+            if cls._is_jump(ins):
+                blocks.append(Block())
+
+        return blocks
+
+    @classmethod
+    def _eval_block_jumps(cls, blocks: Blocks):
+        if len(blocks) == 0:
+            return
+
+        labels = {"$" + lab.params[0]: i for i, block in enumerate(blocks)
+                  for lab in block if lab.name == Instruction.label.name}
+
+        labels_in_variables = {lab for block in blocks for ins in block for lab in ins.params if lab.startswith("$")}
+
+        used = set()
+        cls._eval_block_jumps_internal(blocks, labels, 0, used)
+        for label in labels_in_variables:
+            cls._eval_block_jumps_internal(blocks, labels, labels[label], used)
+            blocks[labels[label]].referenced = True
+
+        blocks[:] = [block for i, block in enumerate(blocks) if i in used]
+        for block in blocks:
+            block.predecessors = {pre for pre in block.predecessors if pre in blocks}
+            for pre in block.predecessors:
+                pre.successors.add(block)
+
+    @classmethod
+    def _eval_block_jumps_internal(cls, blocks: Blocks, labels: dict[str, int], i: int, used: set[int], from_: int = None):
+        if i >= len(blocks):
+            return
+
+        if from_ is not None:
+            blocks[i].predecessors.add(blocks[from_])
+
+        if i in used:
+            return
+        used.add(i)
+
+        for ins in blocks[i]:
+            if ins.name == Instruction.jump.name:
+                if ins.params[1] == "always":
+                    cls._eval_block_jumps_internal(blocks, labels, labels[ins.params[0]], used, i)
+                    return
+
+                else:
+                    cls._eval_block_jumps_internal(blocks, labels, labels[ins.params[0]], used, i)
+                    cls._eval_block_jumps_internal(blocks, labels, i + 1, used, i)
+                    return
+
+            elif ins.name == Instruction.jump_addr.name:
+                # TODO: properly detect reading @counter as a label
+                pass
+
+        return cls._eval_block_jumps_internal(blocks, labels, i + 1, used, i)
+
+    @classmethod
+    def _find_assignments(cls, blocks: Blocks):
+        for block in blocks:
+            for ins in block:
+                for i in ins.outputs:
+                    block.assignments.add(ins.params[i])
+
+    @classmethod
+    def _optimize_block_jumps(cls, blocks: Blocks):
+        labels = {"$" + lab.params[0]: i for i, block in enumerate(blocks)
+                  for lab in block if lab.name == Instruction.label.name}
+        for i, block in enumerate(blocks):
+            if len(block) > 0 and block[-1].name == Instruction.jump.name and labels[block[-1].params[0]] == i + 1:
+                block.pop(-1)
+
+    @classmethod
+    def _make_ssa(cls, blocks: Blocks):
+        if len(blocks) > 0:
+            cls._make_ssa_internal(blocks[0], {})
+            for block in blocks:
+                if block.referenced:
+                    cls._make_ssa_internal(block, {})
+
+    @classmethod
+    def _make_ssa_internal(cls, block: Block, variables: dict[str, int]):
+        if block.is_ssa:
+            return
+
+        block.variables = variables.copy()
+
+        phi_required: dict[str, set[Block]] = {}
+        for a, b in itertools.combinations(block.predecessors, 2):
+            for common in a.assignments & b.assignments:
+                if common in phi_required:
+                    phi_required[common] |= {a, b}
+                else:
+                    phi_required[common] = {a, b}
+
+        for name, blocks in phi_required.items():
+            block.variables[name] = block.variables.get(name, 0) + 1
+            block.insert(0, Phi(name, f"{name}:{block.variables[name]}", blocks))
+
+        for ins in block:
+            if ins.name == Phi.name:
+                continue
+
+            for i in ins.inputs:
+                inp = ins.params[i]
+                if inp in block.variables:
+                    ins.params[i] += ":" + str(block.variables[inp])
+            for o in ins.outputs:
+                out = ins.params[o]
+                block.variables[out] = block.variables.get(out, 0) + 1
+                ins.params[o] += ":" + str(block.variables[out])
+
+        block.is_ssa = True
+
+        for suc in block.successors:
+            cls._make_ssa_internal(suc, block.variables)
+
+    @classmethod
+    def _propagate_constants(cls, blocks: Blocks) -> bool:
+        constants: dict[str, str] = {}
+
+        for block in blocks:
+            for ins in block:
+                if ins.name == Instruction.set.name:
+                    constants[ins.params[0]] = ins.params[1]
+
+        found = False
+        for block in blocks:
+            for ins in block:
+                for i in ins.inputs:
+                    if ins.params[i] in constants:
+                        ins.params[i] = constants[ins.params[i]]
+                        found = True
+
+        return found
+
+    @classmethod
+    def _precalculate_op_jump_blocks(cls, blocks: Blocks) -> bool:
+        found = False
+        for block in blocks:
+            for i, ins in enumerate(block):
+                if ins.name == Instruction.op.name:
+                    result = None
+                    for instructions, patterns in Optimizer.OP_CONSTANTS:
+                        if ins.params[0] not in instructions:
+                            continue
+
+                        for a, b, r in patterns:
+                            if r is None:
+                                if ins.params[2] in a:
+                                    result = ins.params[3]
+                                    break
+                                elif ins.params[3] in b:
+                                    result = ins.params[2]
+                                    break
+
+                            else:
+                                if len(a) == 0 and len(b) == 0:
+                                    if ins.params[2] == ins.params[3]:
+                                        result = r
+                                        break
+
+                                else:
+                                    if ins.params[2] in a or ins.params[3] in b:
+                                        result = r
+                                        break
+
+                        break
+
+                    if result is None and ins.params[0] in Optimizer.PRECALC:
+                        try:
+                            func = Optimizer.PRECALC[ins.params[0]]
+
+                            a = float(ins.params[2])
+                            if a.is_integer():
+                                a = int(a)
+                            if ins.params[3] == "_":
+                                b = None
+                            else:
+                                b = float(ins.params[3])
+                                if b.is_integer():
+                                    b = int(b)
+
+                            result = float(func(a, b))
+                            if result.is_integer():
+                                result = int(result)
+                            result = str(result)
+
+                        except (ArithmeticError, ValueError, TypeError):
+                            pass
+
+                    if result is not None:
+                        block[i] = Instruction.set(ins.params[1], result)
+                        found = True
+
+                elif ins.name == Instruction.jump.name:
+                    if ins.params[1] in Optimizer.JUMP_PRECALC:
+                        try:
+                            func = Optimizer.JUMP_PRECALC[ins.params[1]]
+
+                            a = float(ins.params[2])
+                            if a.is_integer():
+                                a = int(a)
+                            if ins.params[3] == "_":
+                                b = None
+                            else:
+                                b = float(ins.params[3])
+                                if b.is_integer():
+                                    b = int(b)
+
+                            if func(a, b):
+                                block[i] = Instruction.jump_always(ins.params[0][1:])
+                            else:
+                                block[i] = Instruction.noop()
+                            found = True
+
+                        except (ArithmeticError, ValueError, TypeError):
+                            pass
+
+        return found
+
+    @classmethod
+    def _eliminate_common_subexpressions(cls, blocks: Blocks):
+        found = False
+        for block in blocks:
+            operations: dict[tuple[str, str, str], str] = {}
+            for i, ins in enumerate(block):
+                if ins.name == Instruction.op.name:
+                    operands = (ins.params[0], ins.params[2], ins.params[3])
+                    if operands in operations:
+                        block[i] = Instruction.set(ins.params[1], operations[operands])
+                        found = True
+                    else:
+                        operations[operands] = ins.params[1]
+
+        return found
+
+    @classmethod
+    def _resolve_ssa(cls, blocks: Blocks):
+        for block in blocks:
+            for i, ins in enumerate(block):
+                if ins.name == Phi.name:
+                    for b in ins.input_blocks:
+                        b.add_phi.append(Instruction.set(ins.output, f"{ins.variable}:{b.variables[ins.variable]}"))
+                    block[i] = Instruction.noop()
+
+        for block in blocks:
+            if len(block) > 0 and cls._is_jump(block[-1]):
+                block[-1:] = block.add_phi + block[-1:]
+
+            else:
+                block += block.add_phi
 
     @classmethod
     def _remove_noops(cls, code: Instructions):
