@@ -81,12 +81,21 @@ class Optimizer:
         "atan": lambda a, _: math.degrees(math.atan(a))
     }
 
+    JUMP_PRECALC: dict[str, Callable[[int | float, int | float], bool]] = {
+        "equal": lambda a, b: a == b,
+        "notEqual": lambda a, b: a != b,
+        "greaterThan": lambda a, b: a > b,
+        "lessThan": lambda a, b: a < b,
+        "greaterThanEq": lambda a, b: a >= b,
+        "lessThanEq": lambda a, b: a <= b
+    }
+
     @classmethod
     def optimize(cls, code: Instructions) -> Instructions:
         cls._optimize_jumps(code)
         cls._remove_noops(code)
 
-        while cls._optimize_set_op(code) or cls._precalculate_op(code):
+        while cls._optimize_set_op(code) or cls._precalculate_op_jump(code):
             pass
 
         cls._remove_noops(code)
@@ -234,7 +243,7 @@ class Optimizer:
         return found
 
     @classmethod
-    def _precalculate_op(cls, code: Instructions) -> bool:
+    def _precalculate_op_jump(cls, code: Instructions) -> bool:
         found = False
         for i, ins in enumerate(code):
             if ins.name == Instruction.op.name:
@@ -291,5 +300,29 @@ class Optimizer:
 
                     code[i] = Instruction.set(ins.params[1], result)
                     found = True
+
+            elif ins.name == Instruction.jump.name:
+                if ins.params[1] in Optimizer.JUMP_PRECALC:
+                    try:
+                        func = Optimizer.JUMP_PRECALC[ins.params[1]]
+
+                        a = float(ins.params[2])
+                        if a.is_integer():
+                            a = int(a)
+                        if ins.params[3] == "_":
+                            b = None
+                        else:
+                            b = float(ins.params[3])
+                            if b.is_integer():
+                                b = int(b)
+
+                        if func(a, b):
+                            code[i] = Instruction.jump_always(ins.params[0][1:])
+                        else:
+                            code[i] = Instruction.noop()
+                        found = True
+
+                    except (ArithmeticError, ValueError, TypeError):
+                        pass
 
         return found

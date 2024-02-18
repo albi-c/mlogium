@@ -51,6 +51,9 @@ let v2 = v.add(Vec2(4, -4));
 print(v2.x);
 print(v2.y);"""
 
+CODE = """\
+print(if 1 < 2 { 1 } else { 2 });"""
+
 # CODE = """\
 # for (i in 0..12) {
 #     print(i);
