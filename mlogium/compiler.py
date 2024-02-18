@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .node import *
 from .value import *
-from .instruction import Instruction
+from .instruction import Instruction, InstructionInstance
 from .compilation_context import CompilationContext, InstructionSection
 from .error import CompilerError
 from .scope import ScopeStack
@@ -44,7 +44,7 @@ class Compiler(AstVisitor[Value]):
         TypeImplRegistry.reset_basic_type_impls()
         self.visit(node)
 
-    def emit(self, *instructions: Instruction):
+    def emit(self, *instructions: InstructionInstance):
         self.ctx.emit(*instructions)
 
     def _error(self, msg: str):
@@ -129,27 +129,8 @@ class Compiler(AstVisitor[Value]):
             self.emit(Instruction.jump_addr(ret_addr.value))
 
     def _register_function(self, name: str, type_: NamedParamFunctionType, code: Node) -> Value:
-        if name in self.functions_with_pointers:
-            self._error(f"Function already defined: '{name}'")
-        self.functions_with_pointers.add(name)
-
-        val = Value(
-            ConcreteFunctionType(name, type_.named_params, type_.ret, {
-                "code": code
-            }),
-            name,
-            True
-        )
-
-        with self.ctx.in_section(InstructionSection.FUNCTIONS):
-            self.emit(Instruction.label(ABI.function_label(name)))
-            ret_addr = Value.variable(self.ctx.tmp(), BasicType("num"))
-            ret_addr.assign(self.ctx, Value.variable(ABI.function_return_address(), BasicType("num")))
-            params = [Value.variable(ABI.function_parameter(i), type_) for i, type_ in enumerate(val.params())]
-            ret = val.call(self.ctx, params)
-            Value.variable(ABI.function_return_value(), ret.type).assign(self.ctx, ret)
-            self.emit(Instruction.jump_addr(ret_addr.value))
-
+        val = self._make_function_value(name, type_, code)
+        self._register_function_value(name, val)
         return val
 
     def visit_function_node(self, node: FunctionNode) -> Value:

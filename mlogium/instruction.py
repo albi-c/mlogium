@@ -77,6 +77,7 @@ class InstructionInstance:
     params: list[str]
     internal: bool
     base: InstructionBase
+    inputs: list[int]
     outputs: list[int]
     side_effects: bool
     constants: dict[int, str]
@@ -88,6 +89,7 @@ class InstructionInstance:
         self.params = list(map(str, params))
         self.internal = internal
         self.base = base
+        self.inputs = [i for i in range(len(self.params)) if i not in outputs]
         self.outputs = outputs
         self.side_effects = side_effects
         self.constants = constants
@@ -200,8 +202,18 @@ class Instruction:
     wait = _make("wait", [Type.NUM], True)
     stop = _make("stop", [], True)
     end = _make("end", [], True)
-    jump = _make("jump", [Type.ANY] * 4, True, internal=True, base=LinkerInstructionInstance,
-                 translator=lambda ins: Instruction.jump("$" + ins.params[0], *ins.params[1:]))
+    # jump = _make("jump", [Type.ANY] * 4, True, internal=True, base=LinkerInstructionInstance,
+    #              translator=lambda ins: Instruction.jump("$" + ins.params[0], *ins.params[1:]))
+
+    _jump_base = _make("jump", [Type.ANY] * 4, True, internal=True)
+
+    class JumpWrapper:
+        name = "jump"
+
+        def __call__(self, label: str, cond: str, a: str, b: str):
+            return Instruction._jump_base("$" + label, cond, a, b)
+
+    jump = JumpWrapper()
 
     ubind = _make("ubind", [Type.UNIT_TYPE], True)
     ucontrol = _make_with_subcommands("ucontrol", True, [], [
@@ -241,7 +253,12 @@ class Instruction:
                                            base=LinkerInstructionInstance,
                                            translator=lambda ins: Instruction.op("add", ins.params[0],
                                                                                  "@counter", ins.params[1]))
-    jump_always = _make("$jump_always", [Type.ANY], True, internal=True, base=LinkerInstructionInstance,
-                        translator=lambda ins: Instruction.jump("$" + ins.params[0], "always", "_", "_"))
+
+    @classmethod
+    def jump_always(cls, label: str) -> InstructionInstance:
+        return cls.jump(label, "always", "_", "_")
+
     jump_addr = _make("$jump_addr", [Type.NUM], True, internal=True, base=LinkerInstructionInstance,
                       translator=lambda ins: Instruction.set("@counter", ins.params[0]))
+
+    noop = _make("noop", [], False, internal=True)

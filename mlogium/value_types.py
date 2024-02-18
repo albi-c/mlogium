@@ -145,7 +145,7 @@ class ConcreteFunctionType(Type):
         return f"fn {self.name}{FunctionType.format_type_named(self.named_params, self.ret)}"
 
     def __eq__(self, other):
-        return isinstance(other, FunctionType) and other.params == self.params and other.ret == self.ret
+        return isinstance(other, ConcreteFunctionType) and other.name == self.name and other.named_params == self.named_params and other.ret == self.ret
 
 
 class IntrinsicFunctionType(Type):

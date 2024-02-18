@@ -33,7 +33,7 @@ class ABI:
 
     @staticmethod
     def function_label(function: str) -> str:
-        return ABI.label_var(f"__func_{function}_start")
+        return f"__func_{function}_start"
 
     @staticmethod
     def label_var(label: str) -> str:

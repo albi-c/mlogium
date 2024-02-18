@@ -1,6 +1,7 @@
 from .lexer import Lexer
 from .parser import Parser
 from .compiler import Compiler
+from .optimizer import Optimizer
 from .linker import Linker
 from .error import PositionedException
 
@@ -35,23 +36,35 @@ CODE = """\
 struct Vec2 {
     let x: num;
     let y: num;
-    
+
     const fn add(other: Vec2) -> Vec2 {
         Vec2(self.x + other.x, self.y + other.y)
     }
-    
+
     fn iadd(other: Vec2) {
         self = self.add(other);
     }
 }
 
 let v = Vec2(1, 2);
-print(v.iadd(Vec2(4, 3)));"""
+let v2 = v.add(Vec2(4, -4));
+print(v2.x);
+print(v2.y);"""
 
-CODE = """\
-for (i in 0..12) {
-    print(i);
-}"""
+# CODE = """\
+# for (i in 0..12) {
+#     print(i);
+# }"""
+
+# CODE = """\
+# let func: fn() = || {};"""
+#
+# CODE = """\
+# if (true) {
+#     print(1);
+# } else {
+#     print(0);
+# }"""
 
 tokens = Lexer().lex(CODE, "<main>")
 ast = Parser(tokens).parse()
@@ -65,5 +78,6 @@ except PositionedException as e:
     print(e.msg)
     e.pos.print()
     raise e
-result = Linker.link(compiler.ctx.get_instructions())
+instructions = Optimizer.optimize(compiler.ctx.get_instructions().copy())
+result = Linker.link(instructions)
 print(result)

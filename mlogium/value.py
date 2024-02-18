@@ -335,7 +335,7 @@ class ConcreteFunctionTypeImpl(TypeImpl):
             val_type = value.type
             assert isinstance(val_type, ConcreteFunctionType)
             if type_.params == val_type.params and type_.ret == val_type.ret:
-                return Value(type_, ABI.function_label(val_type.name), True)
+                return Value(type_, ABI.label_var(ABI.function_label(val_type.name)), True)
 
     def callable(self, value: Value) -> bool:
         return True
