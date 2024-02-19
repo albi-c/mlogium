@@ -18,7 +18,7 @@ class Lexer:
     filename: str
 
     CH_INTEGER = string.digits
-    CH_ID_START = string.ascii_letters + "_"
+    CH_ID_START = string.ascii_letters + "_@"
     CH_ID = CH_ID_START + string.digits
     CH_OP_DOUBLE = "*<>&|"
     CH_OP = CH_OP_DOUBLE + "+-!~^/%"
