@@ -1,6 +1,7 @@
 from .tokens import Token, TokenType
 from .error import ParserError
 from .node import *
+from .macro import MacroInput, CustomMacroInput, MacroInvocationContext, MacroRegistry
 
 from typing import Callable
 
@@ -8,10 +9,12 @@ from typing import Callable
 class Parser:
     i: int
     tokens: list[Token]
+    macro_registry: MacroRegistry
 
-    def __init__(self, tokens: list[Token]):
+    def __init__(self, tokens: list[Token], macro_registry: MacroRegistry):
         self.i = -1
         self.tokens = tokens
+        self.macro_registry = macro_registry
 
     def _current_pos(self) -> Position:
         if len(self.tokens) == 0 or self.i < 0:
@@ -537,5 +540,35 @@ class Parser:
             self.next(TokenType.LBRACE)
             code = self.parse_block(True)
             return LambdaNode(tok.pos + code.pos, NamedParamFunctionType([], ret), code)
+
+        elif tok.type == TokenType.HASH:
+            name = self.next(TokenType.ID)
+            self.next(TokenType.LPAREN)
+            if (macro := self.macro_registry.get(name.value)) is None:
+                ParserError.custom(tok.pos + name.pos, f"Macro not found: '{name.value}'")
+
+            self.next(TokenType.LPAREN)
+            params = []
+            for i, inp in enumerate(macro.inputs()):
+                if i > 0:
+                    self.next(TokenType.COMMA)
+
+                match inp:
+                    case MacroInput.TYPE:
+                        params.append(self.parse_type())
+                    case MacroInput.TOKEN:
+                        params.append(self.next())
+                    case MacroInput.VALUE_NODE:
+                        params.append(self.parse_value())
+                    case MacroInput.BLOCK_NODE:
+                        self.next(TokenType.LBRACE)
+                        params.append(self.parse_block(True))
+                    case CustomMacroInput(func):
+                        params.append(func(self))
+                    case _:
+                        raise ValueError("Unknown macro parameter type")
+            self.next(TokenType.RPAREN)
+
+            return macro.invoke(MacroInvocationContext(self.macro_registry), params)
 
         ParserError.unexpected_token(tok)

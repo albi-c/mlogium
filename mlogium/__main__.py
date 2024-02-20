@@ -4,6 +4,7 @@ from .compiler import Compiler
 from .optimizer import Optimizer
 from .linker import Linker
 from .error import PositionedException
+from .macro_impl import MacroRegistry, MACROS
 
 CODE = """\
 fn do_max(a: num, b: num) -> num {
@@ -71,8 +72,11 @@ print(@counter);"""
 #     print(0);
 # }"""
 
+macro_registry = MacroRegistry()
+for macro in MACROS:
+    macro_registry.add(macro.name, macro)
 tokens = Lexer().lex(CODE, "<main>")
-ast = Parser(tokens).parse()
+ast = Parser(tokens, macro_registry).parse()
 compiler = Compiler()
 try:
     compiler.compile(ast)

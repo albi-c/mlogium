@@ -201,6 +201,7 @@ class Lexer:
                 (":", TokenType.COLON, TokenType.DOUBLE_COLON),
                 (".", TokenType.DOT, TokenType.DOUBLE_DOT),
                 (",", TokenType.COMMA),
+                ("#", TokenType.HASH),
                 ("(", TokenType.LPAREN),
                 (")", TokenType.RPAREN),
                 ("{", TokenType.LBRACE),
