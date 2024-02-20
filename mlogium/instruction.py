@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from .value_types import *
 from . import enums
+from .abi import ABI
 
 
 @dataclass(frozen=True)
@@ -190,6 +191,9 @@ class Instruction:
     ], param_process=lambda params: [params[1], params[2], "@" + params[0]])
 
     set = _make("set", [Type.ANY, Type.ANY], True, [0], internal=True)
+    essential_set = _make("$essential_set", [Type.ANY, Type.ANY], True, [],
+                          internal=True, base=LinkerInstructionInstance,
+                          translator=lambda ins: Instruction.set(*ins.params))
     op = _make("op", [Type.ANY, Type.NUM, Type.NUM, Type.NUM], False, [1], internal=True)
     lookup = _make_with_subcommands("lookup", False, [0], [
         ("block", [Type.BLOCK_TYPE, Type.NUM]),
@@ -248,11 +252,10 @@ class Instruction:
     ])
 
     label = _make("$label", [Type.ANY], True, internal=True)
-    get_instruction_pointer_offset = _make("$get_instruction_pointer_offset",
-                                           [Type.NUM, Type.NUM], False, [0], internal=True,
-                                           base=LinkerInstructionInstance,
-                                           translator=lambda ins: Instruction.op("add", ins.params[0],
-                                                                                 "@counter", ins.params[1]))
+    prepare_return_address = _make("$prepare_return_address", [], True, [],
+                                   internal=True, base=LinkerInstructionInstance,
+                                   translator=lambda ins: Instruction.op("add", ABI.function_return_address(),
+                                                                         "@counter", "1"))
 
     @classmethod
     def jump_always(cls, label: str) -> InstructionInstance:

@@ -312,21 +312,22 @@ class AnonymousFunctionTypeImpl(TypeImpl):
         assert len(self.params(value)) == len(params)
         assert all(type_.contains(val.type) for type_, val in zip(self.params(value), params))
 
-        for i, (type_, val) in enumerate(zip(self.params(value), params)):
-            Value.variable(ABI.function_parameter(i), type_).assign(ctx, val)
-        ctx.emit(
-            Instruction.get_instruction_pointer_offset(ABI.function_return_address(), "1"),
-            Instruction.jump_addr(value.value)
-        )
+        with ctx.scope.anon_function(ctx):
+            for i, (type_, val) in enumerate(zip(self.params(value), params)):
+                Value.variable(ABI.function_parameter(i), type_).assign(ctx, val)
+            ctx.emit(
+                Instruction.prepare_return_address(),
+                Instruction.jump_addr(value.value)
+            )
 
-        type_ = value.type
-        assert isinstance(type_, FunctionType)
-        if type_.ret is not None:
-            ret = Value.variable(ctx.tmp(), type_.ret)
-            ret.assign(ctx, Value.variable(ABI.function_return_value(), type_.ret))
-            return ret
-        else:
-            return Value.null()
+            type_ = value.type
+            assert isinstance(type_, FunctionType)
+            if type_.ret is not None:
+                ret = Value.variable(ctx.tmp(), type_.ret)
+                ret.assign(ctx, Value.variable(ABI.function_return_value(), type_.ret))
+                return ret
+            else:
+                return Value.null()
 
 
 class ConcreteFunctionTypeImpl(TypeImpl):
@@ -355,7 +356,7 @@ class ConcreteFunctionTypeImpl(TypeImpl):
         type_ = value.type
         assert isinstance(type_, ConcreteFunctionType)
 
-        with ctx.scope.function_call(f"{type_.name}:{ctx.tmp_num()}"):
+        with ctx.scope.function_call(ctx, f"{type_.name}:{ctx.tmp_num()}"):
             ref_params = self.reference_params()
             for i, ((name, val_type), val) in enumerate(zip(type_.named_params, params)):
                 if i in ref_params:

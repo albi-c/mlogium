@@ -18,11 +18,13 @@ class ScopeStack:
     scopes: list[Scope]
     functions: list[str]
     loops: list[str]
+    in_anon_function: bool
 
     def __init__(self):
         self.scopes = []
         self.functions = []
         self.loops = []
+        self.in_anon_function = False
 
     def get_function(self) -> str | None:
         return self.functions[-1] if len(self.functions) > 0 else None
@@ -39,14 +41,26 @@ class ScopeStack:
             self.scopes.pop(-1)
 
     @contextlib.contextmanager
-    def function_call(self, name: str):
+    def function_call(self, ctx, name: str):
         self.scopes.append(ScopeStack.Scope(name))
+        if name in self.functions:
+            ctx.error(f"Recursion is not allowed: '{name}'")
         self.functions.append(name)
         try:
             yield
         finally:
             self.scopes.pop(-1)
             self.functions.pop(-1)
+
+    @contextlib.contextmanager
+    def anon_function(self, ctx):
+        if self.in_anon_function:
+            ctx.error(f"Cannot call function by reference inside a call to function by reference")
+        self.in_anon_function = True
+        try:
+            yield
+        finally:
+            self.in_anon_function = False
 
     @contextlib.contextmanager
     def loop(self, name: str):

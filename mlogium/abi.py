@@ -13,11 +13,11 @@ class ABI:
 
     @staticmethod
     def function_return_address() -> str:
-        return f"__func_ret_addr"
+        return f"%__func_ret_addr"
 
     @staticmethod
     def function_return_value() -> str:
-        return f"__func_ret_val"
+        return f"%__func_ret_val"
 
     @staticmethod
     def attribute(name: str, attrib: str) -> str:
@@ -29,7 +29,7 @@ class ABI:
 
     @staticmethod
     def function_parameter(i: int) -> str:
-        return f"__func_param_{i}"
+        return f"%__func_param_{i}"
 
     @staticmethod
     def function_label(function: str) -> str:

@@ -144,6 +144,8 @@ class Optimizer:
 
     @classmethod
     def optimize(cls, code: Instructions) -> Instructions:
+        cls._make_function_sets_essential(code)
+
         cls._optimize_jumps(code)
         cls._remove_noops(code)
 
@@ -173,8 +175,14 @@ class Optimizer:
         return code
 
     @classmethod
+    def _make_function_sets_essential(cls, code: Instructions):
+        for i, ins in enumerate(code):
+            if ins.name == Instruction.set.name and ins.params[0].startswith("%"):
+                code[i] = Instruction.essential_set(*ins.params)
+
+    @classmethod
     def _is_label(cls, ins: InstructionInstance):
-        return ins.name in (Instruction.label.name, Instruction.get_instruction_pointer_offset.name)
+        return ins.name in (Instruction.label.name, Instruction.prepare_return_address.name)
 
     @classmethod
     def _is_jump(cls, ins: InstructionInstance):
@@ -262,11 +270,14 @@ class Optimizer:
 
     @classmethod
     def _make_ssa(cls, blocks: Blocks):
-        if len(blocks) > 0:
-            cls._make_ssa_internal(blocks[0], {})
-            for block in blocks:
-                if block.referenced:
-                    cls._make_ssa_internal(block, {})
+        if len(blocks) < 1:
+            return
+
+        variables = {}
+        cls._make_ssa_internal(blocks[0], variables)
+        for block in blocks:
+            if block.referenced:
+                cls._make_ssa_internal(block, variables)
 
     @classmethod
     def _make_ssa_internal(cls, block: Block, variables: dict[str, int]):
