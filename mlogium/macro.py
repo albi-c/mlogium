@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-from abc import abstractmethod, ABC
 import enum
 from dataclasses import dataclass
-from typing import Callable, Any
+from typing import Any
 
-from .value_types import *
 from .node import *
 from .lexer import *
-from .parser import *
 
 
 class MacroInput(enum.Enum):
@@ -20,7 +17,7 @@ class MacroInput(enum.Enum):
 
 @dataclass
 class CustomMacroInput:
-    func: Callable[[Parser], Any]
+    func: Callable[[Any], Any]
 
 
 @dataclass

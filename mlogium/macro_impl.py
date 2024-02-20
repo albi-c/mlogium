@@ -66,7 +66,7 @@ class ImportMacro(Macro):
         if path.type != TokenType.STRING:
             PositionedException.custom(path.pos, f"Import macro requires a string")
         path = path.value
-        if ctx.pos.file != "<main>":
+        if ctx.pos.file not in ("<main>", "<clip>"):
             search_dir = os.path.dirname(os.path.abspath(ctx.pos.file))
             path = os.path.join(search_dir, path)
         if not os.path.isfile(path):
