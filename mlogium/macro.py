@@ -39,6 +39,9 @@ class BaseMacro(ABC):
     def inputs(self) -> tuple[MacroInput, ...]:
         raise NotImplementedError
 
+    def top_level_only(self) -> bool:
+        return False
+
     @abstractmethod
     def invoke_to_str(self, ctx: MacroInvocationContext, params: list) -> str:
         raise NotImplementedError

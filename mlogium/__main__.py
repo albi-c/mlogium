@@ -83,14 +83,11 @@ print(x);"""
 macro_registry = MacroRegistry()
 for macro in MACROS:
     macro_registry.add(macro.name, macro)
-tokens = Lexer().lex(CODE, "<main>")
-ast = Parser(tokens, macro_registry).parse()
-compiler = Compiler()
 try:
+    tokens = Lexer().lex(CODE, "<main>")
+    ast = Parser(tokens, macro_registry).parse()
+    compiler = Compiler()
     compiler.compile(ast)
-except AssertionError as e:
-    compiler.current_node.pos.print()
-    raise e
 except PositionedException as e:
     print(e.msg)
     e.pos.print()

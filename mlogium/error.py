@@ -12,6 +12,10 @@ class PositionedException(Exception):
         self.msg = msg
         self.pos = pos
 
+    @staticmethod
+    def custom(pos: Position, msg: str):
+        raise PositionedException(msg, pos)
+
 
 class LexerError(PositionedException):
     @staticmethod

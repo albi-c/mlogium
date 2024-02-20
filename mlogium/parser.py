@@ -144,6 +144,37 @@ class Parser:
 
         return fields, static_fields, methods, static_methods
 
+    def _parse_macro(self, top_level: bool) -> Node:
+        name = self.next(TokenType.ID)
+        if (macro := self.macro_registry.get(name.value)) is None:
+            ParserError.custom(name.pos, f"Macro not found: '{name.value}'")
+        if macro.top_level_only() and not top_level:
+            ParserError.custom(name.pos, f"Macro must be called in the top level")
+
+        self.next(TokenType.LPAREN)
+        params = []
+        for i, inp in enumerate(macro.inputs()):
+            if i > 0:
+                self.next(TokenType.COMMA)
+
+            match inp:
+                case MacroInput.TYPE:
+                    params.append(self.parse_type())
+                case MacroInput.TOKEN:
+                    params.append(self.next())
+                case MacroInput.VALUE_NODE:
+                    params.append(self.parse_value())
+                case MacroInput.BLOCK_NODE:
+                    self.next(TokenType.LBRACE)
+                    params.append(self.parse_block(True))
+                case CustomMacroInput(func):
+                    params.append(func(self))
+                case _:
+                    raise ValueError("Unknown macro parameter type")
+        self.next(TokenType.RPAREN)
+
+        return macro.invoke(MacroInvocationContext(name.pos, self.macro_registry), params)
+
     def _parse_top_level_statement_or_none(self) -> Node | None:
         tok = self.lookahead()
 
@@ -170,6 +201,10 @@ class Parser:
             options = self._parse_comma_separated(lambda: self.next(TokenType.ID).value, TokenType.LBRACE,
                                                   TokenType.RBRACE)
             return EnumNode(tok.pos, name, options)
+
+        elif tok.type == TokenType.HASH:
+            self.next()
+            return self._parse_macro(True)
 
         return None
 
@@ -542,32 +577,6 @@ class Parser:
             return LambdaNode(tok.pos + code.pos, NamedParamFunctionType([], ret), code)
 
         elif tok.type == TokenType.HASH:
-            name = self.next(TokenType.ID)
-            if (macro := self.macro_registry.get(name.value)) is None:
-                ParserError.custom(tok.pos + name.pos, f"Macro not found: '{name.value}'")
-
-            self.next(TokenType.LPAREN)
-            params = []
-            for i, inp in enumerate(macro.inputs()):
-                if i > 0:
-                    self.next(TokenType.COMMA)
-
-                match inp:
-                    case MacroInput.TYPE:
-                        params.append(self.parse_type())
-                    case MacroInput.TOKEN:
-                        params.append(self.next())
-                    case MacroInput.VALUE_NODE:
-                        params.append(self.parse_value())
-                    case MacroInput.BLOCK_NODE:
-                        self.next(TokenType.LBRACE)
-                        params.append(self.parse_block(True))
-                    case CustomMacroInput(func):
-                        params.append(func(self))
-                    case _:
-                        raise ValueError("Unknown macro parameter type")
-            self.next(TokenType.RPAREN)
-
-            return macro.invoke(MacroInvocationContext(tok.pos, self.macro_registry), params)
+            return self._parse_macro(False)
 
         ParserError.unexpected_token(tok)

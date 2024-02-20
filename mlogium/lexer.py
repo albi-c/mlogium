@@ -1,9 +1,9 @@
+import string
+from typing import Callable
+
 from .tokens import Token, TokenType
 from .util import Position
 from .error import LexerError
-
-import string
-from typing import Callable
 
 
 class Lexer:

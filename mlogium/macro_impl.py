@@ -1,5 +1,8 @@
+import os
+
 from .macro import *
 from .parser import Parser
+from .error import PositionedException
 
 
 class Macro(BaseMacro, ABC):
@@ -31,18 +34,6 @@ class Macro(BaseMacro, ABC):
         return self._parse(ctx, self.invoke_to_tokens(ctx, params))
 
 
-class PassthroughMacro(Macro):
-    def __init__(self):
-        super().__init__("passthrough")
-
-    def inputs(self) -> tuple[MacroInput, ...]:
-        return (MacroInput.TOKEN,)
-
-    def invoke_to_str(self, ctx: MacroInvocationContext, params: list) -> str:
-        return f"""\
-{params[0].value}"""
-
-
 class CastMacro(Macro):
     def __init__(self):
         super().__init__("cast")
@@ -57,15 +48,41 @@ class CastMacro(Macro):
         ], True)
 
 
-class TypenameMacro(Macro):
+class ImportMacro(Macro):
+    IMPORTS: set[str] = set()
+
     def __init__(self):
-        super().__init__("typename")
+        super().__init__("import")
 
     def inputs(self) -> tuple[MacroInput, ...]:
-        return (MacroInput.TYPE,)
+        return (MacroInput.TOKEN,)
+
+    def top_level_only(self) -> bool:
+        return True
 
     def invoke(self, ctx: MacroInvocationContext, params: list) -> Node:
-        return StringValueNode(ctx.pos, str(params[0]))
+        path = params[0]
+        assert isinstance(path, Token)
+        if path.type != TokenType.STRING:
+            PositionedException.custom(path.pos, f"Import macro requires a string")
+        path = path.value
+        if ctx.pos.file != "<main>":
+            search_dir = os.path.dirname(os.path.abspath(ctx.pos.file))
+            path = os.path.join(search_dir, path)
+        if not os.path.isfile(path):
+            PositionedException.custom(ctx.pos, f"Can't import file '{path}'")
+
+        if path in self.IMPORTS:
+            PositionedException.custom(ctx.pos, f"Circular imports are not allowed: '{path}'")
+        self.IMPORTS.add(path)
+
+        code = open(path).read()
+        tokens = Lexer().lex(code, path)
+        node = Parser(tokens, ctx.registry).parse_block(False, True)
+
+        self.IMPORTS.remove(path)
+
+        return node
 
 
-MACROS: list[Macro] = [PassthroughMacro(), CastMacro(), TypenameMacro()]
+MACROS: list[Macro] = [CastMacro(), ImportMacro()]
