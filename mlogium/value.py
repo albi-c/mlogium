@@ -431,6 +431,29 @@ class TupleTypeImpl(TypeImpl):
         return [Value.variable(ABI.attribute(value.value, str(i)), t, value.const)
                 for i, t in enumerate(type_.types)]
 
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        strings = ['"("']
+        for i, val in enumerate(value.unpack(ctx)):
+            if i > 0:
+                strings.append('","')
+            strings += val.to_strings(ctx)
+        strings.append('")"')
+        return strings
+
+    def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
+        type_ = value.type
+        assert isinstance(type_, TupleType)
+
+        if not static:
+            try:
+                index = int(name)
+            except ValueError:
+                return None
+            else:
+                if len(type_.types) <= index < 0:
+                    return None
+                return Value.variable(ABI.attribute(value.value, str(index)), type_.types[index], value.const)
+
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
         for a, b in zip(value.unpack(ctx), other.unpack(ctx)):
             a.assign(ctx, b)
@@ -569,7 +592,8 @@ class StructBaseTypeImpl(TypeImpl):
         self.methods = methods
         self.static_values = static_values
 
-        self._instance_impl = StructInstanceTypeImpl(self.fields, self.methods, self.static_values)
+        self._instance_impl = StructInstanceTypeImpl(self.fields, self.methods, self.static_values,
+                                                     [f for f, _ in fields])
 
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         if static:
@@ -601,12 +625,40 @@ class StructInstanceTypeImpl(TypeImpl):
     fields: dict[str, Type]
     methods: dict[str, tuple[bool, Value]]
     static_values: dict[str, Value]
+    field_list: list[str]
 
     def __init__(self, fields: list[tuple[str, Type]], methods: dict[str, tuple[bool, Value]],
-                 static_values: dict[str, Value]):
+                 static_values: dict[str, Value], field_list: list[str]):
         self.fields = {k: v for k, v in fields}
         self.methods = methods
         self.static_values = static_values
+        self.field_list = field_list
+
+    def memcell_length(self, ctx: CompilationContext, value: Value) -> int:
+        return sum(value.getattr(ctx, name, False).memcell_length(ctx) for name in self.field_list)
+
+    def memcell_serialize(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [val for name in self.field_list for val in value.getattr(ctx, name, False).memcell_serialize(ctx)]
+
+    def memcell_deserialize(self, ctx: CompilationContext, value: Value, values: list[str]):
+        i = 0
+        for name in self.field_list:
+            val = value.getattr(ctx, name, False)
+            length = val.memcell_length(ctx)
+            val.memcell_deserialize(ctx, values[i:i + length])
+            i += length
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        strings = ['"{"']
+        for i, name in enumerate(self.field_list):
+            val = value.getattr(ctx, name, False)
+            if i > 0:
+                strings.append('","')
+            strings.append(name)
+            strings.append('","')
+            strings += val.to_strings(ctx)
+        strings.append('"}"')
+        return strings
 
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         if static:

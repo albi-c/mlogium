@@ -172,7 +172,7 @@ class Instruction:
         ("triangle", [Type.NUM] * 6),
         ("image", [Type.NUM, Type.NUM, Type.CONTENT, Type.NUM, Type.BLOCK])
     ])
-    print = _make("print", [Type.ANY], True)
+    print = _make("print", [Type.ANY], True, internal=True)
 
     draw_flush = _make("drawflush", [Type.BLOCK], True)
     print_flush = _make("printflush", [Type.BLOCK], True)

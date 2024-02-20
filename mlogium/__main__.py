@@ -72,6 +72,14 @@ print(@counter);"""
 #     print(0);
 # }"""
 
+CODE = """\
+struct S {
+    let a: num;
+    let b: (num, num);
+}
+let x = #cast(S, ExternBlock::cell1[0]);
+print(x);"""
+
 macro_registry = MacroRegistry()
 for macro in MACROS:
     macro_registry.add(macro.name, macro)

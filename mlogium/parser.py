@@ -543,7 +543,6 @@ class Parser:
 
         elif tok.type == TokenType.HASH:
             name = self.next(TokenType.ID)
-            self.next(TokenType.LPAREN)
             if (macro := self.macro_registry.get(name.value)) is None:
                 ParserError.custom(tok.pos + name.pos, f"Macro not found: '{name.value}'")
 
@@ -569,6 +568,6 @@ class Parser:
                         raise ValueError("Unknown macro parameter type")
             self.next(TokenType.RPAREN)
 
-            return macro.invoke(MacroInvocationContext(self.macro_registry), params)
+            return macro.invoke(MacroInvocationContext(tok.pos, self.macro_registry), params)
 
         ParserError.unexpected_token(tok)

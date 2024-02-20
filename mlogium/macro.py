@@ -25,6 +25,7 @@ class CustomMacroInput:
 
 @dataclass
 class MacroInvocationContext:
+    pos: Position
     registry: MacroRegistry
 
 

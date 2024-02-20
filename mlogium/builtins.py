@@ -114,7 +114,12 @@ for op, args in {
 
 
 BUILTIN_SPECIAL = {
-    "ExternBlock": Value(BasicType("$ExternBlockSource"), "ExternBlockSource", True, impl=ExternBlockTypeImpl())
+    "ExternBlock": Value(BasicType("$ExternBlockSource"), "ExternBlockSource", impl=ExternBlockTypeImpl()),
+    "print": Value(IntrinsicFunctionType(
+        "print",
+        [(Type.ANY, False)],
+        lambda ctx, *values: ctx.emit(*(Instruction.print(val) for val in values[0].to_strings(ctx)))
+    ), "print")
 }
 
 
