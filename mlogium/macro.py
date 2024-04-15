@@ -48,8 +48,11 @@ class BaseMacro(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def invoke(self, ctx: MacroInvocationContext, params: list) -> Node:
+    def invoke(self, ctx: MacroInvocationContext, params: list) -> Node | Type:
         raise NotImplementedError
+
+    def is_type(self) -> bool:
+        return False
 
 
 class MacroRegistry:

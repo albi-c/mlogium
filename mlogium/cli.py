@@ -63,7 +63,7 @@ def main() -> int:
     except PositionedException as e:
         print(e.msg)
         e.pos.print()
-        if args.print_exception:
+        if args.print_exceptions:
             raise e
         return 1
 

@@ -144,7 +144,7 @@ class Parser:
 
         return fields, static_fields, methods, static_methods
 
-    def _parse_macro(self, top_level: bool) -> Node:
+    def _parse_macro(self, top_level: bool, is_type: bool = False) -> Node | Type:
         name = self.next(TokenType.ID)
         if (macro := self.macro_registry.get(name.value)) is None:
             ParserError.custom(name.pos, f"Macro not found: '{name.value}'")
@@ -172,6 +172,11 @@ class Parser:
                 case _:
                     raise ValueError("Unknown macro parameter type")
         self.next(TokenType.RPAREN)
+
+        if macro.is_type() and not is_type:
+            ParserError.custom(name.pos, "Use of type macro in a value context")
+        elif not macro.is_type() and is_type:
+            ParserError.custom(name.pos, "Use of value macro in a type context")
 
         return macro.invoke(MacroInvocationContext(name.pos, self.macro_registry), params)
 
@@ -369,7 +374,10 @@ class Parser:
         return BasicType(name)
 
     def parse_type(self) -> Type:
-        if self.lookahead(TokenType.KW_FN):
+        if self.lookahead(TokenType.HASH):
+            type_ = self._parse_macro(False, True)
+
+        elif self.lookahead(TokenType.KW_FN):
             type_ = self._parse_func_type()
 
         elif self.lookahead(TokenType.LPAREN, take_if_matches=False):

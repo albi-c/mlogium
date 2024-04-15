@@ -30,7 +30,7 @@ class Macro(BaseMacro, ABC):
     def invoke_to_tokens(self, ctx: MacroInvocationContext, params: list) -> list[Token]:
         return self._lex(ctx, self.invoke_to_str(ctx, params))
 
-    def invoke(self, ctx: MacroInvocationContext, params: list) -> Node:
+    def invoke(self, ctx: MacroInvocationContext, params: list) -> Node | Type:
         return self._parse(ctx, self.invoke_to_tokens(ctx, params))
 
 
@@ -41,7 +41,7 @@ class CastMacro(Macro):
     def inputs(self) -> tuple[MacroInput, ...]:
         return MacroInput.TYPE, MacroInput.VALUE_NODE
 
-    def invoke(self, ctx: MacroInvocationContext, params: list) -> Node:
+    def invoke(self, ctx: MacroInvocationContext, params: list) -> Node | Type:
         return BlockNode(ctx.pos, [
             DeclarationNode(ctx.pos, False, SingleAssignmentTarget("__tmp", params[0]), params[1]),
             VariableValueNode(ctx.pos, "__tmp")
@@ -60,7 +60,7 @@ class ImportMacro(Macro):
     def top_level_only(self) -> bool:
         return True
 
-    def invoke(self, ctx: MacroInvocationContext, params: list) -> Node:
+    def invoke(self, ctx: MacroInvocationContext, params: list) -> Node | Type:
         path = params[0]
         assert isinstance(path, Token)
         if path.type != TokenType.STRING:
