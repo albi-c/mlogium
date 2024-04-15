@@ -302,12 +302,21 @@ class Compiler(AstVisitor[Value]):
             self._error(f"Not callable: '{func}'")
 
         param_types = func.params()
-        if len(param_types) != len(node.params):
+
+        unpacked_params = []
+        for param, unpack in node.params:
+            if unpack:
+                if (unpacked := self.visit(param).unpack(self.ctx)) is None:
+                    self._error(f"Value '{param}' of type {param.type} is not unpackable")
+                unpacked_params += unpacked
+            else:
+                unpacked_params.append(self.visit(param))
+
+        if len(param_types) != len(unpacked_params):
             self._error(f"Invalid number of parameters to function ({len(node.params)} provided, {len(param_types)} expected)")
         params = []
-        for type_, param in zip(param_types, node.params):
-            value = self.visit(param)
-            params.append(value.into_req(self.ctx, type_))
+        for type_, param in zip(param_types, unpacked_params):
+            params.append(param.into_req(self.ctx, type_))
 
         return func.call(self.ctx, params)
 

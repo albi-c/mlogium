@@ -449,16 +449,16 @@ class UnaryOpNode(Node):
 
 class CallNode(Node):
     value: Node
-    params: list[Node]
+    params: list[tuple[Node, bool]]
 
-    def __init__(self, pos: Position, value: Node, params: list[Node]):
+    def __init__(self, pos: Position, value: Node, params: list[tuple[Node, bool]]):
         super().__init__(pos)
 
         self.value = value
         self.params = params
 
     def __str__(self):
-        return f"{self.value}({', '.join(map(str, self.params))})"
+        return f"{self.value}({', '.join(str(p) + ('...' if u else '') for p, u in self.params)})"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_call_node(self)

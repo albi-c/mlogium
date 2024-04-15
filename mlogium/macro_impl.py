@@ -64,7 +64,7 @@ class ImportMacro(Macro):
         path = params[0]
         assert isinstance(path, Token)
         if path.type != TokenType.STRING:
-            PositionedException.custom(path.pos, f"Import macro requires a string")
+            PositionedException.custom(path.pos, "Import macro requires a string")
         path = path.value
         if ctx.pos.file not in ("<main>", "<clip>"):
             search_dir = os.path.dirname(os.path.abspath(ctx.pos.file))
@@ -85,4 +85,19 @@ class ImportMacro(Macro):
         return node
 
 
-MACROS: list[Macro] = [CastMacro(), ImportMacro()]
+class RepeatMacro(Macro):
+    def __init__(self):
+        super().__init__("repeat")
+
+    def inputs(self) -> tuple[MacroInput, ...]:
+        return MacroInput.TOKEN, MacroInput.VALUE_NODE
+
+    def invoke(self, ctx: MacroInvocationContext, params: list) -> Node | Type:
+        try:
+            n = int(params[0].value)
+            return TupleValueNode(ctx.pos, [params[1]] * n)
+        except ValueError:
+            PositionedException.custom(params[0].pos, "Repeat macro requires an integer")
+
+
+MACROS: list[Macro] = [CastMacro(), ImportMacro(), RepeatMacro()]

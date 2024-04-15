@@ -475,6 +475,29 @@ class TupleTypeImpl(TypeImpl):
             val.memcell_deserialize(ctx, values[i:i+length])
             i += length
 
+    def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> Value | None:
+        return Value.tuple(ctx, [v.unary_op(ctx, op) for v in value.unpack(ctx)])
+
+    def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
+        this_values = value.unpack(ctx)
+
+        if (values := other.unpack(ctx)) is None:
+            results = [v.binary_op(ctx, op, other) for v in this_values]
+            if None in results:
+                return None
+            return Value.tuple(ctx, results)
+
+        if op == "++":
+            return Value.tuple(ctx, this_values + values)
+
+        if len(this_values) != len(values):
+            ctx.error(f"Tuple length mismatch: {len(this_values)} is not equal to {len(values)}")
+
+        results = [a.binary_op(ctx, op, b) for a, b in zip(this_values, values)]
+        if None in results:
+            return None
+        return Value.tuple(ctx, results)
+
 
 class EnumBaseTypeImpl(TypeImpl):
     name: str

@@ -437,9 +437,6 @@ class Parser:
     def parse_logical_not(self) -> Node:
         return self._parse_unary_op(("!",), self.parse_comparison)
 
-    # def parse_in(self) -> Node:
-    #     return self._parse_binary_op(("in",), self.parse_comparison, TokenType.KW_IN, True)
-
     def parse_comparison(self) -> Node:
         return self._parse_binary_op(("<", ">", "<=", ">=", "==", "!=", "===", "!=="), self.parse_bitwise_binary)
 
@@ -447,7 +444,10 @@ class Parser:
         return self._parse_binary_op(("|", "&", "^"), self.parse_bitwise_shift)
 
     def parse_bitwise_shift(self) -> Node:
-        return self._parse_binary_op(("<<", ">>"), self.parse_arith)
+        return self._parse_binary_op(("<<", ">>"), self.parse_tuple_join)
+
+    def parse_tuple_join(self) -> Node:
+        return self._parse_binary_op(("++",), self.parse_arith)
 
     def parse_arith(self) -> Node:
         return self._parse_binary_op(("+", "-"), self.parse_term)
@@ -461,12 +461,18 @@ class Parser:
     def parse_power(self) -> Node:
         return self._parse_binary_op(("**",), self.parse_call_index_attr)
 
+    def _parse_call_param(self) -> tuple[Node, bool]:
+        value = self.parse_value()
+        if self.lookahead(TokenType.ELLIPSIS):
+            return value, True
+        return value, False
+
     def parse_call_index_attr(self) -> Node:
         node = self.parse_atom()
 
         while self.has():
             if self.lookahead(TokenType.LPAREN, take_if_matches=False):
-                params = self._parse_comma_separated(self.parse_value)
+                params = self._parse_comma_separated(self._parse_call_param)
                 node = CallNode(node.pos, node, params)
 
             elif self.lookahead(TokenType.LBRACK):
@@ -484,42 +490,6 @@ class Parser:
                 break
 
         return node
-
-    # def _parse_pattern(self) -> Pattern:
-    #     tok = self.lookahead()
-    #
-    #     if tok.type == TokenType.INTEGER:
-    #         self.next()
-    #         return IntegerPattern(int(tok.value))
-    #
-    #     elif tok.type == TokenType.FLOAT:
-    #         self.next()
-    #         return FloatPattern(float(tok.value))
-    #
-    #     elif tok.type == TokenType.STRING:
-    #         self.next()
-    #         return StringPattern(tok.value)
-    #
-    #     elif tok.type == TokenType.LPAREN:
-    #         return TuplePattern(self._parse_comma_separated(self._parse_pattern, TokenType.LPAREN))
-    #
-    #     elif tok.type == TokenType.LBRACK:
-    #         return ListPattern(self._parse_comma_separated(self._parse_pattern, TokenType.LBRACK, TokenType.RBRACK))
-    #
-    #     name = self.next(TokenType.ID).value
-    #
-    #     if name == "_":
-    #         return AnyPattern()
-    #
-    #     if self.lookahead(TokenType.DOUBLE_COLON):
-    #         names = [name, self.next(TokenType.ID).value]
-    #         while self.lookahead(TokenType.DOUBLE_COLON):
-    #             names.append(self.next(TokenType.ID).value)
-    #         if self.lookahead(TokenType.LPAREN):
-    #             return NamedPattern(names, self._parse_comma_separated(self._parse_pattern, None))
-    #         return NamedPattern(names, None)
-    #
-    #     return VariablePattern(name)
 
     def parse_atom(self) -> Node:
         tok = self.next()

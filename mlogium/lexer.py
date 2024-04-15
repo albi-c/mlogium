@@ -20,7 +20,7 @@ class Lexer:
     CH_INTEGER = string.digits
     CH_ID_START = string.ascii_letters + "_@"
     CH_ID = CH_ID_START + string.digits
-    CH_OP_DOUBLE = "*<>&|"
+    CH_OP_DOUBLE = "*<>&|+"
     CH_OP = CH_OP_DOUBLE + "+-!~^/%"
     CH_STR_PREFIXES = "f"
 
@@ -192,14 +192,14 @@ class Lexer:
                 ("\"", self.lex_string),
                 (Lexer.CH_ID_START, self.lex_id),
                 ("=", self.lex_assignment),
-                (Lexer.CH_OP, self.lex_operator)
+                (Lexer.CH_OP, self.lex_operator),
+                (".", self.lex_dot)
             ]):
                 pass
 
             elif self._lex_single_double(ch, tokens, [
                 (";", TokenType.SEMICOLON),
                 (":", TokenType.COLON, TokenType.DOUBLE_COLON),
-                (".", TokenType.DOT, TokenType.DOUBLE_DOT),
                 (",", TokenType.COMMA),
                 ("#", TokenType.HASH),
                 ("(", TokenType.LPAREN),
@@ -291,3 +291,13 @@ class Lexer:
                 return self.make_token(TokenType.ASSIGNMENT, val)
 
         return self.make_token(TokenType.OPERATOR, val)
+
+    def lex_dot(self) -> Token:
+        self.next()
+
+        if self.lookahead("."):
+            if self.lookahead("."):
+                return self.make_token(TokenType.ELLIPSIS, "...")
+            return self.make_token(TokenType.DOUBLE_DOT, "..")
+
+        return self.make_token(TokenType.DOT, ".")

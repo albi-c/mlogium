@@ -20,7 +20,7 @@ class InstructionBase:
     _subcommands: dict[str, tuple[list[Type], list[int], bool, dict[int, str]]] | None
 
     def __call__(self, *params: Any) -> InstructionInstance:
-        assert len(params) == len(self.params)
+        params = params + tuple(["_"] * (len(self.params) - len(params)))
         return self.base_class(self, self.outputs, self.side_effects, self.constants, self.name,
                                *params, **self.base_params)
 
