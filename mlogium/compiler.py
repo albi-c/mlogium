@@ -47,8 +47,8 @@ class Compiler(AstVisitor[Value]):
     def emit(self, *instructions: InstructionInstance):
         self.ctx.emit(*instructions)
 
-    def _error(self, msg: str):
-        CompilerError.custom(self.current_node.pos, msg)
+    def _error(self, msg: str, pos: Position = None):
+        CompilerError.custom(self.current_pos if pos is None else pos, msg)
 
     def _var_get(self, name: str) -> Value:
         if (var := self.scope.get(name)) is None:
@@ -85,9 +85,9 @@ class Compiler(AstVisitor[Value]):
         elif isinstance(target, UnpackAssignmentTarget):
             values = value.unpack(self.ctx)
             if values is None:
-                self._error(f"Value '{value}' of type {value.type} is not unpackable")
+                self._error(f"Value of type {value.type} is not unpackable")
             if len(values) != len(target.values):
-                self._error(f"Value '{value}' of type {value.type} unpacks into {len(values)} values, {len(target.values)} expected")
+                self._error(f"Value of type {value.type} unpacks into {len(values)} values, {len(target.values)} expected")
             for el, val in zip(target.values, values):
                 if isinstance(el, str):
                     name = el
@@ -209,7 +209,10 @@ class Compiler(AstVisitor[Value]):
         return struct
 
     def visit_if_node(self, node: IfNode) -> Value:
-        condition = self.visit(node.cond)
+        cond_value = self.visit(node.cond)
+        if (condition := cond_value.to_condition(self.ctx)) is None:
+            self._error(f"Value of type '{cond_value.type}' is not usable as a condition", node.cond.pos)
+
         end_true_branch = self.ctx.tmp()
         end_false_branch = "" if node.code_else is None else self.ctx.tmp()
         self.emit(Instruction.jump(end_true_branch, "equal", condition.value, "0"))
@@ -238,7 +241,11 @@ class Compiler(AstVisitor[Value]):
     def visit_while_node(self, node: WhileNode) -> Value:
         name = self.ctx.tmp()
         self.emit(Instruction.label(name + "_continue"))
-        cond = self.visit(node.cond)
+
+        cond_value = self.visit(node.cond)
+        if (cond := cond_value.to_condition(self.ctx)) is None:
+            self._error(f"Value of type '{cond_value.type}' is not usable as a condition", node.cond.pos)
+
         self.emit(Instruction.jump(name + "_break", "equal", cond.value, "0"))
         with self.scope.loop(name):
             self.visit(node.code)
@@ -253,7 +260,7 @@ class Compiler(AstVisitor[Value]):
         iterable = self.visit(node.iterable)
         iterator = iterable.iterate(self.ctx)
         if iterator is None:
-            self._error(f"Not iterable: {iterable.type}")
+            self._error(f"Not iterable: {iterable.type}", node.iterable.pos)
         self.emit(
             Instruction.label(name + "_start"),
             Instruction.jump(name + "_break", "equal", iterator.has_value(self.ctx).value, "0")
@@ -299,15 +306,16 @@ class Compiler(AstVisitor[Value]):
     def visit_call_node(self, node: CallNode) -> Value:
         func = self.visit(node.value)
         if not func.callable():
-            self._error(f"Not callable: '{func}'")
+            self._error(f"Not callable: '{func}'", node.value.pos)
 
         param_types = func.params()
 
         unpacked_params = []
         for param, unpack in node.params:
             if unpack:
-                if (unpacked := self.visit(param).unpack(self.ctx)) is None:
-                    self._error(f"Value '{param}' of type {param.type} is not unpackable")
+                value = self.visit(param)
+                if (unpacked := value.unpack(self.ctx)) is None:
+                    self._error(f"Value '{param}' of type {value.type} is not unpackable", param.pos)
                 unpacked_params += unpacked
             else:
                 unpacked_params.append(self.visit(param))
@@ -324,7 +332,7 @@ class Compiler(AstVisitor[Value]):
         value = self.visit(node.value)
         index = self.visit(node.index)
         if (result := value.index_at(self.ctx, index)) is None:
-            self._error(f"Not indexable: '{value}'")
+            self._error(f"Not indexable: '{value}'", node.value.pos)
         return result
 
     def visit_attribute_node(self, node: AttributeNode) -> Value:

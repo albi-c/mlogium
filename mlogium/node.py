@@ -8,13 +8,16 @@ from .value_types import *
 
 class AstVisitor[T](ABC):
     current_node: Node | None
+    current_pos: Position | None
 
     def __init__(self):
         self.current_node = None
+        self.current_pos = None
 
     def visit(self, node: Node) -> T:
         prev_node = self.current_node
         self.current_node = node
+        self.current_pos = node.pos
         value = node.accept(self)
         self.current_node = prev_node
         return value

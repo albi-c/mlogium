@@ -143,6 +143,9 @@ class Value:
     def iterate(self, ctx: CompilationContext) -> ValueIterator | None:
         return self.impl.iterate(ctx, self)
 
+    def to_condition(self, ctx: CompilationContext) -> Value | None:
+        return self.impl.to_condition(ctx, self)
+
 
 class TypeImpl:
     EQUALITY_OPS = {
@@ -231,6 +234,9 @@ class TypeImpl:
     def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
         return None
 
+    def to_condition(self, ctx: CompilationContext, value: Value) -> Value | None:
+        return None
+
 
 class NumberTypeImpl(TypeImpl):
     UNARY_OPS = {
@@ -276,11 +282,17 @@ class NumberTypeImpl(TypeImpl):
 
         return super().binary_op(ctx, value, op, other)
 
+    def to_condition(self, ctx: CompilationContext, value: Value) -> Value | None:
+        return value
+
 
 class BlockTypeImpl(TypeImpl):
     def index_at(self, ctx: CompilationContext, value: Value, index: Value) -> Value | None:
         index = index.into_req(ctx, Type.NUM)
         return Value(BasicType("$CellRef"), value.value, False, impl=IndexReferenceTypeImpl(index.value))
+
+    def to_condition(self, ctx: CompilationContext, value: Value) -> Value | None:
+        return value
 
 
 class AnyTypeImpl(TypeImpl):
