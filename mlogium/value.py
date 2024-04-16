@@ -124,6 +124,9 @@ class Value:
     def binary_op(self, ctx: CompilationContext, op: str, other: Value) -> Value | None:
         return self.impl.binary_op(ctx, self, op, other)
 
+    def binary_op_r(self, ctx: CompilationContext, other: Value, op: str) -> Value | None:
+        return self.impl.binary_op_r(ctx, other, op, self)
+
     def index_at(self, ctx: CompilationContext, index: Value) -> Value | None:
         return self.impl.index_at(ctx, self, index)
 
@@ -208,6 +211,9 @@ class TypeImpl:
             value.assign(ctx, value.binary_op(ctx, op[:-1], other))
             return value
 
+        return other.binary_op_r(ctx, value, op)
+
+    def binary_op_r(self, ctx: CompilationContext, other: Value, op: str, value: Value) -> Value | None:
         return None
 
     def index_at(self, ctx: CompilationContext, value: Value, index: Value) -> Value | None:
@@ -263,9 +269,9 @@ class NumberTypeImpl(TypeImpl):
         return super().unary_op(ctx, value, op)
 
     def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
-        if (other := other.into(ctx, Type.NUM)) is not None and op in self.BINARY_OPS:
+        if (other_num := other.into(ctx, Type.NUM)) is not None and op in self.BINARY_OPS:
             tmp = Value.variable(ctx.tmp(), Type.NUM)
-            ctx.emit(Instruction.op(self.BINARY_OPS[op], tmp.value, value.value, other.value))
+            ctx.emit(Instruction.op(self.BINARY_OPS[op], tmp.value, value.value, other_num.value))
             return tmp
 
         return super().binary_op(ctx, value, op, other)
@@ -510,6 +516,26 @@ class TupleTypeImpl(TypeImpl):
             ctx.error(f"Tuple length mismatch: {len(this_values)} is not equal to {len(values)}")
 
         results = [a.binary_op(ctx, op, b) for a, b in zip(this_values, values)]
+        if None in results:
+            return None
+        return Value.tuple(ctx, results)
+
+    def binary_op_r(self, ctx: CompilationContext, other: Value, op: str, value: Value) -> Value | None:
+        this_values = value.unpack(ctx)
+
+        if (values := other.unpack(ctx)) is None:
+            results = [other.binary_op(ctx, op, v) for v in this_values]
+            if None in results:
+                return None
+            return Value.tuple(ctx, results)
+
+        if op == "++":
+            return Value.tuple(ctx, values + this_values)
+
+        if len(this_values) != len(values):
+            ctx.error(f"Tuple length mismatch: {len(this_values)} is not equal to {len(values)}")
+
+        results = [a.binary_op(ctx, op, b) for a, b in zip(values, this_values)]
         if None in results:
             return None
         return Value.tuple(ctx, results)
