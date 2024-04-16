@@ -427,6 +427,9 @@ class Optimizer:
             operations: dict[tuple[str, str, str], str] = {}
             for i, ins in enumerate(block):
                 if ins.name == Instruction.op.name:
+                    if ins.params[0] == "rand":
+                        continue
+
                     operands = (ins.params[0], ins.params[2], ins.params[3])
                     if operands in operations:
                         block[i] = Instruction.set(ins.params[1], operations[operands])

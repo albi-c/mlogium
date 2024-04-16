@@ -8,6 +8,8 @@ let fade_speed = 48;
 
 let seed = 0;
 while (true) {
+    let fg_color = (rand(1), rand(1), rand(1));
+
     for (y in 0..dsize) {
         let y_offset = y * PM;
         let y_seed = y + seed;
