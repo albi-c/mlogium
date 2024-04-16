@@ -4,12 +4,10 @@ let dsize = DS / PM;
 
 let fg_color = (0, 1, 0.2);
 let bg_color = (0, 0, 0);
+let fade_speed = 48;
 
 let seed = 0;
 while (true) {
-    print(seed);
-    printflush(ExternBlock::message1);
-
     for (y in 0..dsize) {
         let y_offset = y * PM;
         let y_seed = y + seed;
@@ -19,7 +17,7 @@ while (true) {
             draw.rect(x * PM, y_offset, PM, PM);
         }
         drawflush(ExternBlock::display1);
-        draw.color((bg_color ++ (48,))...);
+        draw.color((bg_color ++ (fade_speed,))...);
         draw.rect(0, 0, DS, DS);
     }
 

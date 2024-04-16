@@ -445,6 +445,19 @@ class TupleTypeImpl(TypeImpl):
         assert isinstance(type_, TupleType)
 
         if not static:
+            if name == "reversed":
+                return Value.tuple(ctx, value.unpack(ctx)[::-1])
+
+            if name.startswith("_") and name.count("_") == 2:
+                _, a, b = name.split("_")
+                try:
+                    a = int(a)
+                    b = int(b)
+                except ValueError:
+                    return None
+                else:
+                    return Value.tuple(ctx, value.unpack(ctx)[a:b])
+
             try:
                 index = int(name)
             except ValueError:
@@ -476,7 +489,10 @@ class TupleTypeImpl(TypeImpl):
             i += length
 
     def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> Value | None:
-        return Value.tuple(ctx, [v.unary_op(ctx, op) for v in value.unpack(ctx)])
+        results = [v.unary_op(ctx, op) for v in value.unpack(ctx)]
+        if None in results:
+            return None
+        return Value.tuple(ctx, results)
 
     def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
         this_values = value.unpack(ctx)
@@ -676,9 +692,9 @@ class StructInstanceTypeImpl(TypeImpl):
         for i, name in enumerate(self.field_list):
             val = value.getattr(ctx, name, False)
             if i > 0:
-                strings.append('","')
-            strings.append(name)
-            strings.append('","')
+                strings.append(f'", {name}: "')
+            else:
+                strings.append(f'"{name}: "')
             strings += val.to_strings(ctx)
         strings.append('"}"')
         return strings
@@ -705,6 +721,14 @@ class StructInstanceTypeImpl(TypeImpl):
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
         for field in self.fields.keys():
             value.getattr(ctx, field, False).assign(ctx, other.getattr(ctx, field, False))
+
+    def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> Value | None:
+        if op == "...":
+            values = [value.getattr(ctx, name, False) for name in self.field_list]
+            if None not in values:
+                return Value.tuple(ctx, values)
+
+        return super().unary_op(ctx, value, op)
 
 
 class StructMethodTypeImpl(ConcreteFunctionTypeImpl):

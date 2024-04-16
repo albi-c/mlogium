@@ -409,8 +409,8 @@ class Parser:
 
         return node
 
-    def _parse_unary_op(self, values: tuple[str, ...], func: Callable[[], Node]) -> Node:
-        if (op := self.lookahead(TokenType.OPERATOR, values)) is not None:
+    def _parse_unary_op(self, values: tuple[str, ...], func: Callable[[], Node], token_type: TokenType = TokenType.OPERATOR) -> Node:
+        if (op := self.lookahead(token_type, values)) is not None:
             value = self._parse_unary_op(values, func)
             return UnaryOpNode(op.pos + value.pos, op.value, value)
 
@@ -459,7 +459,10 @@ class Parser:
         return self._parse_unary_op(("-", "~"), self.parse_power)
 
     def parse_power(self) -> Node:
-        return self._parse_binary_op(("**",), self.parse_call_index_attr)
+        return self._parse_binary_op(("**",), self.parse_to_tuple)
+
+    def parse_to_tuple(self) -> Node:
+        return self._parse_unary_op(("...",), self.parse_call_index_attr, TokenType.ELLIPSIS)
 
     def _parse_call_param(self) -> tuple[Node, bool]:
         value = self.parse_value()
