@@ -34,7 +34,7 @@ class MacroInvocationContext:
     registry: MacroRegistry
 
 
-class BaseMacro(ABC):
+class Macro(ABC):
     Input = MacroInput | CustomMacroInput | RepeatMacroInput
 
     name: str
@@ -55,13 +55,13 @@ class BaseMacro(ABC):
 
 
 class MacroRegistry:
-    _macros: dict[str, BaseMacro]
+    _macros: dict[str, Macro]
 
     def __init__(self):
         self._macros = {}
 
-    def add(self, name: str, macro: BaseMacro):
+    def add(self, name: str, macro: Macro):
         self._macros[name] = macro
 
-    def get(self, name: str) -> BaseMacro | None:
+    def get(self, name: str) -> Macro | None:
         return self._macros.get(name)

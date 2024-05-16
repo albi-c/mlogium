@@ -5,18 +5,14 @@ from .parser import Parser
 from .error import PositionedException
 from .compiler import Compiler
 from .value import Value
-from .value_types import Type
-
-
-class Macro(BaseMacro, ABC):
-    pass
+from .node import *
 
 
 class CastMacro(Macro):
     def __init__(self):
         super().__init__("cast")
 
-    def inputs(self) -> tuple[BaseMacro.Input, ...]:
+    def inputs(self) -> tuple[Macro.Input, ...]:
         return MacroInput.TYPE, MacroInput.VALUE_NODE
 
     def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
@@ -29,7 +25,7 @@ class ImportMacro(Macro):
     def __init__(self):
         super().__init__("import")
 
-    def inputs(self) -> tuple[BaseMacro.Input, ...]:
+    def inputs(self) -> tuple[Macro.Input, ...]:
         return (MacroInput.TOKEN,)
 
     def top_level_only(self) -> bool:
@@ -64,7 +60,7 @@ class RepeatMacro(Macro):
     def __init__(self):
         super().__init__("repeat")
 
-    def inputs(self) -> tuple[BaseMacro.Input, ...]:
+    def inputs(self) -> tuple[Macro.Input, ...]:
         return MacroInput.TOKEN, MacroInput.VALUE_NODE
 
     def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
@@ -79,22 +75,51 @@ class MapMacro(Macro):
     def __init__(self):
         super().__init__("map")
 
-    def inputs(self) -> tuple[BaseMacro.Input, ...]:
+    def inputs(self) -> tuple[Macro.Input, ...]:
         return MacroInput.VALUE_NODE, MacroInput.VALUE_NODE
 
     def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
         func = compiler.visit(params[0])
         if not func.callable():
-            PositionedException.custom(params[0].pos, "Map macro requires a function")
+            PositionedException.custom(params[0].pos, f"Value of type '{params[0].type}' is not callable")
         if len(func.params()) != 1:
-            PositionedException.custom(params[0].pos, "Map macro requires a function that takes 1 parameter")
+            PositionedException.custom(params[0].pos, f"Value of type '{params[0].type}' has to take 1 parameter")
 
         tup = compiler.visit(params[1])
         if (values := tup.unpack(ctx.ctx)) is None:
-            PositionedException.custom(params[1].pos, "Map macro requires an unpackable object")
+            PositionedException.custom(params[1].pos, f"Value of type '{tup.type}' is not unpackable")
 
         param = func.params()[0]
         results = [func.call(ctx.ctx, [val.into_req(ctx.ctx, param)]) for val in values]
+
+        return Value.tuple(ctx.ctx, results)
+
+
+class UnpackMapMacro(Macro):
+    def __init__(self):
+        super().__init__("unpack_map")
+
+    def inputs(self) -> tuple[Macro.Input, ...]:
+        return MacroInput.VALUE_NODE, MacroInput.VALUE_NODE
+
+    def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
+        func = compiler.visit(params[0])
+        if not func.callable():
+            PositionedException.custom(params[0].pos, f"Value of type '{params[0].type}' is not callable")
+        func_params = func.params()
+
+        tup = compiler.visit(params[1])
+        if (values := tup.unpack(ctx.ctx)) is None:
+            PositionedException.custom(params[1].pos, f"Value of type '{tup.type}' is not unpackable")
+
+        results = []
+        for val in values:
+            if (unp := val.unpack(ctx.ctx)) is None:
+                PositionedException.custom(params[1].pos, f"Value of type '{val.type}' is not unpackable")
+            if len(unp) != len(func_params):
+                PositionedException.custom(params[1].pos, f"({len(unp)} provided, {len(func_params)} expected)")
+            results.append(func.call(ctx.ctx,
+                                     [param.into_req(ctx.ctx, type_) for param, type_ in zip(unp, func_params)]))
 
         return Value.tuple(ctx.ctx, results)
 
@@ -103,7 +128,7 @@ class ZipMacro(Macro):
     def __init__(self):
         super().__init__("zip")
 
-    def inputs(self) -> tuple[BaseMacro.Input, ...]:
+    def inputs(self) -> tuple[Macro.Input, ...]:
         return MacroInput.VALUE_NODE, RepeatMacroInput(MacroInput.VALUE_NODE)
 
     def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
@@ -111,7 +136,7 @@ class ZipMacro(Macro):
         for param in params:
             tup = compiler.visit(param)
             if (unp := tup.unpack(ctx.ctx)) is None:
-                PositionedException.custom(param.pos, "Zip macro requires unpackable objects")
+                PositionedException.custom(param.pos, f"Value of type '{tup.type}' is not unpackable")
             if len(unpacked) > 0:
                 if len(unp) != len(unpacked[0]):
                     PositionedException.custom(param.pos, "Zip macro requires all parameters to have the same length")
@@ -121,7 +146,7 @@ class ZipMacro(Macro):
 
 
 class UnpackableOperatorMacro(Macro, ABC):
-    def inputs(self) -> tuple[BaseMacro.Input, ...]:
+    def inputs(self) -> tuple[Macro.Input, ...]:
         return (MacroInput.VALUE_NODE,)
 
     @abstractmethod
@@ -209,5 +234,24 @@ class ProdMacro(UnpackableOperatorMacro):
         return sum_
 
 
-MACROS: list[Macro] = [CastMacro(), ImportMacro(), RepeatMacro(), MapMacro(), ZipMacro(), AllMacro(), AnyMacro(),
-                       LenMacro(), SumMacro(), ProdMacro()]
+class OperatorMacro(Macro):
+    def __init__(self):
+        super().__init__("op")
+
+    def inputs(self) -> tuple[Macro.Input, ...]:
+        return (MacroInput.TOKEN,)
+
+    def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
+        if params[0].type != TokenType.OPERATOR:
+            PositionedException.custom(params[0].pos, "Op macro requires an operator")
+        op = params[0].value
+
+        return compiler._register_function(
+            ctx.ctx.tmp(),
+            NamedParamFunctionType([("a", BasicType.NUM), ("b", BasicType.NUM)], BasicType.NUM),
+            BinaryOpNode(ctx.pos, VariableValueNode(ctx.pos, "a"), op, VariableValueNode(ctx.pos, "b"))
+        )
+
+
+MACROS: list[Macro] = [CastMacro(), ImportMacro(), RepeatMacro(), MapMacro(), UnpackMapMacro(), ZipMacro(), AllMacro(),
+                       AnyMacro(), LenMacro(), SumMacro(), ProdMacro(), OperatorMacro()]
