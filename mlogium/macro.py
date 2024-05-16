@@ -3,9 +3,11 @@ from __future__ import annotations
 import enum
 from dataclasses import dataclass
 from typing import Any
+from abc import abstractmethod, ABC
 
-from .node import *
 from .lexer import *
+from .compilation_context import CompilationContext
+from .value import Value
 
 
 class MacroInput(enum.Enum):
@@ -21,38 +23,35 @@ class CustomMacroInput:
 
 
 @dataclass
+class RepeatMacroInput:
+    inp: MacroInput | CustomMacroInput
+
+
+@dataclass
 class MacroInvocationContext:
+    ctx: CompilationContext
     pos: Position
     registry: MacroRegistry
 
 
 class BaseMacro(ABC):
+    Input = MacroInput | CustomMacroInput | RepeatMacroInput
+
     name: str
 
     def __init__(self, name: str):
         self.name = name
 
     @abstractmethod
-    def inputs(self) -> tuple[MacroInput, ...]:
+    def inputs(self) -> tuple[Input, ...]:
         raise NotImplementedError
 
     def top_level_only(self) -> bool:
         return False
 
     @abstractmethod
-    def invoke_to_str(self, ctx: MacroInvocationContext, params: list) -> str:
+    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
         raise NotImplementedError
-
-    @abstractmethod
-    def invoke_to_tokens(self, ctx: MacroInvocationContext, params: list) -> list[Token]:
-        raise NotImplementedError
-
-    @abstractmethod
-    def invoke(self, ctx: MacroInvocationContext, params: list) -> Node | Type:
-        raise NotImplementedError
-
-    def is_type(self) -> bool:
-        return False
 
 
 class MacroRegistry:

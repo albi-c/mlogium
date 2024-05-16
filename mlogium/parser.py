@@ -1,7 +1,7 @@
-from .tokens import Token, TokenType
+from .tokens import TokenType
 from .error import ParserError
 from .node import *
-from .macro import MacroInput, CustomMacroInput, MacroInvocationContext, MacroRegistry
+from .macro import MacroInput, CustomMacroInput, RepeatMacroInput, MacroRegistry
 
 from typing import Callable
 
@@ -144,6 +144,27 @@ class Parser:
 
         return fields, static_fields, methods, static_methods
 
+    def _parse_macro_input(self, inp: MacroInput | CustomMacroInput) -> list[Type | Token | Node]:
+        match inp:
+            case MacroInput.TYPE:
+                return [self.parse_type()]
+            case MacroInput.TOKEN:
+                return [self.next()]
+            case MacroInput.VALUE_NODE:
+                return [self.parse_value()]
+            case MacroInput.BLOCK_NODE:
+                self.next(TokenType.LBRACE)
+                return [self.parse_block(True)]
+            case CustomMacroInput(func):
+                return [func(self)]
+            case RepeatMacroInput(inp_):
+                params = self._parse_macro_input(inp_)
+                while self.lookahead(TokenType.COMMA):
+                    params += self._parse_macro_input(inp_)
+                return params
+            case _:
+                raise ValueError("Unknown macro parameter type")
+
     def _parse_macro(self, top_level: bool, is_type: bool = False) -> Node | Type:
         name = self.next(TokenType.ID)
         if (macro := self.macro_registry.get(name.value)) is None:
@@ -157,28 +178,18 @@ class Parser:
             if i > 0:
                 self.next(TokenType.COMMA)
 
-            match inp:
-                case MacroInput.TYPE:
-                    params.append(self.parse_type())
-                case MacroInput.TOKEN:
-                    params.append(self.next())
-                case MacroInput.VALUE_NODE:
-                    params.append(self.parse_value())
-                case MacroInput.BLOCK_NODE:
-                    self.next(TokenType.LBRACE)
-                    params.append(self.parse_block(True))
-                case CustomMacroInput(func):
-                    params.append(func(self))
-                case _:
-                    raise ValueError("Unknown macro parameter type")
+            params += self._parse_macro_input(inp)
+
         self.next(TokenType.RPAREN)
 
-        if macro.is_type() and not is_type:
-            ParserError.custom(name.pos, "Use of type macro in a value context")
-        elif not macro.is_type() and is_type:
-            ParserError.custom(name.pos, "Use of value macro in a type context")
+        # if macro.is_type() and not is_type:
+        #     ParserError.custom(name.pos, "Use of type macro in a value context")
+        # elif not macro.is_type() and is_type:
+        #     ParserError.custom(name.pos, "Use of value macro in a type context")
 
-        return macro.invoke(MacroInvocationContext(name.pos, self.macro_registry), params)
+        # return macro.invoke(MacroInvocationContext(name.pos, self.macro_registry), params)
+
+        return MacroInvocationNode(name.pos, self.macro_registry, name.value, params)
 
     def _parse_top_level_statement_or_none(self) -> Node | None:
         tok = self.lookahead()

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import contextlib
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from collections import defaultdict
 
 from .instruction import InstructionInstance, Instruction
-from .node import Node
 
 
 class InstructionSection:
@@ -80,7 +79,7 @@ class CompilationContext:
         return instructions
 
     @abstractmethod
-    def generate_node(self, node: Node):
+    def generate_node(self, node):
         raise NotImplementedError
 
     @abstractmethod

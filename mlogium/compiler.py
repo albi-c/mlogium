@@ -6,6 +6,7 @@ from .instruction import Instruction, InstructionInstance
 from .compilation_context import CompilationContext, InstructionSection
 from .error import CompilerError
 from .scope import ScopeStack
+from .macro import MacroInvocationContext
 from . import builtins
 
 
@@ -77,6 +78,10 @@ class Compiler(AstVisitor[Value]):
         if node.returns_last:
             return last_value
         return Value.null()
+
+    def visit_macro_invocation_node(self, node: MacroInvocationNode) -> Value:
+        return node.registry.get(node.name).invoke(MacroInvocationContext(
+            self.ctx, node.pos, node.registry), self, node.params)
 
     def _declare_target(self, target: AssignmentTarget, value: Value, const: bool) -> Value:
         if isinstance(target, SingleAssignmentTarget):

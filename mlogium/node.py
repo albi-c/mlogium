@@ -4,6 +4,8 @@ import copy
 
 from .util import Position
 from .value_types import *
+from .tokens import Token
+from .macro import MacroRegistry
 
 
 class AstVisitor[T](ABC):
@@ -24,6 +26,10 @@ class AstVisitor[T](ABC):
 
     @abstractmethod
     def visit_block_node(self, node: BlockNode) -> T:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_macro_invocation_node(self, node: MacroInvocationNode) -> T:
         raise NotImplementedError
 
     @abstractmethod
@@ -169,6 +175,25 @@ class BlockNode(Node):
     @staticmethod
     def empty(pos: Position):
         return BlockNode(pos, [], False)
+
+
+class MacroInvocationNode(Node):
+    registry: MacroRegistry
+    name: str
+    params: list[Type | Token | Node]
+
+    def __init__(self, pos: Position, registry: MacroRegistry, name: str, params: list[Type | Token | Node]):
+        super().__init__(pos)
+
+        self.registry = registry
+        self.name = name
+        self.params = params
+
+    def __str__(self):
+        return f"#{self.name}({','.join(p.value if isinstance(p, Token) else str(p) for p in self.params)})"
+
+    def accept[T](self, visitor: AstVisitor[T]) -> T:
+        return visitor.visit_macro_invocation_node(self)
 
 
 class AssignmentTarget(ABC):

@@ -3,49 +3,24 @@ import os
 from .macro import *
 from .parser import Parser
 from .error import PositionedException
+from .compiler import Compiler
+from .value import Value
+from .value_types import Type
 
 
 class Macro(BaseMacro, ABC):
-    block_output: bool
-
-    def __init__(self, name: str, block_output: bool = False):
-        super().__init__(name)
-
-        self.block_output = block_output
-
-    @staticmethod
-    def _lex(_: MacroInvocationContext, code: str) -> list[Token]:
-        return Lexer().lex(code, "")
-
-    def _parse(self, ctx: MacroInvocationContext, code: list[Token]) -> Node:
-        parser = Parser(code, ctx.registry)
-        if self.block_output:
-            return parser.parse_block(False)
-        else:
-            return parser.parse_value()
-
-    def invoke_to_str(self, ctx: MacroInvocationContext, params: list) -> str:
-        raise NotImplementedError
-
-    def invoke_to_tokens(self, ctx: MacroInvocationContext, params: list) -> list[Token]:
-        return self._lex(ctx, self.invoke_to_str(ctx, params))
-
-    def invoke(self, ctx: MacroInvocationContext, params: list) -> Node | Type:
-        return self._parse(ctx, self.invoke_to_tokens(ctx, params))
+    pass
 
 
 class CastMacro(Macro):
     def __init__(self):
         super().__init__("cast")
 
-    def inputs(self) -> tuple[MacroInput, ...]:
+    def inputs(self) -> tuple[BaseMacro.Input, ...]:
         return MacroInput.TYPE, MacroInput.VALUE_NODE
 
-    def invoke(self, ctx: MacroInvocationContext, params: list) -> Node | Type:
-        return BlockNode(ctx.pos, [
-            DeclarationNode(ctx.pos, False, SingleAssignmentTarget("__tmp", params[0]), params[1]),
-            VariableValueNode(ctx.pos, "__tmp")
-        ], True)
+    def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
+        return compiler.visit(params[1]).into_req(ctx.ctx, params[0])
 
 
 class ImportMacro(Macro):
@@ -54,13 +29,13 @@ class ImportMacro(Macro):
     def __init__(self):
         super().__init__("import")
 
-    def inputs(self) -> tuple[MacroInput, ...]:
+    def inputs(self) -> tuple[BaseMacro.Input, ...]:
         return (MacroInput.TOKEN,)
 
     def top_level_only(self) -> bool:
         return True
 
-    def invoke(self, ctx: MacroInvocationContext, params: list) -> Node | Type:
+    def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
         path = params[0]
         assert isinstance(path, Token)
         if path.type != TokenType.STRING:
@@ -82,22 +57,157 @@ class ImportMacro(Macro):
 
         self.IMPORTS.remove(path)
 
-        return node
+        return compiler.visit(node)
 
 
 class RepeatMacro(Macro):
     def __init__(self):
         super().__init__("repeat")
 
-    def inputs(self) -> tuple[MacroInput, ...]:
+    def inputs(self) -> tuple[BaseMacro.Input, ...]:
         return MacroInput.TOKEN, MacroInput.VALUE_NODE
 
-    def invoke(self, ctx: MacroInvocationContext, params: list) -> Node | Type:
+    def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
         try:
             n = int(params[0].value)
-            return TupleValueNode(ctx.pos, [params[1]] * n)
+            return Value.tuple(ctx.ctx, [compiler.visit(params[1])] * n)
         except ValueError:
             PositionedException.custom(params[0].pos, "Repeat macro requires an integer")
 
 
-MACROS: list[Macro] = [CastMacro(), ImportMacro(), RepeatMacro()]
+class MapMacro(Macro):
+    def __init__(self):
+        super().__init__("map")
+
+    def inputs(self) -> tuple[BaseMacro.Input, ...]:
+        return MacroInput.VALUE_NODE, MacroInput.VALUE_NODE
+
+    def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
+        func = compiler.visit(params[0])
+        if not func.callable():
+            PositionedException.custom(params[0].pos, "Map macro requires a function")
+        if len(func.params()) != 1:
+            PositionedException.custom(params[0].pos, "Map macro requires a function that takes 1 parameter")
+
+        tup = compiler.visit(params[1])
+        if (values := tup.unpack(ctx.ctx)) is None:
+            PositionedException.custom(params[1].pos, "Map macro requires an unpackable object")
+
+        param = func.params()[0]
+        results = [func.call(ctx.ctx, [val.into_req(ctx.ctx, param)]) for val in values]
+
+        return Value.tuple(ctx.ctx, results)
+
+
+class ZipMacro(Macro):
+    def __init__(self):
+        super().__init__("zip")
+
+    def inputs(self) -> tuple[BaseMacro.Input, ...]:
+        return MacroInput.VALUE_NODE, RepeatMacroInput(MacroInput.VALUE_NODE)
+
+    def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
+        unpacked = []
+        for param in params:
+            tup = compiler.visit(param)
+            if (unp := tup.unpack(ctx.ctx)) is None:
+                PositionedException.custom(param.pos, "Zip macro requires unpackable objects")
+            if len(unpacked) > 0:
+                if len(unp) != len(unpacked[0]):
+                    PositionedException.custom(param.pos, "Zip macro requires all parameters to have the same length")
+            unpacked.append(unp)
+
+        return Value.tuple(ctx.ctx, [Value.tuple(ctx.ctx, list(tup)) for tup in zip(*unpacked)])
+
+
+class UnpackableOperatorMacro(Macro, ABC):
+    def inputs(self) -> tuple[BaseMacro.Input, ...]:
+        return (MacroInput.VALUE_NODE,)
+
+    @abstractmethod
+    def process(self, ctx: MacroInvocationContext, compiler: Compiler, values: list[Value]) -> Value:
+        raise NotImplementedError
+
+    def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
+        tup = compiler.visit(params[0])
+        if (unp := tup.unpack(ctx.ctx)) is None:
+            PositionedException.custom(params[0].pos, f"{self.name.capitalize()} macro requires an unpackable object")
+        return self.process(ctx, compiler, unp)
+
+
+class AllMacro(UnpackableOperatorMacro):
+    def __init__(self):
+        super().__init__("all")
+
+    def process(self, ctx: MacroInvocationContext, compiler: Compiler, values: list[Value]) -> Value:
+        if len(values) == 0:
+            return Value.number(0)
+
+        if (cond := values[0].to_condition(ctx.ctx)) is None:
+            PositionedException.custom(ctx.pos, f"Value of type '{values[0].type}' is not usable as a condition")
+        for val in values[1:]:
+            if (c := val.to_condition(ctx.ctx)) is None:
+                PositionedException.custom(ctx.pos, f"Value of type '{val.type}' is not usable as a condition")
+            cond = cond.binary_op(ctx.ctx, "&&", c)
+
+        return cond
+
+
+class AnyMacro(UnpackableOperatorMacro):
+    def __init__(self):
+        super().__init__("any")
+
+    def process(self, ctx: MacroInvocationContext, compiler: Compiler, values: list[Value]) -> Value:
+        if len(values) == 0:
+            return Value.number(0)
+
+        if (cond := values[0].to_condition(ctx.ctx)) is None:
+            PositionedException.custom(ctx.pos, f"Value of type '{values[0].type}' is not usable as a condition")
+        for val in values[1:]:
+            if (c := val.to_condition(ctx.ctx)) is None:
+                PositionedException.custom(ctx.pos, f"Value of type '{val.type}' is not usable as a condition")
+            cond = cond.binary_op(ctx.ctx, "||", c)
+
+        return cond
+
+
+class LenMacro(UnpackableOperatorMacro):
+    def __init__(self):
+        super().__init__("len")
+
+    def process(self, ctx: MacroInvocationContext, compiler: Compiler, values: list[Value]) -> Value:
+        return Value.number(len(values))
+
+
+class SumMacro(UnpackableOperatorMacro):
+    def __init__(self):
+        super().__init__("sum")
+
+    def process(self, ctx: MacroInvocationContext, compiler: Compiler, values: list[Value]) -> Value:
+        if len(values) == 0:
+            return Value.number(0)
+
+        sum_ = values[0].into_req(ctx.ctx, Type.NUM)
+        for val in values[1:]:
+            sum_ = sum_.binary_op(ctx.ctx, "+", val.into_req(ctx.ctx, Type.NUM))
+
+        return sum_
+
+
+class ProdMacro(UnpackableOperatorMacro):
+    def __init__(self):
+        super().__init__("prod")
+
+    def process(self, ctx: MacroInvocationContext, compiler: Compiler, values: list[Value]) -> Value:
+        if len(values) == 0:
+            return Value.number(1)
+
+        sum_ = values[0].into_req(ctx.ctx, Type.NUM)
+        for val in values[1:]:
+            sum_ = sum_.binary_op(ctx.ctx, "*", val.into_req(ctx.ctx, Type.NUM))
+
+        return sum_
+
+
+MACROS: list[Macro] = [CastMacro(), ImportMacro(), RepeatMacro(), MapMacro(), ZipMacro(), AllMacro(), AnyMacro(),
+                       LenMacro(), SumMacro(), ProdMacro()]
