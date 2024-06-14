@@ -115,13 +115,17 @@ class Compiler(AstVisitor[Value]):
             self._error(f"Function already defined: '{name}'")
         self.functions_with_pointers.add(name)
 
-        return Value(
-            (LambdaType if is_lambda else ConcreteFunctionType)(name, type_.named_params, type_.ret, {
-                "code": code
-            }),
-            name,
-            True
-        )
+        if is_lambda:
+            captures = {}
+            for capture, ref in type_.captures:
+                if capture in captures:
+                    self._error(f"Duplicate capture in lambda: '{capture}'", self.current_pos)
+                captures[capture] = self._var_get(capture), ref
+            new_type = LambdaType(type_.named_params, type_.ret, type_.captures, {"code": code, "captures": captures})
+        else:
+            new_type = ConcreteFunctionType(name, type_.named_params, type_.ret, {"code": code})
+
+        return Value(new_type, name, True)
 
     def _register_function_value(self, name: str, val: Value):
         if not val.needs_function_ref():
@@ -129,8 +133,8 @@ class Compiler(AstVisitor[Value]):
 
         with self.ctx.in_section(InstructionSection.FUNCTIONS):
             self.emit(Instruction.label(ABI.function_label(name)))
-            ret_addr = Value.variable(self.ctx.tmp(), BasicType("num"))
-            ret_addr.assign(self.ctx, Value.variable(ABI.function_return_address(), BasicType("num")))
+            ret_addr = Value.variable(self.ctx.tmp(), Type.NUM)
+            ret_addr.assign(self.ctx, Value.variable(ABI.function_return_address(), Type.NUM))
             params = [Value.variable(ABI.function_parameter(i), type_ if type_ is not None else Type.ANY) for i, type_ in enumerate(val.params())]
             ret = val.call(self.ctx, params)
             Value.variable(ABI.function_return_value(), ret.type).assign(self.ctx, ret)
@@ -142,10 +146,7 @@ class Compiler(AstVisitor[Value]):
         return val
 
     def visit_function_node(self, node: FunctionNode) -> Value:
-        return self._var_declare_special(
-            node.name,
-            self.register_function(node.name, node.type, node.code)
-        )
+        return self._var_declare_special(node.name, self.register_function(node.name, node.type, node.code))
 
     def visit_lambda_node(self, node: LambdaNode) -> Value:
         return self.register_function(f"__lambda_{self.ctx.tmp_num()}", node.type, node.code, True)
@@ -173,7 +174,7 @@ class Compiler(AstVisitor[Value]):
                 self._error(f"Struct already has field '{name}'")
             names.add(name)
             name_ = ABI.attribute(node.name, name)
-            type_modified = NamedParamFunctionType([("self", BasicType(node.name))] + type_.named_params, type_.ret)
+            type_modified = NamedParamFunctionType([("self", BasicType(node.name), True)] + type_.named_params, type_.ret)
             val = self._make_function_value(name_, type_modified, code, False)
             methods[name] = (const, val)
 

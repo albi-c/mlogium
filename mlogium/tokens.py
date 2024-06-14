@@ -39,6 +39,7 @@ class TokenType(enum.Flag):
     COMMA = enum.auto()
     HASH = enum.auto()
     ELLIPSIS = enum.auto()
+    QUESTION = enum.auto()
 
     LPAREN = enum.auto()
     RPAREN = enum.auto()

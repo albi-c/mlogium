@@ -361,6 +361,13 @@ class Parser:
         type_ = self.parse_type()
         return name, type_
 
+    def _parse_name_with_type_ref(self) -> tuple[str, Type, bool]:
+        ref = bool(self.lookahead(TokenType.OPERATOR, "&"))
+        name = self.next(TokenType.ID).value
+        self.next(TokenType.COLON)
+        type_ = self.parse_type()
+        return name, type_, ref
+
     def _parse_name_with_optional_type(self) -> tuple[str, Type | None]:
         name = self.next(TokenType.ID).value
         if self.lookahead(TokenType.COLON):
@@ -368,10 +375,25 @@ class Parser:
         else:
             return name, None
 
+    def _parse_name_with_optional_type_ref(self) -> tuple[str, Type | None, bool]:
+        ref = bool(self.lookahead(TokenType.OPERATOR, "&"))
+        name = self.next(TokenType.ID).value
+        if self.lookahead(TokenType.COLON):
+            return name, self.parse_type(), ref
+        else:
+            return name, None, ref
+
+    def _parse_capture(self) -> tuple[str, bool]:
+        ref = bool(self.lookahead(TokenType.OPERATOR, "&"))
+        return self.next(TokenType.ID).value, ref
+
     def _parse_named_func_type(self) -> NamedParamFunctionType:
-        params = self._parse_comma_separated(self._parse_name_with_type)
+        params = self._parse_comma_separated(self._parse_name_with_type_ref)
 
         if self.lookahead(TokenType.ARROW):
+            if self.lookahead(TokenType.QUESTION):
+                return NamedParamFunctionType(params, None)
+
             return NamedParamFunctionType(params, self.parse_type())
 
         return NamedParamFunctionType(params, NullType())
@@ -558,27 +580,42 @@ class Parser:
             return VariableValueNode(tok.pos, tok.value)
 
         elif tok.type == TokenType.OPERATOR and tok.value == "|":
-            params = self._parse_comma_separated(self._parse_name_with_optional_type, None, TokenType.OPERATOR, "|")
+            params = self._parse_comma_separated(self._parse_name_with_optional_type_ref, None, TokenType.OPERATOR, "|")
+
+            if self.lookahead(TokenType.LBRACK):
+                captures = self._parse_comma_separated(self._parse_capture, None, TokenType.RBRACK)
+            else:
+                captures = []
+
             if self.lookahead(TokenType.ARROW):
                 ret = self.parse_type()
             else:
                 ret = None
+
             if self.lookahead(TokenType.LBRACE):
                 code = self.parse_block(True)
             else:
                 code = self.parse_value()
-            return LambdaNode(tok.pos + code.pos, LambdaType("", params, ret, {}), code)
+
+            return LambdaNode(tok.pos + code.pos, LambdaType(params, ret, captures, {}), code)
 
         elif tok.type == TokenType.OPERATOR and tok.value == "||":
+            if self.lookahead(TokenType.LBRACK):
+                captures = self._parse_comma_separated(self._parse_capture, None, TokenType.RBRACK)
+            else:
+                captures = []
+
             if self.lookahead(TokenType.ARROW):
                 ret = self.parse_type()
             else:
                 ret = None
+
             if self.lookahead(TokenType.LBRACE):
                 code = self.parse_block(True)
             else:
                 code = self.parse_value()
-            return LambdaNode(tok.pos + code.pos, LambdaType("", [], ret, {}), code)
+
+            return LambdaNode(tok.pos + code.pos, LambdaType([], ret, captures, {}), code)
 
         elif tok.type == TokenType.HASH:
             return self._parse_macro(False)

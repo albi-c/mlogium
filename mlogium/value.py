@@ -346,6 +346,7 @@ class AnonymousFunctionTypeImpl(TypeImpl):
 
             type_ = value.type
             assert isinstance(type_, FunctionType)
+            # TODO: fix generic return
             if type_.ret is not None:
                 ret = Value.variable(ctx.tmp(), type_.ret)
                 ret.assign(ctx, Value.variable(ABI.function_return_value(), type_.ret))
@@ -370,9 +371,6 @@ class ConcreteFunctionTypeImpl(TypeImpl):
         assert isinstance(type_, ConcreteFunctionType)
         return type_.params
 
-    def reference_params(self) -> tuple[int, ...]:
-        return tuple()
-
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
         assert len(self.params(value)) == len(params)
         assert all(type_.contains(val.type) for type_, val in zip(self.params(value), params))
@@ -381,16 +379,16 @@ class ConcreteFunctionTypeImpl(TypeImpl):
         assert isinstance(type_, ConcreteFunctionType)
 
         with ctx.scope.function_call(ctx, f"{type_.name}:{ctx.tmp_num()}"):
-            ref_params = self.reference_params()
-            for i, ((name, val_type), val) in enumerate(zip(type_.named_params, params)):
-                if i in ref_params:
+            for i, ((name, val_type, ref), val) in enumerate(zip(type_.named_params, params)):
+                if ref:
                     ctx.scope.declare_special(name, val)
                 else:
                     ctx.scope.declare(name, val_type, False).assign(ctx, val)
 
             result = ctx.generate_node(type_.attributes["code"])
 
-            return_val = Value.variable(ABI.return_value(ctx.scope.get_function()), type_.ret)
+            return_val = Value.variable(ABI.return_value(ctx.scope.get_function()),
+                                        type_.ret if type_.ret is not None else result.type)
             if return_val.type.contains(result.type):
                 return_val.assign(ctx, result)
             else:
@@ -421,8 +419,17 @@ class LambdaTypeImpl(TypeImpl):
         assert all(type_ is None or type_.contains(val.type) for type_, val in zip(type_.params, params))
 
         with ctx.scope.function_call(ctx, f"_lambda:{ctx.tmp_num()}"):
-            for i, ((name, val_type), val) in enumerate(zip(type_.named_params, params)):
-                ctx.scope.declare(name, val_type if val_type is not None else val.type, False).assign(ctx, val)
+            for name, (value, ref) in type_.attributes["captures"].items():
+                if ref:
+                    ctx.scope.declare_special(name, value)
+                else:
+                    ctx.scope.declare(name, value.type, False).assign(ctx, value)
+
+            for i, ((name, val_type, ref), val) in enumerate(zip(type_.named_params, params)):
+                if ref:
+                    ctx.scope.declare_special(name, val)
+                else:
+                    ctx.scope.declare(name, val_type if val_type is not None else val.type, False).assign(ctx, val)
 
             result = ctx.generate_node(type_.attributes["code"])
 
@@ -825,9 +832,6 @@ class StructMethodTypeImpl(ConcreteFunctionTypeImpl):
 
     def params_public(self, value: Value) -> list[Type | None]:
         return super().params_public(value)[1:]
-
-    def reference_params(self) -> tuple[int, ...]:
-        return (0,)
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
         return super().call(ctx, value, [self.instance] + params)
