@@ -158,13 +158,13 @@ class LambdaType(Type):
 
 class ConcreteFunctionType(Type):
     name: str
-    params: list[Type]
-    named_params: list[tuple[str, Type, bool]]
+    params: list[Type | None]
+    named_params: list[tuple[str, Type | None, bool]]
     ret: Type | None
 
     attributes: dict
 
-    def __init__(self, name: str, named_params: list[tuple[str, Type, bool]], ret: Type | None, attributes: dict):
+    def __init__(self, name: str, named_params: list[tuple[str, Type | None, bool]], ret: Type | None, attributes: dict):
         self.name = name
         self.params = [p[1] for p in named_params]
         self.named_params = named_params
@@ -172,7 +172,7 @@ class ConcreteFunctionType(Type):
         self.attributes = attributes
 
     def __str__(self):
-        return f"fn {self.name}{FunctionType.format_type_named_ref(self.named_params, self.ret)}"
+        return f"fn {self.name}{FunctionType.format_type_named_optional_ref(self.named_params, self.ret)}"
 
     def __eq__(self, other):
         return isinstance(other, ConcreteFunctionType) and other.name == self.name and other.named_params == self.named_params and other.ret == self.ret

@@ -366,24 +366,27 @@ class ConcreteFunctionTypeImpl(TypeImpl):
     def callable(self, value: Value) -> bool:
         return True
 
+    def needs_function_ref(self, value: Value) -> bool:
+        return False
+
     def params(self, value: Value) -> list[Type | None]:
         type_ = value.type
         assert isinstance(type_, ConcreteFunctionType)
         return type_.params
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
-        assert len(self.params(value)) == len(params)
-        assert all(type_.contains(val.type) for type_, val in zip(self.params(value), params))
-
         type_ = value.type
         assert isinstance(type_, ConcreteFunctionType)
+
+        assert len(type_.params) == len(params)
+        assert all(type_ is None or type_.contains(val.type) for type_, val in zip(type_.params, params))
 
         with ctx.scope.function_call(ctx, f"{type_.name}:{ctx.tmp_num()}"):
             for i, ((name, val_type, ref), val) in enumerate(zip(type_.named_params, params)):
                 if ref:
                     ctx.scope.declare_special(name, val)
                 else:
-                    ctx.scope.declare(name, val_type, False).assign(ctx, val)
+                    ctx.scope.declare(name, val_type if val_type is not None else val.type, False).assign(ctx, val)
 
             result = ctx.generate_node(type_.attributes["code"])
 

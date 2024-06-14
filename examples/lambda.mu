@@ -1,4 +1,4 @@
-fn square(x: num) -> num {
+fn square(x) {
     x * x
 }
 
@@ -17,15 +17,15 @@ print(doubled_2(3));
 struct A {
     let x: num
 
-    fn mod(n: num) -> ? {
+    fn mod(n) {
         |&a|[n] { a.x += n }
     }
 
-    fn mod2() -> ? {
+    fn mod2() {
         |n|[&self] { self.x += n }
     }
 
-    fn add(n: num) {
+    fn add(n) {
         self.x += n;
     }
 }

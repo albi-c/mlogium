@@ -388,15 +388,12 @@ class Parser:
         return self.next(TokenType.ID).value, ref
 
     def _parse_named_func_type(self) -> NamedParamFunctionType:
-        params = self._parse_comma_separated(self._parse_name_with_type_ref)
+        params = self._parse_comma_separated(self._parse_name_with_optional_type_ref)
 
         if self.lookahead(TokenType.ARROW):
-            if self.lookahead(TokenType.QUESTION):
-                return NamedParamFunctionType(params, None)
-
             return NamedParamFunctionType(params, self.parse_type())
-
-        return NamedParamFunctionType(params, NullType())
+        else:
+            return NamedParamFunctionType(params, None)
 
     def _parse_func_type(self) -> FunctionType:
         params = self._parse_comma_separated(self.parse_type)
