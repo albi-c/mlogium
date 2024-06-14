@@ -536,6 +536,7 @@ class Parser:
         tok = self.next()
 
         if tok.type == TokenType.KW_IF:
+            const = bool(self.lookahead(TokenType.KW_CONST))
             cond = self.parse_value()
             code_if = self.parse_statement()
             pos = tok.pos + code_if.pos
@@ -544,7 +545,7 @@ class Parser:
                 pos = pos + code_else.pos
             else:
                 code_else = None
-            return IfNode(pos, cond, code_if, code_else)
+            return IfNode(pos, const, cond, code_if, code_else)
 
         elif tok.type == TokenType.LBRACE:
             return self.parse_block(True)

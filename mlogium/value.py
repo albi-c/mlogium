@@ -4,6 +4,7 @@ from .value_types import *
 from .compilation_context import CompilationContext
 from .instruction import Instruction
 from .abi import ABI
+from .optimizer import Optimizer
 
 
 class Value:
@@ -272,17 +273,51 @@ class NumberTypeImpl(TypeImpl):
         "^": "xor"
     }
 
+    @staticmethod
+    def try_precalc_op(a: str, op: str, b: str) -> Value | None:
+        try:
+            a = float(a)
+            if a.is_integer():
+                a = int(a)
+
+            try:
+                b = float(b)
+                if b.is_integer():
+                    b = int(b)
+
+                return Value.number(int(Optimizer.PRECALC[op](a, b)))
+
+            except ValueError:
+                try:
+                    return Value.number(int(Optimizer.PRECALC[op](a, None)))
+
+                except (ArithmeticError, ValueError, TypeError, KeyError):
+                    return None
+
+        except (ArithmeticError, ValueError, TypeError, KeyError):
+            return None
+
     def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> Value | None:
         if op in self.UNARY_OPS:
             tmp = Value.variable(ctx.tmp(), Type.NUM)
-            ctx.emit(Instruction.op(*(self.UNARY_OPS[op](tmp.value, value.value))))
+            params = self.UNARY_OPS[op](tmp.value, value.value)
+            if (val := self.try_precalc_op(params[2], params[0], params[3])) is not None:
+                return val
+            ctx.emit(Instruction.op(*params))
             return tmp
 
         return super().unary_op(ctx, value, op)
 
     def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
+        if op in ("==", "!="):
+            operator = "equal" if op == "==" else "notEqual"
+            if (val := self.try_precalc_op(value.value, operator, other.value)) is not None:
+                return val
+
         if (other_num := other.into(ctx, Type.NUM)) is not None and op in self.BINARY_OPS:
             tmp = Value.variable(ctx.tmp(), Type.NUM)
+            if (val := self.try_precalc_op(value.value, self.BINARY_OPS[op], other_num.value)) is not None:
+                return val
             ctx.emit(Instruction.op(self.BINARY_OPS[op], tmp.value, value.value, other_num.value))
             return tmp
 

@@ -335,19 +335,21 @@ class StructNode(Node):
 
 
 class IfNode(Node):
+    const: bool
     cond: Node
     code_if: Node
     code_else: Node | None
 
-    def __init__(self, pos: Position, cond: Node, code_if: Node, code_else: Node | None):
+    def __init__(self, pos: Position, const: bool, cond: Node, code_if: Node, code_else: Node | None):
         super().__init__(pos)
 
+        self.const = const
         self.cond = cond
         self.code_if = code_if
         self.code_else = code_else
 
     def __str__(self):
-        return f"if {self.cond} {self.code_if}{(' else ' + str(self.code_else)) if self.code_else is not None else ''}"
+        return f"if {'const ' if self.const else ''}{self.cond} {self.code_if}{(' else ' + str(self.code_else)) if self.code_else is not None else ''}"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_if_node(self)

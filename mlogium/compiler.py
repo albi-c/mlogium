@@ -222,6 +222,21 @@ class Compiler(AstVisitor[Value]):
         if (condition := cond_value.to_condition(self.ctx)) is None:
             self._error(f"Value of type '{cond_value.type}' is not usable as a condition", node.cond.pos)
 
+        if node.const:
+            try:
+                num = int(condition.value)
+            except ValueError:
+                self._error(f"Value '{node.cond}' is not usable as a constant condition")
+            else:
+                with self.scope(self.ctx.tmp()):
+                    if num != 0:
+                        return self.visit(node.code_if)
+                    else:
+                        if node.code_else is not None:
+                            return self.visit(node.code_else)
+                        else:
+                            return Value.null()
+
         end_true_branch = self.ctx.tmp()
         end_false_branch = "" if node.code_else is None else self.ctx.tmp()
         self.emit(Instruction.jump(end_true_branch, "equal", condition.value, "0"))

@@ -289,6 +289,17 @@ class SizeofvMacro(Macro):
         return Value.number(compiler.visit(params[0]).memcell_length(ctx.ctx))
 
 
+class UnpackableMacro(Macro):
+    def __init__(self):
+        super().__init__("unpackable")
+
+    def inputs(self) -> tuple[Macro.Input, ...]:
+        return (MacroInput.VALUE_NODE,)
+
+    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
+        return Value.number(int(compiler.visit(params[0]).unpack(ctx.ctx) is not None))
+
+
 MACROS: list[Macro] = [CastMacro(), ImportMacro(), RepeatMacro(), MapMacro(), UnpackMapMacro(), ZipMacro(), AllMacro(),
                        AnyMacro(), LenMacro(), SumMacro(), ProdMacro(), OperatorMacro(), TypeofMacro(), SizeofMacro(),
-                       SizeofvMacro()]
+                       SizeofvMacro(), UnpackableMacro()]

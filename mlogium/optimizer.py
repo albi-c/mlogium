@@ -109,6 +109,8 @@ class Optimizer:
         "greaterThan": lambda a, b: a > b,
         "greaterThanEq": lambda a, b: a >= b,
         "strictEqual": lambda a, b: a == b,
+        "equal": lambda a, b: a == b,
+        "notEqual": lambda a, b: a != b,
         "shl": lambda a, b: a << b,
         "shr": lambda a, b: a >> b,
         "or": lambda a, b: a | b,
