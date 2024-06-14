@@ -107,7 +107,10 @@ class Value:
     def callable(self) -> bool:
         return self.impl.callable(self)
 
-    def params(self) -> list[Type]:
+    def needs_function_ref(self) -> bool:
+        return self.impl.needs_function_ref(self)
+
+    def params(self) -> list[Type | None]:
         assert self.callable()
         return self.impl.params_public(self)
 
@@ -180,10 +183,13 @@ class TypeImpl:
     def callable(self, value: Value) -> bool:
         return False
 
-    def params(self, value: Value) -> list[Type]:
+    def needs_function_ref(self, value: Value) -> bool:
+        return True
+
+    def params(self, value: Value) -> list[Type | None]:
         raise NotImplementedError
 
-    def params_public(self, value: Value) -> list[Type]:
+    def params_public(self, value: Value) -> list[Type | None]:
         return self.params(value)
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
@@ -321,7 +327,7 @@ class AnonymousFunctionTypeImpl(TypeImpl):
     def callable(self, value: Value) -> bool:
         return True
 
-    def params(self, value: Value) -> list[Type]:
+    def params(self, value: Value) -> list[Type | None]:
         type_ = value.type
         assert isinstance(type_, FunctionType)
         return type_.params
@@ -359,7 +365,7 @@ class ConcreteFunctionTypeImpl(TypeImpl):
     def callable(self, value: Value) -> bool:
         return True
 
-    def params(self, value: Value) -> list[Type]:
+    def params(self, value: Value) -> list[Type | None]:
         type_ = value.type
         assert isinstance(type_, ConcreteFunctionType)
         return type_.params
@@ -395,11 +401,48 @@ class ConcreteFunctionTypeImpl(TypeImpl):
         return return_val
 
 
+class LambdaTypeImpl(TypeImpl):
+    def callable(self, value: Value) -> bool:
+        return True
+
+    def needs_function_ref(self, value: Value) -> bool:
+        return False
+
+    def params(self, value: Value) -> list[Type | None]:
+        type_ = value.type
+        assert isinstance(type_, LambdaType)
+        return type_.params
+
+    def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
+        type_ = value.type
+        assert isinstance(type_, LambdaType)
+
+        assert len(type_.params) == len(params)
+        assert all(type_ is None or type_.contains(val.type) for type_, val in zip(type_.params, params))
+
+        with ctx.scope.function_call(ctx, f"_lambda:{ctx.tmp_num()}"):
+            for i, ((name, val_type), val) in enumerate(zip(type_.named_params, params)):
+                ctx.scope.declare(name, val_type if val_type is not None else val.type, False).assign(ctx, val)
+
+            result = ctx.generate_node(type_.attributes["code"])
+
+            return_val = Value.variable(ABI.return_value(ctx.scope.get_function()),
+                                        type_.ret if type_.ret is not None else result.type)
+            if return_val.type.contains(result.type):
+                return_val.assign(ctx, result)
+            else:
+                return_val.assign_default(ctx)
+
+            ctx.emit(Instruction.label(ABI.function_end(ctx.scope.get_function())))
+
+        return return_val
+
+
 class IntrinsicFunctionTypeImpl(TypeImpl):
     def callable(self, value: Value) -> bool:
         return True
 
-    def params(self, value: Value) -> list[Type]:
+    def params(self, value: Value) -> list[Type | None]:
         type_ = value.type
         assert isinstance(type_, IntrinsicFunctionType)
         return type_.input_types
@@ -481,7 +524,7 @@ class TupleTypeImpl(TypeImpl):
             except ValueError:
                 return None
             else:
-                if len(type_.types) <= index < 0:
+                if len(type_.types) <= index or index < 0:
                     return None
                 return Value.variable(ABI.attribute(value.value, str(index)), type_.types[index], value.const)
 
@@ -594,7 +637,7 @@ class CustomEnumBaseTypeImpl(TypeImpl):
     def callable(self, value: Value) -> bool:
         return True
 
-    def params(self, value: Value) -> list[Type]:
+    def params(self, value: Value) -> list[Type | None]:
         return [Type.NUM]
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
@@ -679,7 +722,7 @@ class StructBaseTypeImpl(TypeImpl):
     def callable(self, value: Value = None) -> bool:
         return True
 
-    def params(self, value: Value = None) -> list[Type]:
+    def params(self, value: Value = None) -> list[Type | None]:
         return self.field_types
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
@@ -777,10 +820,10 @@ class StructMethodTypeImpl(ConcreteFunctionTypeImpl):
         self.instance = instance
         self.const = const
 
-    def params(self, value: Value) -> list[Type]:
+    def params(self, value: Value) -> list[Type | None]:
         return super().params(value)
 
-    def params_public(self, value: Value) -> list[Type]:
+    def params_public(self, value: Value) -> list[Type | None]:
         return super().params_public(value)[1:]
 
     def reference_params(self) -> tuple[int, ...]:
@@ -875,6 +918,7 @@ TypeImplRegistry.add_impls({
     UnionTypeImpl: UnionTypeImpl(),
     FunctionType: AnonymousFunctionTypeImpl(),
     ConcreteFunctionType: ConcreteFunctionTypeImpl(),
+    LambdaType: LambdaTypeImpl(),
     IntrinsicFunctionType: IntrinsicFunctionTypeImpl(),
     IntrinsicSubcommandFunctionType: IntrinsicSubcommandFunctionTypeImpl(),
     TupleType: TupleTypeImpl(),

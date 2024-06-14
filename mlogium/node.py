@@ -277,10 +277,10 @@ class FunctionNode(Node):
 
 
 class LambdaNode(Node):
-    type: NamedParamFunctionType
+    type: LambdaType
     code: Node
 
-    def __init__(self, pos: Position, type_: NamedParamFunctionType, code: Node):
+    def __init__(self, pos: Position, type_: LambdaType, code: Node):
         super().__init__(pos)
 
         self.type = type_

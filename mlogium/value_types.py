@@ -100,6 +100,10 @@ class FunctionType(Type):
     def format_type_named(params: list[tuple[str, Type]], ret: Type) -> str:
         return f"({', '.join(p[0] + ': ' + str(p[1]) for p in params)}) -> {str(ret)}"
 
+    @staticmethod
+    def format_type_named_optional(params: list[tuple[str, Type | None]], ret: Type | None) -> str:
+        return f"({', '.join(p[0] + ': ' + (str(p[1]) if p[1] is not None else '?') for p in params)}) -> {str(ret) if ret is not None else '?'}"
+
     def __init__(self, params: list[Type], ret: Type):
         self.params = params
         self.ret = ret
@@ -124,6 +128,26 @@ class NamedParamFunctionType(FunctionType):
 
     def __eq__(self, other):
         return isinstance(other, NamedParamFunctionType) and other.named_params == self.named_params and other.ret == self.ret
+
+
+class LambdaType(Type):
+    params: list[Type | None]
+    ret: Type | None
+    named_params: list[tuple[str, Type | None]]
+
+    attributes: dict
+
+    def __init__(self, _: str, named_params: list[tuple[str, Type | None]], ret: Type | None, attributes: dict):
+        self.params = [p[1] for p in named_params]
+        self.ret = ret
+        self.named_params = named_params
+        self.attributes = attributes
+
+    def __str__(self):
+        return FunctionType.format_type_named_optional(self.named_params, self.ret)
+
+    def __eq__(self, other):
+        return isinstance(other, LambdaType) and other.named_params == self.named_params and other.ret == self.ret
 
 
 class ConcreteFunctionType(Type):

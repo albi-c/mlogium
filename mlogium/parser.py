@@ -361,6 +361,13 @@ class Parser:
         type_ = self.parse_type()
         return name, type_
 
+    def _parse_name_with_optional_type(self) -> tuple[str, Type | None]:
+        name = self.next(TokenType.ID).value
+        if self.lookahead(TokenType.COLON):
+            return name, self.parse_type()
+        else:
+            return name, None
+
     def _parse_named_func_type(self) -> NamedParamFunctionType:
         params = self._parse_comma_separated(self._parse_name_with_type)
 
@@ -551,23 +558,27 @@ class Parser:
             return VariableValueNode(tok.pos, tok.value)
 
         elif tok.type == TokenType.OPERATOR and tok.value == "|":
-            params = self._parse_comma_separated(self._parse_name_with_type, None, TokenType.OPERATOR, "|")
+            params = self._parse_comma_separated(self._parse_name_with_optional_type, None, TokenType.OPERATOR, "|")
             if self.lookahead(TokenType.ARROW):
                 ret = self.parse_type()
             else:
-                ret = NullType()
-            self.next(TokenType.LBRACE)
-            code = self.parse_block(True)
-            return LambdaNode(tok.pos + code.pos, NamedParamFunctionType(params, ret), code)
+                ret = None
+            if self.lookahead(TokenType.LBRACE):
+                code = self.parse_block(True)
+            else:
+                code = self.parse_value()
+            return LambdaNode(tok.pos + code.pos, LambdaType("", params, ret, {}), code)
 
         elif tok.type == TokenType.OPERATOR and tok.value == "||":
             if self.lookahead(TokenType.ARROW):
                 ret = self.parse_type()
             else:
-                ret = NullType()
-            self.next(TokenType.LBRACE)
-            code = self.parse_block(True)
-            return LambdaNode(tok.pos + code.pos, NamedParamFunctionType([], ret), code)
+                ret = None
+            if self.lookahead(TokenType.LBRACE):
+                code = self.parse_block(True)
+            else:
+                code = self.parse_value()
+            return LambdaNode(tok.pos + code.pos, LambdaType("", [], ret, {}), code)
 
         elif tok.type == TokenType.HASH:
             return self._parse_macro(False)
