@@ -42,7 +42,8 @@ class Lexer:
         "struct": TokenType.KW_STRUCT,
         # "match": TokenType.KW_MATCH,
         "enum": TokenType.KW_ENUM,
-        "static": TokenType.KW_STATIC
+        "static": TokenType.KW_STATIC,
+        "scope": TokenType.KW_SCOPE
     }
 
     def _reset(self, code: str, filename: str, start_pos: tuple[int, int, list[str] | None] = (0, 0, None)):

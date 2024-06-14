@@ -228,14 +228,13 @@ class Compiler(AstVisitor[Value]):
             except ValueError:
                 self._error(f"Value '{node.cond}' is not usable as a constant condition")
             else:
-                with self.scope(self.ctx.tmp()):
-                    if num != 0:
-                        return self.visit(node.code_if)
+                if num != 0:
+                    return self.visit(node.code_if)
+                else:
+                    if node.code_else is not None:
+                        return self.visit(node.code_else)
                     else:
-                        if node.code_else is not None:
-                            return self.visit(node.code_else)
-                        else:
-                            return Value.null()
+                        return Value.null()
 
         end_true_branch = self.ctx.tmp()
         end_false_branch = "" if node.code_else is None else self.ctx.tmp()
@@ -255,6 +254,10 @@ class Compiler(AstVisitor[Value]):
             self.emit(Instruction.label(end_false_branch))
 
         return result
+
+    def visit_scope_node(self, node: ScopeNode) -> Value:
+        with self.scope(self.ctx.tmp()):
+            return self.visit(node.code)
 
     def visit_enum_node(self, node: EnumNode) -> Value:
         val = Value(BasicType("$Enum_" + node.name), node.name,

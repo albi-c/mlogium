@@ -22,6 +22,7 @@ class TokenType(enum.Flag):
     # KW_MATCH = enum.auto()
     KW_ENUM = enum.auto()
     KW_STATIC = enum.auto()
+    KW_SCOPE = enum.auto()
 
     STRING = enum.auto()
     NUMBER = enum.auto()

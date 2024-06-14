@@ -56,6 +56,10 @@ class AstVisitor[T](ABC):
     def visit_if_node(self, node: IfNode) -> T:
         raise NotImplementedError
 
+    @abstractmethod
+    def visit_scope_node(self, node: ScopeNode) -> T:
+        raise NotImplementedError
+
     # @abstractmethod
     # def visit_match_node(self, node: MatchNode) -> T:
     #     raise NotImplementedError
@@ -353,6 +357,21 @@ class IfNode(Node):
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_if_node(self)
+
+
+class ScopeNode(Node):
+    code: Node
+
+    def __init__(self, pos: Position, code: Node):
+        super().__init__(pos)
+
+        self.code = code
+
+    def __str__(self):
+        return f"scope {{ {self.code} }}"
+
+    def accept[T](self, visitor: AstVisitor[T]) -> T:
+        return visitor.visit_scope_node(self)
 
 
 # class MatchNode(Node):

@@ -10,7 +10,7 @@ class Position:
     file: str
 
     def print(self):
-        print(f"In file {self.file} on line {self.line}, column {self.start}")
+        print(f"In file {self.file} on line {self.line + 1}, column {self.start + 1}")
         print("Here:")
         print(self.code)
         print(" " * self.start + "^" * (self.end - self.start + 1))

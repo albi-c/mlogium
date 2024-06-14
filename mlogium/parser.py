@@ -223,6 +223,23 @@ class Parser:
             self.next()
             return self._parse_macro(True)
 
+        elif tok.type == TokenType.KW_IF:
+            self.next()
+            const = bool(self.lookahead(TokenType.KW_CONST))
+            cond = self.parse_value()
+            code_if = self.parse_top_level_statement() if const else self.parse_statement()
+            pos = tok.pos + code_if.pos
+            if self.lookahead(TokenType.KW_ELSE):
+                code_else = self.parse_top_level_statement() if const else self.parse_statement()
+                pos = pos + code_else.pos
+            else:
+                code_else = None
+            return IfNode(pos, const, cond, code_if, code_else)
+
+        elif tok.type == TokenType.LBRACE:
+            self.next()
+            return self.parse_block(True, True)
+
         return None
 
     def parse_top_level_statement(self) -> Node:
@@ -264,9 +281,6 @@ class Parser:
         return SingleAssignmentTarget(name, type_)
 
     def parse_statement(self) -> Node:
-        if (node := self._parse_top_level_statement_or_none()) is not None:
-            return node
-
         tok = self.lookahead()
 
         if tok.type in TokenType.KW_LET | TokenType.KW_CONST:
@@ -315,6 +329,15 @@ class Parser:
         elif tok.type == TokenType.KW_CONTINUE:
             self.next()
             return ContinueNode(tok.pos)
+
+        elif tok.type == TokenType.KW_SCOPE:
+            self.next()
+            start = self.next(TokenType.LBRACE)
+            code = self.parse_block(True)
+            return ScopeNode(start.pos + code.pos, code)
+
+        elif tok.type in (TokenType.KW_FN, TokenType.KW_STRUCT, TokenType.KW_ENUM):
+            ParserError.custom(tok.pos, "This construct must be used in a global context")
 
         return self.parse_value()
 
