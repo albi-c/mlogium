@@ -417,6 +417,16 @@ class Parser:
         return FunctionType(params, NullType())
 
     def _parse_tuple_type(self) -> TupleType:
+        if self.lookahead(TokenType.LBRACK):
+            n_tok = self.next(TokenType.NUMBER)
+            try:
+                n = int(n_tok.value)
+            except ValueError:
+                ParserError.custom(n_tok.pos, "Expected an integer")
+            else:
+                self.next(TokenType.RBRACK)
+                return TupleType([self.parse_type()] * n)
+
         return TupleType(self._parse_comma_separated(self.parse_type))
 
     def _parse_basic_type(self) -> BasicType:
@@ -431,7 +441,7 @@ class Parser:
         elif self.lookahead(TokenType.KW_FN):
             type_ = self._parse_func_type()
 
-        elif self.lookahead(TokenType.LPAREN, take_if_matches=False):
+        elif self.lookahead(TokenType.LPAREN | TokenType.LBRACK, take_if_matches=False):
             type_ = self._parse_tuple_type()
 
         else:

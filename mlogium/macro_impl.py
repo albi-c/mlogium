@@ -353,6 +353,31 @@ class ReduceMacro(Macro):
         return current
 
 
+class TakeMacro(Macro):
+    def __init__(self):
+        super().__init__("take")
+
+    def inputs(self) -> tuple[Macro.Input, ...]:
+        return (MacroInput.VALUE_NODE,)
+
+    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
+        tup = compiler.visit(params[0])
+        if (values := tup.unpack(ctx.ctx)) is None:
+            PositionedException.custom(params[0].pos, f"Value of type '{tup.type}' is not unpackable")
+        if len(values) == 0:
+            PositionedException.custom(params[0].pos, f"Not enough values to unpack")
+
+        return Value.tuple(ctx.ctx, [values[0], Value.tuple(ctx.ctx, values[1:])])
+
+
+class ReverseMacro(UnpackableOperatorMacro):
+    def __init__(self):
+        super().__init__("reverse")
+
+    def process(self, ctx: MacroInvocationContext, compiler: Compiler, values: list[Value]) -> Value:
+        return Value.tuple(ctx.ctx, values[::-1])
+
+
 MACROS: list[Macro] = [CastMacro(), ImportMacro(), RepeatMacro(), MapMacro(), UnpackMapMacro(), ZipMacro(), AllMacro(),
                        AnyMacro(), LenMacro(), SumMacro(), ProdMacro(), OperatorMacro(), TypeofMacro(), SizeofMacro(),
-                       SizeofvMacro(), UnpackableMacro(), ForeachMacro(), ReduceMacro()]
+                       SizeofvMacro(), UnpackableMacro(), ForeachMacro(), ReduceMacro(), TakeMacro(), ReverseMacro()]
