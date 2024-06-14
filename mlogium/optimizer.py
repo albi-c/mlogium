@@ -174,6 +174,9 @@ class Optimizer:
             pass
         cls._remove_noops(code)
 
+        while cls._join_instructions(code):
+            cls._remove_noops(code)
+
         return code
 
     @classmethod
@@ -594,6 +597,46 @@ class Optimizer:
                 if outputs[param] == 1 and first_ins.name == Instruction.set.name and first_ins.params[0] == param:
                     ins.params[j] = first_ins.params[1]
                     found = True
+
+        return found
+
+    @classmethod
+    def _join_instructions_flush(cls, code: Instructions, prints: list[tuple[int, str]]) -> bool:
+        if len(prints) > 1:
+            buffer = "".join(p for _, p in prints)
+
+            code[prints[0][0]].params[0] = f"\"{buffer}\""
+            for i, _ in prints[1:]:
+                code[i] = Instruction.noop()
+
+            return True
+
+        prints.clear()
+
+    @classmethod
+    def _join_instructions(cls, code: Instructions) -> bool:
+        found = False
+
+        prints: list[tuple[int, str]] = []
+        for i, ins in enumerate(code):
+            if ins.name == Instruction.print.name:
+                val = None
+                try:
+                    _ = float(ins.params[0])
+                    val = ins.params[0]
+                except ValueError:
+                    if ins.params[0].startswith("\"") and ins.params[0].endswith("\""):
+                        val = ins.params[0][1:-1]
+
+                if val is None:
+                    found = found or cls._join_instructions_flush(code, prints)
+                else:
+                    prints.append((i, val))
+
+            else:
+                found = found or cls._join_instructions_flush(code, prints)
+
+        found = found or cls._join_instructions_flush(code, prints)
 
         return found
 

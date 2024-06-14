@@ -283,17 +283,7 @@ class Parser:
     def parse_statement(self) -> Node:
         tok = self.lookahead()
 
-        if tok.type in TokenType.KW_LET | TokenType.KW_CONST:
-            const = tok.type == TokenType.KW_CONST
-
-            self.next()
-
-            target = self._parse_assignment_target(tok.pos)
-            self.next(TokenType.ASSIGNMENT, "=")
-            val = self.parse_value()
-            return DeclarationNode(tok.pos + val.pos, const, target, val)
-
-        elif tok.type == TokenType.KW_WHILE:
+        if tok.type == TokenType.KW_WHILE:
             self.next()
             cond = self.parse_value()
             code = self.parse_statement()
@@ -450,6 +440,18 @@ class Parser:
         return type_
 
     def parse_value(self) -> Node:
+        tok = self.lookahead()
+
+        if tok.type in TokenType.KW_LET | TokenType.KW_CONST:
+            const = tok.type == TokenType.KW_CONST
+
+            self.next()
+
+            target = self._parse_assignment_target(tok.pos)
+            self.next(TokenType.ASSIGNMENT, "=")
+            val = self.parse_value()
+            return DeclarationNode(tok.pos + val.pos, const, target, val)
+
         return self.parse_assignment()
 
     def _parse_binary_op(self, values: tuple[str, ...] | None, func: Callable[[], Node],
