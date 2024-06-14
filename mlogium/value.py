@@ -355,12 +355,12 @@ class AnonymousFunctionTypeImpl(TypeImpl):
 
 
 class ConcreteFunctionTypeImpl(TypeImpl):
-    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
-        if isinstance(type_, FunctionType):
-            val_type = value.type
-            assert isinstance(val_type, ConcreteFunctionType)
-            if type_.params == val_type.params and type_.ret == val_type.ret:
-                return Value(type_, ABI.label_var(ABI.function_label(val_type.name)), True)
+    # def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+    #     if isinstance(type_, FunctionType):
+    #         val_type = value.type
+    #         assert isinstance(val_type, ConcreteFunctionType)
+    #         if type_.params == val_type.params and type_.ret == val_type.ret:
+    #             return Value(type_, ABI.label_var(ABI.function_label(val_type.name)), True)
 
     def callable(self, value: Value) -> bool:
         return True
