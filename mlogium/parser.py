@@ -165,7 +165,7 @@ class Parser:
             case _:
                 raise ValueError("Unknown macro parameter type")
 
-    def _parse_macro(self, top_level: bool, is_type: bool = False) -> Node | Type:
+    def _parse_macro(self, top_level: bool, is_type: bool = False) -> Node:
         name = self.next(TokenType.ID)
         if (macro := self.macro_registry.get(name.value)) is None:
             ParserError.custom(name.pos, f"Macro not found: '{name.value}'")
@@ -182,12 +182,13 @@ class Parser:
 
         self.next(TokenType.RPAREN)
 
-        # if macro.is_type() and not is_type:
-        #     ParserError.custom(name.pos, "Use of type macro in a value context")
-        # elif not macro.is_type() and is_type:
-        #     ParserError.custom(name.pos, "Use of value macro in a type context")
+        if macro.is_type() and not is_type:
+            ParserError.custom(name.pos, "Use of type macro in a value context")
+        elif not macro.is_type() and is_type:
+            ParserError.custom(name.pos, "Use of value macro in a type context")
 
-        # return macro.invoke(MacroInvocationContext(name.pos, self.macro_registry), params)
+        if macro.is_type():
+            ParserError.custom(name.pos, "Type macros are not yet implemented")
 
         return MacroInvocationNode(name.pos, self.macro_registry, name.value, params)
 

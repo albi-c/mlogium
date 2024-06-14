@@ -246,12 +246,49 @@ class OperatorMacro(Macro):
             PositionedException.custom(params[0].pos, "Op macro requires an operator")
         op = params[0].value
 
-        return compiler._register_function(
+        return compiler.register_function(
             ctx.ctx.tmp(),
             NamedParamFunctionType([("a", BasicType.NUM), ("b", BasicType.NUM)], BasicType.NUM),
             BinaryOpNode(ctx.pos, VariableValueNode(ctx.pos, "a"), op, VariableValueNode(ctx.pos, "b"))
         )
 
 
+class TypeofMacro(Macro):
+    def __init__(self):
+        super().__init__("typeof")
+
+    def is_type(self) -> bool:
+        return True
+
+    def inputs(self) -> tuple[Macro.Input, ...]:
+        return (MacroInput.VALUE_NODE,)
+
+    def type_invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Type:
+        return compiler.visit(params[0]).type
+
+
+class SizeofMacro(Macro):
+    def __init__(self):
+        super().__init__("sizeof")
+
+    def inputs(self) -> tuple[Macro.Input, ...]:
+        return (MacroInput.TYPE,)
+
+    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
+        return Value.number(Value.variable("_", params[0]).memcell_length(ctx.ctx))
+
+
+class SizeofvMacro(Macro):
+    def __init__(self):
+        super().__init__("sizeofv")
+
+    def inputs(self) -> tuple[Macro.Input, ...]:
+        return (MacroInput.VALUE_NODE,)
+
+    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
+        return Value.number(compiler.visit(params[0]).memcell_length(ctx.ctx))
+
+
 MACROS: list[Macro] = [CastMacro(), ImportMacro(), RepeatMacro(), MapMacro(), UnpackMapMacro(), ZipMacro(), AllMacro(),
-                       AnyMacro(), LenMacro(), SumMacro(), ProdMacro(), OperatorMacro()]
+                       AnyMacro(), LenMacro(), SumMacro(), ProdMacro(), OperatorMacro(), TypeofMacro(), SizeofMacro(),
+                       SizeofvMacro()]

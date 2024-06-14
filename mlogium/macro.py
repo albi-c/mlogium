@@ -7,7 +7,7 @@ from abc import abstractmethod, ABC
 
 from .lexer import *
 from .compilation_context import CompilationContext
-from .value import Value
+from .value import Value, Type
 
 
 class MacroInput(enum.Enum):
@@ -46,11 +46,16 @@ class Macro(ABC):
     def inputs(self) -> tuple[Input, ...]:
         raise NotImplementedError
 
+    def is_type(self) -> bool:
+        return False
+
     def top_level_only(self) -> bool:
         return False
 
-    @abstractmethod
     def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
+        raise NotImplementedError
+
+    def type_invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Type:
         raise NotImplementedError
 
 

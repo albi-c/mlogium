@@ -133,7 +133,7 @@ class Compiler(AstVisitor[Value]):
             Value.variable(ABI.function_return_value(), ret.type).assign(self.ctx, ret)
             self.emit(Instruction.jump_addr(ret_addr.value))
 
-    def _register_function(self, name: str, type_: NamedParamFunctionType, code: Node) -> Value:
+    def register_function(self, name: str, type_: NamedParamFunctionType, code: Node) -> Value:
         val = self._make_function_value(name, type_, code)
         self._register_function_value(name, val)
         return val
@@ -141,11 +141,11 @@ class Compiler(AstVisitor[Value]):
     def visit_function_node(self, node: FunctionNode) -> Value:
         return self._var_declare_special(
             node.name,
-            self._register_function(node.name, node.type, node.code)
+            self.register_function(node.name, node.type, node.code)
         )
 
     def visit_lambda_node(self, node: LambdaNode) -> Value:
-        return self._register_function(f"__lambda_{self.ctx.tmp_num()}", node.type, node.code)
+        return self.register_function(f"__lambda_{self.ctx.tmp_num()}", node.type, node.code)
 
     def visit_return_node(self, node: ReturnNode) -> Value:
         if (func := self.scope.get_function()) is None:
