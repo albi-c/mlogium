@@ -300,6 +300,59 @@ class UnpackableMacro(Macro):
         return Value.number(int(compiler.visit(params[0]).unpack(ctx.ctx) is not None))
 
 
+class ForeachMacro(Macro):
+    def __init__(self):
+        super().__init__("foreach")
+
+    def inputs(self) -> tuple[Macro.Input, ...]:
+        return MacroInput.VALUE_NODE, MacroInput.VALUE_NODE
+
+    def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
+        func = compiler.visit(params[0])
+        if not func.callable():
+            PositionedException.custom(params[0].pos, f"Value of type '{params[0].type}' is not callable")
+        if len(func.params()) != 1:
+            PositionedException.custom(params[0].pos, f"Value of type '{params[0].type}' has to take 1 parameter")
+
+        tup = compiler.visit(params[1])
+        if (values := tup.unpack(ctx.ctx)) is None:
+            PositionedException.custom(params[1].pos, f"Value of type '{tup.type}' is not unpackable")
+
+        param = func.params()[0]
+        for val in values:
+            func.call(ctx.ctx, [val.into_req(ctx.ctx, param)])
+
+        return Value.null()
+
+
+class ReduceMacro(Macro):
+    def __init__(self):
+        super().__init__("reduce")
+
+    def inputs(self) -> tuple[Macro.Input, ...]:
+        return MacroInput.VALUE_NODE, MacroInput.VALUE_NODE, MacroInput.VALUE_NODE
+
+    def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
+        func = compiler.visit(params[0])
+        if not func.callable():
+            PositionedException.custom(params[0].pos, f"Value of type '{params[0].type}' is not callable")
+        if len(func.params()) != 2:
+            PositionedException.custom(params[0].pos, f"Value of type '{params[0].type}' has to take 1 parameter")
+
+        tup = compiler.visit(params[1])
+        if (values := tup.unpack(ctx.ctx)) is None:
+            PositionedException.custom(params[1].pos, f"Value of type '{tup.type}' is not unpackable")
+
+        start = compiler.visit(params[2])
+        current = Value.variable(ctx.ctx.tmp(), start.type)
+        current.assign(ctx.ctx, start)
+
+        for val in values:
+            current = func.call(ctx.ctx, [current, val])
+
+        return current
+
+
 MACROS: list[Macro] = [CastMacro(), ImportMacro(), RepeatMacro(), MapMacro(), UnpackMapMacro(), ZipMacro(), AllMacro(),
                        AnyMacro(), LenMacro(), SumMacro(), ProdMacro(), OperatorMacro(), TypeofMacro(), SizeofMacro(),
-                       SizeofvMacro(), UnpackableMacro()]
+                       SizeofvMacro(), UnpackableMacro(), ForeachMacro(), ReduceMacro()]
