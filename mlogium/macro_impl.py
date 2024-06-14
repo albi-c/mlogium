@@ -248,7 +248,7 @@ class OperatorMacro(Macro):
 
         return compiler.register_function(
             ctx.ctx.tmp(),
-            NamedParamFunctionType([("a", BasicType.NUM), ("b", BasicType.NUM)], BasicType.NUM),
+            NamedParamFunctionType([("a", BasicType.NUM, False), ("b", BasicType.NUM, False)], BasicType.NUM),
             BinaryOpNode(ctx.pos, VariableValueNode(ctx.pos, "a"), op, VariableValueNode(ctx.pos, "b"))
         )
 
@@ -378,6 +378,56 @@ class ReverseMacro(UnpackableOperatorMacro):
         return Value.tuple(ctx.ctx, values[::-1])
 
 
+class RangeMacro(Macro):
+    def __init__(self):
+        super().__init__("range")
+
+    def inputs(self) -> tuple[Macro.Input, ...]:
+        return (MacroInput.TOKEN,)
+
+    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
+        try:
+            n = int(params[0].value)
+            return Value.tuple(ctx.ctx, [Value.number(i) for i in range(n)])
+        except ValueError:
+            PositionedException.custom(params[0].pos, "Range macro requires an integer")
+
+
+class GenerateMacro(Macro):
+    def __init__(self):
+        super().__init__("generate")
+
+    def inputs(self) -> tuple[Macro.Input, ...]:
+        return MacroInput.TOKEN, MacroInput.VALUE_NODE
+
+    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
+        func = compiler.visit(params[1])
+        if not func.callable():
+            PositionedException.custom(params[1].pos, f"Value of type '{params[1].type}' is not callable")
+        if len(func.params()) != 1:
+            PositionedException.custom(params[1].pos, f"Value of type '{params[1].type}' has to take 1 parameter")
+
+        try:
+            n = int(params[0].value)
+            return Value.tuple(ctx.ctx, [func.call(ctx.ctx, [Value.number(i)]) for i in range(n)])
+        except ValueError:
+            PositionedException.custom(params[0].pos, "Generate macro requires an integer")
+
+
+class DefaultMacro(Macro):
+    def __init__(self):
+        super().__init__("default")
+
+    def inputs(self) -> tuple[Macro.Input, ...]:
+        return (MacroInput.TYPE,)
+
+    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
+        var = Value.variable(ctx.ctx.tmp(), params[0])
+        var.assign_default(ctx.ctx)
+        return var
+
+
 MACROS: list[Macro] = [CastMacro(), ImportMacro(), RepeatMacro(), MapMacro(), UnpackMapMacro(), ZipMacro(), AllMacro(),
                        AnyMacro(), LenMacro(), SumMacro(), ProdMacro(), OperatorMacro(), TypeofMacro(), SizeofMacro(),
-                       SizeofvMacro(), UnpackableMacro(), ForeachMacro(), ReduceMacro(), TakeMacro(), ReverseMacro()]
+                       SizeofvMacro(), UnpackableMacro(), ForeachMacro(), ReduceMacro(), TakeMacro(), ReverseMacro(),
+                       RangeMacro(), GenerateMacro(), DefaultMacro()]

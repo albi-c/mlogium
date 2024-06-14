@@ -273,6 +273,9 @@ class NumberTypeImpl(TypeImpl):
         "^": "xor"
     }
 
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        self.assign(ctx, value, Value.number(0))
+
     @staticmethod
     def try_precalc_op(a: str, op: str, b: str) -> Value | None:
         try:
@@ -322,6 +325,14 @@ class NumberTypeImpl(TypeImpl):
             return tmp
 
         return super().binary_op(ctx, value, op, other)
+
+    def to_condition(self, ctx: CompilationContext, value: Value) -> Value | None:
+        return value
+
+
+class StringTypeImpl(TypeImpl):
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        self.assign(ctx, value, Value.string(""))
 
     def to_condition(self, ctx: CompilationContext, value: Value) -> Value | None:
         return value
@@ -969,6 +980,7 @@ TypeImplRegistry.add_impls({
 
 TypeImplRegistry.add_default_basic_type_impls({
     Type.NUM.name: NumberTypeImpl(),
+    Type.STR.name: StringTypeImpl(),
     Type.BLOCK.name: BlockTypeImpl(),
     Type.RANGE.name: RangeTypeImpl()
 })
