@@ -781,7 +781,7 @@ class StructBaseTypeImpl(TypeImpl):
 
     def rebuild(self):
         self.field_types = [t for _, t in self.fields]
-        self.instance_impl = StructInstanceTypeImpl(self.fields, self.methods, self.static_values,
+        self.instance_impl = StructInstanceTypeImpl(self, self.fields, self.methods, self.static_values,
                                                     [f for f, _ in self.fields], self.parents)
         TypeImplRegistry.add_basic_type_impl(self.name, self.instance_impl)
 
@@ -813,14 +813,16 @@ class StructBaseTypeImpl(TypeImpl):
 
 
 class StructInstanceTypeImpl(TypeImpl):
+    base: StructBaseTypeImpl
     fields: dict[str, Type]
     methods: dict[str, tuple[bool, Value]]
     static_values: dict[str, Value]
     field_list: list[str]
     parents: dict[str, StructInstanceTypeImpl]
 
-    def __init__(self, fields: list[tuple[str, Type]], methods: dict[str, tuple[bool, Value]],
+    def __init__(self, base: StructBaseTypeImpl, fields: list[tuple[str, Type]], methods: dict[str, tuple[bool, Value]],
                  static_values: dict[str, Value], field_list: list[str], parents: list[StructBaseTypeImpl]):
+        self.base = base
         self.fields = {k: v for k, v in fields}
         self.methods = methods
         self.static_values = static_values
@@ -831,6 +833,18 @@ class StructInstanceTypeImpl(TypeImpl):
         if isinstance(type_, BasicType):
             if type_.name in self.parents:
                 return Value(type_, value.value, value.const, const_on_write=value.const_on_write)
+
+    def callable(self, value: Value) -> bool:
+        return self.base.callable(value)
+
+    def params(self, value: Value) -> list[Type | None]:
+        return self.base.params(value)
+
+    def params_public(self, value: Value) -> list[Type | None]:
+        return self.base.params_public(value)
+
+    def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
+        return self.base.call(ctx, value, params)
 
     def memcell_length(self, ctx: CompilationContext, value: Value) -> int:
         return sum(value.getattr(ctx, name, False).memcell_length(ctx) for name in self.field_list)

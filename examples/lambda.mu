@@ -14,6 +14,10 @@ print(square(3));
 print(doubled_1(3));
 print(doubled_2(3));
 
+fn transform(&f, &s) {
+    s(f(...s)...)
+}
+
 struct A {
     let x: num
 
@@ -30,3 +34,4 @@ let a = A(1);
 a.mod(3)(a);
 a.mod2()(4);
 print(a.x);
+print(transform(|&t| #map(|&x| x + 1, t), a).x);
