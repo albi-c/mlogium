@@ -152,9 +152,13 @@ class Optimizer:
         cls._optimize_jumps(code)
         cls._remove_noops(code)
 
-        while cls._optimize_set_op(code) or cls._precalculate_op_jump(code):
+        # while cls._optimize_set_op(code) or cls._precalculate_op_jump(code):
+        #     pass
+        while cls._precalculate_op_jump(code):
             pass
         cls._remove_noops(code)
+
+        # return code
 
         blocks = cls._make_blocks(code)
         cls._eval_block_jumps(blocks)
@@ -565,14 +569,7 @@ class Optimizer:
         found = False
         for i, ins in enumerate(code):
             if ins.name == Instruction.set.name:
-                if uses[ins.params[0]] == 1:
-                    code[i] = Instruction.noop()
-                    return True
-
-                tmp = ins.params[1]
-                first = first_uses[tmp]
-                if inputs[tmp] == 1 and outputs[tmp] == 1 and i != first[0]:
-                    code[first[0]].params[first[1]] = ins.params[0]
+                if uses[ins.params[0]] == 1 or ins.params[0] == ins.params[1]:
                     code[i] = Instruction.noop()
                     return True
 

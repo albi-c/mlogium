@@ -17,11 +17,15 @@ fn g_zip(&a, &b) {
            ||[&a, &b] a.1() && b.1())
 }
 
-fn g_buildings() {
+fn g_range(&n: num) {
     let i = 0;
-    (||[&i] {
-        let b = getlink(i);
+    g_make(||[&i] {
+        let x = i;
         i += 1;
-        b
-    }, ||[&i] i < @links)
+        x
+    }, ||[&i, &n] i < n)
+}
+
+fn g_buildings() {
+    g_map(getlink, g_range(@links))
 }
