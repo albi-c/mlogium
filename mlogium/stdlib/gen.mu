@@ -35,13 +35,23 @@ struct Gen of ? {
         }, ||[&i, &n] i < n)
     }
 
+    static fn generate(&f) {
+        let i = -1;
+        Gen::new(||[&i, &f] { i += 1; f(i) }
+                 || true)
+    }
+
     static fn buildings() {
         Gen::range(@links).map(getlink)
     }
 
-    fn foreach(&f) {
+    fn peek(&f) {
         self::new(||[&self, &f] { let v = self.next(); f(v); v },
                   ||[&self] self.has())
+    }
+
+    fn foreach(&f) {
+        self.peek(f).consume()
     }
 
     fn reduce(&f, s) {
@@ -61,6 +71,36 @@ struct Gen of ? {
 
     fn consume() {
         for _ in self {}
+    }
+
+    fn count() {
+        let n = 0;
+        for _ in self {
+            n += 1;
+        }
+        n
+    }
+
+    fn all() {
+        let r = true;
+        for v in self {
+            r &&= v;
+        }
+        r
+    }
+
+    fn any() {
+        let r = false;
+        for v in self {
+            r ||= r;
+        }
+        r
+    }
+
+    fn limit(&n: num) {
+        let i = 0;
+        Gen::new(||[&self, &i] { i += 1; self.next() },
+                 ||[&self, &i, &n] { i < n && self.has() })
     }
 
     fn skip() {
