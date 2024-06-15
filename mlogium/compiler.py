@@ -319,7 +319,7 @@ class Compiler(AstVisitor[Value]):
         iterable = self.visit(node.iterable)
         iterator = iterable.iterate(self.ctx)
         if iterator is None:
-            self._error(f"Not iterable: '{iterable.type}'", node.iterable.pos)
+            self._error(f"Value of type '{iterable.type}' is not iterable", node.iterable.pos)
         self.emit(Instruction.label(name + "_start"))
         has_value = iterator.has_value(self.ctx).value
         self.emit(Instruction.jump(name + "_break", "equal", has_value, "0"))
@@ -333,6 +333,17 @@ class Compiler(AstVisitor[Value]):
             Instruction.label(name + "_break")
         )
         return Value.null()
+
+    def visit_comprehension_node(self, node: ComprehensionNode) -> Value:
+        iterable = self.visit(node.iterable)
+        if (values := iterable.unpack(self.ctx)) is None:
+            self._error(f"Value of type '{iterable.type}' is not iterable", node.iterable.pos)
+        results = []
+        for val in values:
+            with self.scope(self.ctx.tmp()):
+                self._declare_target(node.target, val, True)
+                results.append(self.visit(node.expr))
+        return Value.tuple(self.ctx, results)
 
     def visit_break_node(self, node: BreakNode) -> Value:
         if (name := self.scope.get_loop()) is None:

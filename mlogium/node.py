@@ -77,6 +77,10 @@ class AstVisitor[T](ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def visit_comprehension_node(self, node: ComprehensionNode) -> T:
+        raise NotImplementedError
+
+    @abstractmethod
     def visit_break_node(self, node: BreakNode) -> T:
         raise NotImplementedError
 
@@ -445,6 +449,25 @@ class ForNode(Node):
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_for_node(self)
+
+
+class ComprehensionNode(Node):
+    expr: Node
+    target: AssignmentTarget
+    iterable: Node
+
+    def __init__(self, pos: Position, expr: Node, target: AssignmentTarget, iterable: Node):
+        super().__init__(pos)
+
+        self.expr = expr
+        self.target = target
+        self.iterable = iterable
+
+    def __str__(self):
+        return f"({self.expr} for {self.target} in {self.iterable})"
+
+    def accept[T](self, visitor: AstVisitor[T]) -> T:
+        return visitor.visit_comprehension_node(self)
 
 
 class BreakNode(Node):

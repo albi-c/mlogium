@@ -596,6 +596,12 @@ class Parser:
             val = self.parse_value()
             if self.lookahead(TokenType.COMMA):
                 return TupleValueNode(tok.pos, [val] + self._parse_comma_separated(self.parse_value, None))
+            elif for_tok := self.lookahead(TokenType.KW_FOR):
+                target = self._parse_assignment_target(for_tok.pos)
+                self.next(TokenType.KW_IN)
+                iterable = self.parse_value()
+                end = self.next(TokenType.RPAREN)
+                return ComprehensionNode(tok.pos + end.pos, val, target, iterable)
             else:
                 self.next(TokenType.RPAREN)
                 return val
