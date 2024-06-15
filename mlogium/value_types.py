@@ -41,7 +41,7 @@ class Type(ABC):
 
 class AnyType(Type):
     def __str__(self):
-        return "any"
+        return "?"
 
     def __eq__(self, other):
         return isinstance(other, AnyType)
@@ -73,16 +73,16 @@ class UnionType(Type):
         self.types = types
 
     def __str__(self):
-        return " | ".join(map(str, sorted(self.types, key=hash)))
+        return " | ".join(map(str, self.types))
 
     def __eq__(self, other):
         return isinstance(other, UnionType) and other.types == self.types
 
     def contains(self, other: Type) -> bool:
         if isinstance(other, UnionType):
-            return all(t in self.types for t in other.types)
+            return all(any(t_.contains(t) for t_ in self.types) for t in other.types)
 
-        return other in self.types
+        return any(t.contains(other) for t in self.types)
 
     def is_opaque(self) -> bool:
         return any(type_.is_opaque() for type_ in self.types)
@@ -158,6 +158,21 @@ class LambdaType(Type):
 
     def __eq__(self, other):
         return isinstance(other, LambdaType) and other.named_params == self.named_params and other.ret == self.ret
+
+
+class WrapperStructInstanceType(Type):
+    name: str
+    wrapped: Type
+
+    def __init__(self, name: str, wrapped: Type):
+        self.name = name
+        self.wrapped = wrapped
+
+    def __str__(self):
+        return f"{self.name}[{self.wrapped}]"
+
+    def __eq__(self, other):
+        return isinstance(other, WrapperStructInstanceType) and self.name == other.name and self.wrapped == other.wrapped
 
 
 class ConcreteFunctionType(Type):

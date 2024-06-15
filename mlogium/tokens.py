@@ -23,6 +23,7 @@ class TokenType(enum.Flag):
     KW_ENUM = enum.auto()
     KW_STATIC = enum.auto()
     KW_SCOPE = enum.auto()
+    KW_OF = enum.auto()
 
     STRING = enum.auto()
     NUMBER = enum.auto()

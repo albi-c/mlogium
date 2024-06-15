@@ -93,7 +93,8 @@ class Parser:
         return BlockNode(self._current_pos() if not code else code[0].pos + code[-1].pos,
                          code, returns_last and not top_level)
 
-    def _parse_struct_inner(self) -> tuple[list[SingleAssignmentTarget], list[tuple[bool, SingleAssignmentTarget, Node]], list[tuple[bool, str, NamedParamFunctionType, Node]], list[tuple[str, NamedParamFunctionType, Node]]]:
+    def _parse_struct_inner(self, has_fields: bool) \
+            -> tuple[list[SingleAssignmentTarget], list[tuple[bool, SingleAssignmentTarget, Node]], list[tuple[bool, str, NamedParamFunctionType, Node]], list[tuple[str, NamedParamFunctionType, Node]]]:
         fields: list[SingleAssignmentTarget] = []
         static_fields: list[tuple[bool, SingleAssignmentTarget, Node]] = []
         methods: list[tuple[bool, str, NamedParamFunctionType, Node]] = []
@@ -120,7 +121,7 @@ class Parser:
                     static_methods.append((name, type_, code))
 
             else:
-                if self.lookahead(TokenType.KW_LET):
+                if has_fields and self.lookahead(TokenType.KW_LET):
                     name = self.next(TokenType.ID).value
                     if self.lookahead(TokenType.COLON):
                         type_ = self.parse_type()
@@ -206,15 +207,20 @@ class Parser:
         elif tok.type in TokenType.KW_STRUCT:
             self.next()
             name = self.next(TokenType.ID).value
+            parent = None
+            wrapped = None
             if self.lookahead(TokenType.COLON):
                 parent = self.next(TokenType.ID).value
-            else:
-                parent = None
+            elif self.lookahead(TokenType.KW_OF):
+                if self.lookahead(TokenType.QUESTION):
+                    wrapped = Type.ANY
+                else:
+                    wrapped = self.parse_type()
             self.next(TokenType.LBRACE)
 
-            fields, static_fields, methods, static_methods = self._parse_struct_inner()
+            fields, static_fields, methods, static_methods = self._parse_struct_inner(wrapped is None)
 
-            return StructNode(tok.pos, name, parent, fields, static_fields, methods, static_methods)
+            return StructNode(tok.pos, name, parent, wrapped, fields, static_fields, methods, static_methods)
 
         elif tok.type == TokenType.KW_ENUM:
             self.next()

@@ -37,13 +37,13 @@ class Lexer:
         "for": TokenType.KW_FOR,
         "break": TokenType.KW_BREAK,
         "continue": TokenType.KW_CONTINUE,
-        # "yield": TokenType.KW_YIELD,
         "in": TokenType.KW_IN,
         "struct": TokenType.KW_STRUCT,
         # "match": TokenType.KW_MATCH,
         "enum": TokenType.KW_ENUM,
         "static": TokenType.KW_STATIC,
-        "scope": TokenType.KW_SCOPE
+        "scope": TokenType.KW_SCOPE,
+        "of": TokenType.KW_OF
     }
 
     def _reset(self, code: str, filename: str, start_pos: tuple[int, int, list[str] | None] = (0, 0, None)):

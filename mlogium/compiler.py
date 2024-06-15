@@ -187,7 +187,60 @@ class Compiler(AstVisitor[Value]):
 
         struct.rebuild()
 
+    def _visit_wrapper_struct(self, node: StructNode) -> Value:
+        wrapped = node.wrapped
+        assert wrapped is not None
+
+        methods = {}
+        names = set()
+        static_values = {}
+        functions_to_register = []
+        static_variables = []
+
+        for const, name, type_, code in node.methods:
+            if name in names:
+                self._error(f"Struct already has field '{name}'")
+            names.add(name)
+            name_ = ABI.attribute(node.name, name)
+            type_modified = NamedParamFunctionType(
+                [("self", None, True)] + type_.named_params, type_.ret)
+            val = self._make_function_value(name_, type_modified, code, False)
+            methods[name] = (const, val)
+
+        for name, type_, code in node.static_methods:
+            if name in static_values:
+                self._error(f"Struct already has attribute '{name}'")
+            name_ = ABI.static_attribute(node.name, name)
+            val = self._make_function_value(name_, type_, code, False)
+            static_values[name] = val
+            functions_to_register.append((name_, val))
+
+        for const, target, value in node.static_fields:
+            if target.name in static_values:
+                self._error(f"Struct already has attribute '{target.name}'")
+            names.add(target.name)
+            static_variables.append((const, target, value))
+
+        impl = WrapperStructBaseTypeImpl(node.name, wrapped, methods, static_values)
+        struct = Value(BasicType(f"$WrapperStructBase_{node.name}"), node.name, impl=impl)
+        self._var_declare_special(node.name, struct)
+        impl.register_type()
+
+        for const, target, value in static_variables:
+            val = self.visit(value)
+            var = Value.variable(self.ctx.tmp(), val.type, const_on_write=const)
+            var.assign(self.ctx, val)
+            static_values[target.name] = var
+
+        for name, val in functions_to_register:
+            self._register_function_value(name, val)
+
+        return struct
+
     def visit_struct_node(self, node: StructNode) -> Value:
+        if node.wrapped is not None:
+            return self._visit_wrapper_struct(node)
+
         if node.parent is not None:
             if node.parent == node.name:
                 self._error(f"Struct cannot inherit from itself", node.pos)

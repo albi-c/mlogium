@@ -70,6 +70,11 @@ class Value:
         if type_ is None or type_.contains(self.type):
             return self
 
+        if isinstance(type_, UnionType):
+            for option in type_.types:
+                if (value := self.into(ctx, option)) is not None:
+                    return value
+
         return self.impl.into(ctx, self, type_)
 
     def into_req(self, ctx: CompilationContext, type_: Type | None) -> Value:
@@ -1037,6 +1042,146 @@ class StructMethodTypeImpl(ConcreteFunctionTypeImpl):
         return None
 
 
+class WrapperStructBaseTypeImpl(TypeImpl):
+    name: str
+    wrapped: Type | None
+    methods: dict[str, tuple[bool, Value]]
+    static_values: dict[str, Value]
+    instance_impl: WrapperStructInstanceTypeImpl
+
+    def __init__(self, name: str, wrapped: Type, methods: dict[str, tuple[bool, Value]], static_values: dict[str, Value]):
+        self.name = name
+        self.wrapped = None if wrapped.contains(Type.ANY) else wrapped
+        self.methods = methods
+        self.static_values = static_values
+        self.instance_impl = WrapperStructInstanceTypeImpl(self, self.methods, self.static_values)
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        pass
+
+    def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
+        if static:
+            if (val := self.static_values.get(name)) is not None:
+                return val
+
+            if self.wrapped is not None:
+                return Value.variable("null", self.wrapped, True).getattr(ctx, name, static)
+
+    def callable(self, value: Value = None) -> bool:
+        return True
+
+    def params(self, value: Value = None) -> list[Type | None]:
+        return [self.wrapped]
+
+    def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
+        assert len(params) == 1
+        assert self.wrapped is None or self.wrapped.contains(params[0].type)
+
+        value = Value.variable(ctx.tmp(), WrapperStructInstanceType(
+            self.name, self.wrapped if self.wrapped is not None else params[0].type))
+        value.assign(ctx, params[0])
+
+        return value
+
+    def register_type(self):
+        TypeImplRegistry.add_wrapper_struct_instance_type_impl(self.instance_impl)
+
+
+class WrapperStructInstanceTypeImpl(TypeImpl):
+    base: WrapperStructBaseTypeImpl
+    methods: dict[str, tuple[bool, Value]]
+    static_values: dict[str, Value]
+
+    def __init__(self, base: WrapperStructBaseTypeImpl, methods: dict[str, tuple[bool, Value]],
+                 static_values: dict[str, Value]):
+        self.base = base
+        self.methods = methods
+        self.static_values = static_values
+
+    def _into_wrapped(self, value: Value):
+        if self.base.wrapped is not None:
+            return Value(self.base.wrapped, value.value, value.const, const_on_write=value.const_on_write)
+        else:
+            type_ = value.type
+            assert isinstance(type_, WrapperStructInstanceType)
+            return Value(type_.wrapped, value.value, value.const, const_on_write=value.const_on_write)
+
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        if self.base.wrapped is None:
+            wrapped_type = value.type
+            assert isinstance(wrapped_type, WrapperStructInstanceType)
+            return Value(
+                wrapped_type.wrapped, value.value, value.const, const_on_write=value.const_on_write).into(ctx, type_)
+        if type_.contains(self.base.wrapped):
+            return Value(type_, value.value, value.const, const_on_write=value.const_on_write)
+
+    def callable(self, value: Value) -> bool:
+        return self._into_wrapped(value).callable()
+
+    def params(self, value: Value) -> list[Type | None]:
+        return self._into_wrapped(value).params()
+
+    def params_public(self, value: Value) -> list[Type | None]:
+        return self._into_wrapped(value).params()
+
+    def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
+        return self._into_wrapped(value).call(ctx, params)
+
+    def memcell_length(self, ctx: CompilationContext, value: Value) -> int:
+        return self._into_wrapped(value).memcell_length(ctx)
+
+    def memcell_serialize(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return self._into_wrapped(value).memcell_serialize(ctx)
+
+    def memcell_deserialize(self, ctx: CompilationContext, value: Value, values: list[str]):
+        return self._into_wrapped(value).memcell_deserialize(ctx, values)
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return ["["] + self._into_wrapped(value).to_strings(ctx) + ["]"]
+
+    def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
+        if static:
+            if (val := self.static_values.get(name)) is not None:
+                return val
+
+        else:
+            if (method := self.methods.get(name)) is not None:
+                if value.const and not method[0]:
+                    ctx.error(f"Cannot call method '{name}' on const object")
+
+                val = method[1]
+                return Value(val.type, val.value, method[0], impl=StructMethodTypeImpl(value, method[0]))
+
+        return self._into_wrapped(value).getattr(ctx, name, static)
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        self._into_wrapped(value).assign(ctx, other)
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        return self._into_wrapped(value).assign_default(ctx)
+
+    def assignable_type(self, value: Value) -> Type:
+        return UnionType([value.type, self._into_wrapped(value).assignable_type()])
+
+    def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> Value | None:
+        return self._into_wrapped(value).unary_op(ctx, op)
+
+    def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
+        return self._into_wrapped(value).binary_op(ctx, op, other)
+
+    def binary_op_r(self, ctx: CompilationContext, other: Value, op: str, value: Value) -> Value | None:
+        return self._into_wrapped(value).binary_op_r(ctx, other, op)
+
+    def unpack(self, ctx: CompilationContext, value: Value) -> list[Value] | None:
+        return self._into_wrapped(value).unpack(ctx)
+
+    def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
+        return self._into_wrapped(value).iterate(ctx)
+
+
 class TypeInfoTypeImpl(TypeImpl):
     value: Value
 
@@ -1189,15 +1334,21 @@ class GeneratorValueIterator(ValueIterator):
 class TypeImplRegistry:
     _default_basic_type_implementations: dict[str, TypeImpl] = {}
     _basic_type_implementations: dict[str, TypeImpl] = {}
+    _wrapper_struct_instance_type_implementations: dict[str, WrapperStructInstanceTypeImpl] = {}
     _implementations: dict[type[Type], TypeImpl] = {}
 
     @classmethod
     def get_impl(cls, type_: Type) -> TypeImpl:
         if isinstance(type_, BasicType):
-            if type_.name in cls._default_basic_type_implementations:
-                return cls._default_basic_type_implementations[type_.name]
-            elif type_.name in cls._basic_type_implementations:
-                return cls._basic_type_implementations[type_.name]
+            if (impl := cls._default_basic_type_implementations.get(type_.name)) is not None:
+                return impl
+            elif (impl := cls._basic_type_implementations.get(type_.name)) is not None:
+                return impl
+
+        elif isinstance(type_, WrapperStructInstanceType):
+            if (impl := cls._wrapper_struct_instance_type_implementations.get(type_.name)) is not None:
+                return impl
+
         return cls._implementations[type(type_)]
 
     @classmethod
@@ -1215,6 +1366,10 @@ class TypeImplRegistry:
     @classmethod
     def add_default_basic_type_impls(cls, impls: dict[str, TypeImpl]):
         cls._default_basic_type_implementations |= impls
+
+    @classmethod
+    def add_wrapper_struct_instance_type_impl(cls, impl: WrapperStructInstanceTypeImpl):
+        cls._wrapper_struct_instance_type_implementations[impl.base.name] = impl
 
 
 TypeImplRegistry.add_impls({

@@ -319,12 +319,13 @@ class ReturnNode(Node):
 class StructNode(Node):
     name: str
     parent: str | None
+    wrapped: Type | None
     fields: list[SingleAssignmentTarget]
     static_fields: list[tuple[bool, SingleAssignmentTarget, Node]]
     methods: list[tuple[bool, str, NamedParamFunctionType, Node]]
     static_methods: list[tuple[str, NamedParamFunctionType, Node]]
 
-    def __init__(self, pos: Position, name: str, parent: str | None,
+    def __init__(self, pos: Position, name: str, parent: str | None, wrapped: Type | None,
                  fields: list[SingleAssignmentTarget],
                  static_fields: list[tuple[bool, SingleAssignmentTarget, Node]],
                  methods: list[tuple[bool, str, NamedParamFunctionType, Node]],
@@ -333,13 +334,14 @@ class StructNode(Node):
 
         self.name = name
         self.parent = parent
+        self.wrapped = wrapped
         self.fields = fields
         self.static_fields = static_fields
         self.methods = methods
         self.static_methods = static_methods
 
     def __str__(self):
-        return f"struct {self.name} {{...}}"
+        return f"struct {self.name}{' : ' + self.parent if self.parent is not None else ''}{' of ' + str(self.wrapped) if self.wrapped is not None else ''} {{...}}"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_struct_node(self)
