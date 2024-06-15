@@ -29,3 +29,50 @@ fn g_range(&n: num) {
 fn g_buildings() {
     g_map(getlink, g_range(@links))
 }
+
+fn g_foreach(&f, &g) {
+    g_make(||[&g, &f] { let v = g.0(); f(v); v },
+           ||[&g] g.1())
+}
+
+fn g_reduce(&f, &g, s) {
+    for v in g {
+        s = f(s, v);
+    }
+    s
+}
+
+fn g_sum(&g) {
+    g_reduce(#op(+), g, 0)
+}
+
+fn g_prod(&g) {
+    g_reduce(#op(*), g, 1)
+}
+
+fn g_consume(&g) {
+    for _ in g {}
+}
+
+fn g_foreach_consume(&f, &g) {
+    for v in g {
+        f(v);
+    }
+}
+
+fn g_skip(&g) {
+    if g.1() {
+        g.0();
+    }
+    g
+}
+
+fn g_skip_n(&g, &n: num) {
+    for _ in 0..n {
+        if !g.1() {
+            break;
+        }
+        g.0();
+    }
+    g
+}

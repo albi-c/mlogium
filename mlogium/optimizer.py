@@ -152,13 +152,9 @@ class Optimizer:
         cls._optimize_jumps(code)
         cls._remove_noops(code)
 
-        # while cls._optimize_set_op(code) or cls._precalculate_op_jump(code):
-        #     pass
         while cls._precalculate_op_jump(code):
             pass
         cls._remove_noops(code)
-
-        # return code
 
         blocks = cls._make_blocks(code)
         cls._eval_block_jumps(blocks)
