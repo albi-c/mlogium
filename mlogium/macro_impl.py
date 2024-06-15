@@ -4,7 +4,7 @@ from .macro import *
 from .parser import Parser
 from .error import PositionedException
 from .compiler import Compiler
-from .value import Value
+from .value import Value, TypeInfoTypeImpl
 from .node import *
 
 
@@ -511,8 +511,30 @@ class StaticAssertMacro(Macro):
         return Value.null()
 
 
+class TypeMacro(Macro):
+    def __init__(self):
+        super().__init__("type")
+
+    def inputs(self) -> tuple[Macro.Input, ...]:
+        return (MacroInput.VALUE_NODE,)
+
+    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
+        return Value(BasicType("$TypeInfo"), "null", impl=TypeInfoTypeImpl(compiler.visit(params[0])))
+
+
+class TypeiMacro(Macro):
+    def __init__(self):
+        super().__init__("typei")
+
+    def inputs(self) -> tuple[Macro.Input, ...]:
+        return (MacroInput.TYPE,)
+
+    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
+        return Value(BasicType("$TypeInfo"), "null", impl=TypeInfoTypeImpl(Value(params[0], "null")))
+
+
 MACROS: list[Macro] = [CastMacro(), ImportMacro(), RepeatMacro(), MapMacro(), UnpackMapMacro(), ZipMacro(), AllMacro(),
                        AnyMacro(), LenMacro(), SumMacro(), ProdMacro(), OperatorMacro(), TypeofMacro(), SizeofMacro(),
                        SizeofvMacro(), UnpackableMacro(), ForeachMacro(), ReduceMacro(), TakeMacro(), ReverseMacro(),
                        RangeMacro(), GenerateMacro(), DefaultMacro(), IsMacro(), SameTypeMacro(), CallableMacro(),
-                       CanCallMacro(), StaticAssertMacro()]
+                       CanCallMacro(), StaticAssertMacro(), TypeMacro(), TypeiMacro()]

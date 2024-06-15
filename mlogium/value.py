@@ -332,7 +332,7 @@ class NumberTypeImpl(TypeImpl):
 
 class StringTypeImpl(TypeImpl):
     def assign_default(self, ctx: CompilationContext, value: Value):
-        self.assign(ctx, value, Value.string(""))
+        self.assign(ctx, value, Value.string("\"\""))
 
     def to_condition(self, ctx: CompilationContext, value: Value) -> Value | None:
         return value
@@ -492,6 +492,25 @@ class LambdaTypeImpl(TypeImpl):
             ctx.emit(Instruction.label(ABI.function_end(ctx.scope.get_function())))
 
         return return_val
+
+
+class SpecialFunctionTypeImpl(TypeImpl):
+    def callable(self, value: Value) -> bool:
+        return True
+
+    def params(self, value: Value) -> list[Type | None]:
+        type_ = value.type
+        assert isinstance(type_, SpecialFunctionType)
+        return type_.params
+
+    def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
+        type_ = value.type
+        assert isinstance(type_, SpecialFunctionType)
+
+        assert len(type_.params) == len(params)
+        assert all(type_ is None or type_.contains(val.type) for type_, val in zip(type_.params, params))
+
+        return type_.func(ctx, params)
 
 
 class IntrinsicFunctionTypeImpl(TypeImpl):
@@ -925,6 +944,62 @@ class StructMethodTypeImpl(ConcreteFunctionTypeImpl):
         return None
 
 
+class TypeInfoTypeImpl(TypeImpl):
+    value: Value
+
+    def __init__(self, value: Value):
+        self.value = value
+
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        return None
+
+    def _can_call(self, ctx: CompilationContext, params: list[Value]) -> Value:
+        if not self.value.callable():
+            ctx.error(f"Value of type '{self.value.type}' is not callable")
+
+        if (values := params[0].unpack(ctx)) is None:
+            ctx.error(f"Value of type '{params[0].type}' is not unpackable")
+
+        if len(self.value.params()) != len(values):
+            return Value.number(0)
+
+        return Value.number(int(
+            all(type_ is None or type_.contains(val.type) for type_, val in zip(self.value.params(), values))))
+
+    def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
+        if not static:
+            if name == "callable":
+                return Value.number(int(self.value.callable()))
+
+            elif name == "size":
+                return Value.number(self.value.memcell_length(ctx))
+
+            elif name == "unpackable":
+                return Value.number(int(self.value.unpack(ctx) is not None))
+
+            elif name == "same":
+                return Value(
+                    SpecialFunctionType(
+                        [BasicType("$TypeInfo")],
+                        lambda _, params: Value.number(int(self.value.type.contains(params[0].impl.value.type)))
+                    ), "null")
+
+            elif name == "same_as":
+                return Value(
+                    SpecialFunctionType(
+                        [None],
+                        lambda _, params: Value.number(int(self.value.type.contains(params[0].type)))
+                    ), "null")
+
+            elif name == "default":
+                val = Value.variable(ctx.tmp(), self.value.type)
+                val.assign_default(ctx)
+                return val
+
+            elif name == "can_call":
+                return Value(SpecialFunctionType([None], self._can_call), "null")
+
+
 class RangeTypeImpl(TypeImpl):
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         if not static:
@@ -1008,6 +1083,7 @@ TypeImplRegistry.add_impls({
     FunctionType: AnonymousFunctionTypeImpl(),
     ConcreteFunctionType: ConcreteFunctionTypeImpl(),
     LambdaType: LambdaTypeImpl(),
+    SpecialFunctionType: SpecialFunctionTypeImpl(),
     IntrinsicFunctionType: IntrinsicFunctionTypeImpl(),
     IntrinsicSubcommandFunctionType: IntrinsicSubcommandFunctionTypeImpl(),
     TupleType: TupleTypeImpl(),

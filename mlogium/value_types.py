@@ -97,6 +97,10 @@ class FunctionType(Type):
         return f"({', '.join(str(p) for p in params)}) -> {str(ret) if ret is not None else '?'}"
 
     @staticmethod
+    def format_type_optional(params: list[Type | None], ret: Type | None):
+        return f"({', '.join(str(p) if p is not None else '?' for p in params)}) -> {str(ret) if ret is not None else '?'}"
+
+    @staticmethod
     def format_type_named(params: list[tuple[str, Type]], ret: Type | None) -> str:
         return f"({', '.join(p[0] + ': ' + str(p[1]) for p in params)}) -> {str(ret) if ret is not None else '?'}"
 
@@ -176,6 +180,21 @@ class ConcreteFunctionType(Type):
 
     def __eq__(self, other):
         return isinstance(other, ConcreteFunctionType) and other.name == self.name and other.named_params == self.named_params and other.ret == self.ret
+
+
+class SpecialFunctionType(Type):
+    params: list[Type | None]
+    func: Callable[['CompilationContext', list['Value']], 'Value']
+
+    def __init__(self, params: list[Type | None], func: Callable[['CompilationContext', list['Value']], 'Value']):
+        self.params = params
+        self.func = func
+
+    def __str__(self):
+        return f"fn_special {FunctionType.format_type_optional(self.params, None)}"
+
+    def __eq__(self, other):
+        return isinstance(other, SpecialFunctionType) and self.params == other.params and self.func == other.func
 
 
 class IntrinsicFunctionType(Type):
