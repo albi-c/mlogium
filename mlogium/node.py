@@ -314,18 +314,21 @@ class ReturnNode(Node):
 
 class StructNode(Node):
     name: str
+    parent: str | None
     fields: list[SingleAssignmentTarget]
     static_fields: list[tuple[bool, SingleAssignmentTarget, Node]]
     methods: list[tuple[bool, str, NamedParamFunctionType, Node]]
     static_methods: list[tuple[str, NamedParamFunctionType, Node]]
 
-    def __init__(self, pos: Position, name: str,
-                 fields: list[SingleAssignmentTarget], static_fields: list[tuple[bool, SingleAssignmentTarget, Node]],
+    def __init__(self, pos: Position, name: str, parent: str | None,
+                 fields: list[SingleAssignmentTarget],
+                 static_fields: list[tuple[bool, SingleAssignmentTarget, Node]],
                  methods: list[tuple[bool, str, NamedParamFunctionType, Node]],
                  static_methods: list[tuple[str, NamedParamFunctionType, Node]]):
         super().__init__(pos)
 
         self.name = name
+        self.parent = parent
         self.fields = fields
         self.static_fields = static_fields
         self.methods = methods

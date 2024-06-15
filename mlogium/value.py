@@ -758,18 +758,32 @@ class StructBaseTypeImpl(TypeImpl):
     field_types: list[Type]
     methods: dict[str, tuple[bool, Value]]
     static_values: dict[str, Value]
-    _instance_impl: StructInstanceTypeImpl
+    parent: StructBaseTypeImpl | None
+    parents: list[StructBaseTypeImpl]
+    instance_impl: StructInstanceTypeImpl
 
     def __init__(self, name: str, fields: list[tuple[str, Type]], methods: dict[str, tuple[bool, Value]],
-                 static_values: dict[str, Value]):
+                 static_values: dict[str, Value], parent: StructBaseTypeImpl | None):
         self.name = name
         self.fields = fields
-        self.field_types = [t for _, t in fields]
         self.methods = methods
         self.static_values = static_values
+        self.parent = parent
+        self.parents = []
+        self._get_parents(self.parents)
 
-        self._instance_impl = StructInstanceTypeImpl(self.fields, self.methods, self.static_values,
-                                                     [f for f, _ in fields])
+        self.rebuild()
+
+    def _get_parents(self, parents: list[StructBaseTypeImpl]):
+        if self.parent is not None:
+            parents.append(self.parent)
+            self.parent._get_parents(parents)
+
+    def rebuild(self):
+        self.field_types = [t for _, t in self.fields]
+        self.instance_impl = StructInstanceTypeImpl(self.fields, self.methods, self.static_values,
+                                                    [f for f, _ in self.fields], self.parents)
+        TypeImplRegistry.add_basic_type_impl(self.name, self.instance_impl)
 
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         if static:
@@ -794,7 +808,8 @@ class StructBaseTypeImpl(TypeImpl):
         return value
 
     def register_type(self):
-        TypeImplRegistry.add_basic_type_impl(self.name, self._instance_impl)
+        TypeImplRegistry.add_basic_type_impl(f"$StructBase_{self.name}", self)
+        TypeImplRegistry.add_basic_type_impl(self.name, self.instance_impl)
 
 
 class StructInstanceTypeImpl(TypeImpl):
@@ -802,13 +817,20 @@ class StructInstanceTypeImpl(TypeImpl):
     methods: dict[str, tuple[bool, Value]]
     static_values: dict[str, Value]
     field_list: list[str]
+    parents: dict[str, StructInstanceTypeImpl]
 
     def __init__(self, fields: list[tuple[str, Type]], methods: dict[str, tuple[bool, Value]],
-                 static_values: dict[str, Value], field_list: list[str]):
+                 static_values: dict[str, Value], field_list: list[str], parents: list[StructBaseTypeImpl]):
         self.fields = {k: v for k, v in fields}
         self.methods = methods
         self.static_values = static_values
         self.field_list = field_list
+        self.parents = {impl.name: impl.instance_impl for impl in parents}
+
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        if isinstance(type_, BasicType):
+            if type_.name in self.parents:
+                return Value(type_, value.value, value.const, const_on_write=value.const_on_write)
 
     def memcell_length(self, ctx: CompilationContext, value: Value) -> int:
         return sum(value.getattr(ctx, name, False).memcell_length(ctx) for name in self.field_list)

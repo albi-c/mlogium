@@ -24,14 +24,9 @@ struct A {
     fn mod2() {
         |n|[&self] { self.x += n }
     }
-
-    fn add(n) {
-        self.x += n;
-    }
 }
 
 let a = A(1);
 a.mod(3)(a);
 a.mod2()(4);
-a.add(2);
 print(a.x);

@@ -206,11 +206,15 @@ class Parser:
         elif tok.type in TokenType.KW_STRUCT:
             self.next()
             name = self.next(TokenType.ID).value
+            if self.lookahead(TokenType.COLON):
+                parent = self.next(TokenType.ID).value
+            else:
+                parent = None
             self.next(TokenType.LBRACE)
 
             fields, static_fields, methods, static_methods = self._parse_struct_inner()
 
-            return StructNode(tok.pos, name, fields, static_fields, methods, static_methods)
+            return StructNode(tok.pos, name, parent, fields, static_fields, methods, static_methods)
 
         elif tok.type == TokenType.KW_ENUM:
             self.next()

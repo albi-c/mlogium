@@ -92,7 +92,8 @@ class Compiler(AstVisitor[Value]):
             if values is None:
                 self._error(f"Value of type {value.type} is not unpackable")
             if len(values) != len(target.values):
-                self._error(f"Value of type {value.type} unpacks into {len(values)} values, {len(target.values)} expected")
+                self._error(
+                    f"Value of type {value.type} unpacks into {len(values)} values, {len(target.values)} expected")
             for el, val in zip(target.values, values):
                 if isinstance(el, str):
                     name = el
@@ -110,7 +111,8 @@ class Compiler(AstVisitor[Value]):
     def visit_declaration_node(self, node: DeclarationNode) -> Value:
         return self._declare_target(node.target, self.visit(node.value), node.const)
 
-    def _make_function_value(self, name: str, type_: NamedParamFunctionType | LambdaType, code: Node, is_lambda: bool) -> Value:
+    def _make_function_value(self, name: str, type_: NamedParamFunctionType | LambdaType,
+                             code: Node, is_lambda: bool) -> Value:
         if name in self.functions_with_pointers:
             self._error(f"Function already defined: '{name}'")
         self.functions_with_pointers.add(name)
@@ -135,12 +137,14 @@ class Compiler(AstVisitor[Value]):
             self.emit(Instruction.label(ABI.function_label(name)))
             ret_addr = Value.variable(self.ctx.tmp(), Type.NUM)
             ret_addr.assign(self.ctx, Value.variable(ABI.function_return_address(), Type.NUM))
-            params = [Value.variable(ABI.function_parameter(i), type_ if type_ is not None else Type.ANY) for i, type_ in enumerate(val.params())]
+            params = [Value.variable(ABI.function_parameter(i),
+                                     type_ if type_ is not None else Type.ANY) for i, type_ in enumerate(val.params())]
             ret = val.call(self.ctx, params)
             Value.variable(ABI.function_return_value(), ret.type).assign(self.ctx, ret)
             self.emit(Instruction.jump_addr(ret_addr.value))
 
-    def register_function(self, name: str, type_: NamedParamFunctionType | LambdaType, code: Node, is_lambda: bool = False) -> Value:
+    def register_function(self, name: str, type_: NamedParamFunctionType | LambdaType,
+                          code: Node, is_lambda: bool = False) -> Value:
         val = self._make_function_value(name, type_, code, is_lambda)
         self._register_function_value(name, val)
         return val
@@ -161,7 +165,34 @@ class Compiler(AstVisitor[Value]):
 
         return Value.null()
 
+    @staticmethod
+    def _resolve_struct(struct: StructBaseTypeImpl, names: set[str], base: StructBaseTypeImpl):
+        for field in base.fields:
+            if field[0] not in names:
+                struct.fields.insert(0, field)
+
+        for name, method in base.methods.items():
+            if name not in names:
+                struct.methods[name] = method
+
+        for name, value in base.static_values:
+            if name not in base.static_values:
+                struct.static_values[name] = value
+
+        struct.rebuild()
+
     def visit_struct_node(self, node: StructNode) -> Value:
+        if node.parent is not None:
+            if node.parent == node.name:
+                self._error(f"Struct cannot inherit from itself", node.pos)
+
+            base_impl = TypeImplRegistry.get_impl(BasicType(f"$StructBase_{node.parent}"))
+            if not isinstance(base_impl, StructBaseTypeImpl):
+                self._error(f"Struct cannot inherit from type '{node.parent}'", node.pos)
+
+        else:
+            base_impl = None
+
         fields = []
         methods = {}
         names = set()
@@ -174,7 +205,8 @@ class Compiler(AstVisitor[Value]):
                 self._error(f"Struct already has field '{name}'")
             names.add(name)
             name_ = ABI.attribute(node.name, name)
-            type_modified = NamedParamFunctionType([("self", BasicType(node.name), True)] + type_.named_params, type_.ret)
+            type_modified = NamedParamFunctionType(
+                [("self", None, True)] + type_.named_params, type_.ret)
             val = self._make_function_value(name_, type_modified, code, False)
             methods[name] = (const, val)
 
@@ -198,12 +230,9 @@ class Compiler(AstVisitor[Value]):
             names.add(target.name)
             static_variables.append((const, target, value))
 
-        struct = Value(BasicType("$StructBase_" + node.name), node.name, impl=StructBaseTypeImpl(
-            node.name, fields, methods, static_values))
+        impl = StructBaseTypeImpl(node.name, fields, methods, static_values, base_impl)
+        struct = Value(BasicType(f"$StructBase_{node.name}"), node.name, impl=impl)
         self._var_declare_special(node.name, struct)
-
-        impl = struct.impl
-        assert isinstance(impl, StructBaseTypeImpl)
         impl.register_type()
 
         for const, target, value in static_variables:
@@ -214,6 +243,9 @@ class Compiler(AstVisitor[Value]):
 
         for name, val in functions_to_register:
             self._register_function_value(name, val)
+
+        if base_impl is not None:
+            self._resolve_struct(impl, names, base_impl)
 
         return struct
 
@@ -348,7 +380,8 @@ class Compiler(AstVisitor[Value]):
                 unpacked_params.append(self.visit(param))
 
         if len(param_types) != len(unpacked_params):
-            self._error(f"Invalid number of parameters to function ({len(node.params)} provided, {len(param_types)} expected)")
+            self._error(
+                f"Invalid number of parameters to function ({len(node.params)} provided, {len(param_types)} expected)")
         params = []
         for type_, param in zip(param_types, unpacked_params):
             params.append(param.into_req(self.ctx, type_))
