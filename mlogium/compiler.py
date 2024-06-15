@@ -122,7 +122,13 @@ class Compiler(AstVisitor[Value]):
             for name, ref, value in type_.captures:
                 if name in captures:
                     self._error(f"Duplicate capture in lambda: '{name}'", self.current_pos)
-                captures[name] = self.visit(value), ref
+                if ref:
+                    captures[name] = self.visit(value)
+                else:
+                    val = self.visit(value)
+                    copied = Value.variable(self.ctx.tmp(), val.type)
+                    copied.assign(self.ctx, val)
+                    captures[name] = copied
             new_type = LambdaType(type_.named_params, type_.ret, type_.captures, {"code": code, "captures": captures})
         else:
             new_type = ConcreteFunctionType(name, type_.named_params, type_.ret, {"code": code})

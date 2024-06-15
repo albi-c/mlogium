@@ -486,11 +486,8 @@ class LambdaTypeImpl(TypeImpl):
         assert all(type_ is None or type_.contains(val.type) for type_, val in zip(type_.params, params))
 
         with ctx.scope.function_call(ctx, f"_lambda:{ctx.tmp_num()}"):
-            for name, (value, ref) in type_.attributes["captures"].items():
-                if ref:
-                    ctx.scope.declare_special(name, value)
-                else:
-                    ctx.scope.declare(name, value.type, False).assign(ctx, value)
+            for name, value in type_.attributes["captures"].items():
+                ctx.scope.declare_special(name, value)
 
             for i, ((name, val_type, ref), val) in enumerate(zip(type_.named_params, params)):
                 if ref:
