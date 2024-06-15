@@ -44,6 +44,10 @@ class Value:
         return cls(Type.NUM, str(value))
 
     @classmethod
+    def boolean(cls, value: bool) -> Value:
+        return cls.number(int(value))
+
+    @classmethod
     def string(cls, value: str) -> Value:
         return cls(Type.STR, value)
 
@@ -277,22 +281,24 @@ class NumberTypeImpl(TypeImpl):
         self.assign(ctx, value, Value.number(0))
 
     @staticmethod
-    def try_precalc_op(a: str, op: str, b: str) -> Value | None:
+    def to_float_or_int(x: float) -> float | int:
+        if x.is_integer():
+            x = int(x)
+        return x
+
+    @classmethod
+    def try_precalc_op(cls, a: str, op: str, b: str) -> Value | None:
         try:
-            a = float(a)
-            if a.is_integer():
-                a = int(a)
+            a = cls.to_float_or_int(float(a))
 
             try:
-                b = float(b)
-                if b.is_integer():
-                    b = int(b)
+                b = cls.to_float_or_int(float(b))
 
-                return Value.number(int(Optimizer.PRECALC[op](a, b)))
+                return Value.number(cls.to_float_or_int(Optimizer.PRECALC[op](a, b)))
 
             except ValueError:
                 try:
-                    return Value.number(int(Optimizer.PRECALC[op](a, None)))
+                    return Value.number(cls.to_float_or_int(Optimizer.PRECALC[op](a, None)))
 
                 except (ArithmeticError, ValueError, TypeError, KeyError):
                     return None
@@ -584,7 +590,18 @@ class TupleTypeImpl(TypeImpl):
             if name == "reversed":
                 return Value.tuple(ctx, value.unpack(ctx)[::-1])
 
-            if name.startswith("_") and name.count("_") == 2:
+            elif name == "len":
+                return Value.number(len(type_.types))
+
+            elif name == "take":
+                values = value.unpack(ctx)
+                assert values is not None
+                if len(values) == 0:
+                    ctx.error("Cannot unpack an empty tuple")
+
+                return Value.tuple(ctx, [values[0], Value.tuple(ctx, values[1:])])
+
+            elif name.startswith("_") and name.count("_") == 2:
                 _, a, b = name.split("_")
                 try:
                     a = int(a)
@@ -961,34 +978,34 @@ class TypeInfoTypeImpl(TypeImpl):
             ctx.error(f"Value of type '{params[0].type}' is not unpackable")
 
         if len(self.value.params()) != len(values):
-            return Value.number(0)
+            return Value.boolean(False)
 
-        return Value.number(int(
-            all(type_ is None or type_.contains(val.type) for type_, val in zip(self.value.params(), values))))
+        return Value.boolean(
+            all(type_ is None or type_.contains(val.type) for type_, val in zip(self.value.params(), values)))
 
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         if not static:
             if name == "callable":
-                return Value.number(int(self.value.callable()))
+                return Value.boolean(self.value.callable())
 
             elif name == "size":
                 return Value.number(self.value.memcell_length(ctx))
 
             elif name == "unpackable":
-                return Value.number(int(self.value.unpack(ctx) is not None))
+                return Value.boolean(self.value.unpack(ctx) is not None)
 
             elif name == "same":
                 return Value(
                     SpecialFunctionType(
                         [BasicType("$TypeInfo")],
-                        lambda _, params: Value.number(int(self.value.type.contains(params[0].impl.value.type)))
+                        lambda _, params: Value.boolean(self.value.type.contains(params[0].impl.value.type))
                     ), "null")
 
             elif name == "same_as":
                 return Value(
                     SpecialFunctionType(
                         [None],
-                        lambda _, params: Value.number(int(self.value.type.contains(params[0].type)))
+                        lambda _, params: Value.boolean(self.value.type.contains(params[0].type))
                     ), "null")
 
             elif name == "default":
@@ -998,6 +1015,20 @@ class TypeInfoTypeImpl(TypeImpl):
 
             elif name == "can_call":
                 return Value(SpecialFunctionType([None], self._can_call), "null")
+
+            elif name == "is_null":
+                return Value.boolean(self.value.is_null())
+
+            elif name == "iterable":
+                return Value.boolean(self.value.iterate(ctx) is not None)
+
+            elif name == "is_condition":
+                return Value.boolean(self.value.to_condition(ctx) is not None)
+
+            elif name == "len":
+                if (values := self.value.unpack(ctx)) is None:
+                    ctx.error(f"Value of type {self.value.type} is not unpackable")
+                return Value.number(len(values))
 
 
 class RangeTypeImpl(TypeImpl):

@@ -166,7 +166,7 @@ class AllMacro(UnpackableOperatorMacro):
 
     def process(self, ctx: MacroInvocationContext, compiler: Compiler, values: list[Value]) -> Value:
         if len(values) == 0:
-            return Value.number(0)
+            return Value.boolean(False)
 
         if (cond := values[0].to_condition(ctx.ctx)) is None:
             PositionedException.custom(ctx.pos, f"Value of type '{values[0].type}' is not usable as a condition")
@@ -184,7 +184,7 @@ class AnyMacro(UnpackableOperatorMacro):
 
     def process(self, ctx: MacroInvocationContext, compiler: Compiler, values: list[Value]) -> Value:
         if len(values) == 0:
-            return Value.number(0)
+            return Value.boolean(False)
 
         if (cond := values[0].to_condition(ctx.ctx)) is None:
             PositionedException.custom(ctx.pos, f"Value of type '{values[0].type}' is not usable as a condition")
@@ -265,39 +265,6 @@ class TypeofMacro(Macro):
 
     def type_invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Type:
         return compiler.visit(params[0]).type
-
-
-class SizeofMacro(Macro):
-    def __init__(self):
-        super().__init__("sizeof")
-
-    def inputs(self) -> tuple[Macro.Input, ...]:
-        return (MacroInput.TYPE,)
-
-    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
-        return Value.number(Value.variable("_", params[0]).memcell_length(ctx.ctx))
-
-
-class SizeofvMacro(Macro):
-    def __init__(self):
-        super().__init__("sizeofv")
-
-    def inputs(self) -> tuple[Macro.Input, ...]:
-        return (MacroInput.VALUE_NODE,)
-
-    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
-        return Value.number(compiler.visit(params[0]).memcell_length(ctx.ctx))
-
-
-class UnpackableMacro(Macro):
-    def __init__(self):
-        super().__init__("unpackable")
-
-    def inputs(self) -> tuple[Macro.Input, ...]:
-        return (MacroInput.VALUE_NODE,)
-
-    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
-        return Value.number(int(compiler.visit(params[0]).unpack(ctx.ctx) is not None))
 
 
 class ForeachMacro(Macro):
@@ -414,75 +381,6 @@ class GenerateMacro(Macro):
             PositionedException.custom(params[0].pos, "Generate macro requires an integer")
 
 
-class DefaultMacro(Macro):
-    def __init__(self):
-        super().__init__("default")
-
-    def inputs(self) -> tuple[Macro.Input, ...]:
-        return (MacroInput.TYPE,)
-
-    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
-        var = Value.variable(ctx.ctx.tmp(), params[0])
-        var.assign_default(ctx.ctx)
-        return var
-
-
-class IsMacro(Macro):
-    def __init__(self):
-        super().__init__("is")
-
-    def inputs(self) -> tuple[Macro.Input, ...]:
-        return MacroInput.TYPE, MacroInput.VALUE_NODE
-
-    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
-        return Value.number(int(params[0].contains(compiler.visit(params[1]).type)))
-
-
-class SameTypeMacro(Macro):
-    def __init__(self):
-        super().__init__("same_type")
-
-    def inputs(self) -> tuple[Macro.Input, ...]:
-        return MacroInput.VALUE_NODE, MacroInput.VALUE_NODE
-
-    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
-        return Value.number(int(compiler.visit(params[0]).type.contains(compiler.visit(params[1]).type)))
-
-
-class CallableMacro(Macro):
-    def __init__(self):
-        super().__init__("callable")
-
-    def inputs(self) -> tuple[Macro.Input, ...]:
-        return (MacroInput.VALUE_NODE,)
-
-    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
-        return Value.number(int(compiler.visit(params[0]).callable()))
-
-
-class CanCallMacro(Macro):
-    def __init__(self):
-        super().__init__("can_call")
-
-    def inputs(self) -> tuple[Macro.Input, ...]:
-        return MacroInput.VALUE_NODE, MacroInput.VALUE_NODE
-
-    def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
-        func = compiler.visit(params[0])
-        if not func.callable():
-            PositionedException.custom(params[0].pos, f"Value of type '{func.type}' is not callable")
-
-        tup = compiler.visit(params[1])
-        if (values := tup.unpack(ctx.ctx)) is None:
-            PositionedException.custom(params[1].pos, f"Value of type '{tup.type}' is not unpackable")
-
-        if len(func.params()) != len(values):
-            return Value.number(0)
-
-        return Value.number(int(
-            all(type_ is None or type_.contains(val.type) for type_, val in zip(func.params(), values))))
-
-
 class StaticAssertMacro(Macro):
     def __init__(self):
         super().__init__("static_assert")
@@ -534,7 +432,6 @@ class TypeiMacro(Macro):
 
 
 MACROS: list[Macro] = [CastMacro(), ImportMacro(), RepeatMacro(), MapMacro(), UnpackMapMacro(), ZipMacro(), AllMacro(),
-                       AnyMacro(), LenMacro(), SumMacro(), ProdMacro(), OperatorMacro(), TypeofMacro(), SizeofMacro(),
-                       SizeofvMacro(), UnpackableMacro(), ForeachMacro(), ReduceMacro(), TakeMacro(), ReverseMacro(),
-                       RangeMacro(), GenerateMacro(), DefaultMacro(), IsMacro(), SameTypeMacro(), CallableMacro(),
-                       CanCallMacro(), StaticAssertMacro(), TypeMacro(), TypeiMacro()]
+                       AnyMacro(), LenMacro(), SumMacro(), ProdMacro(), OperatorMacro(), TypeofMacro(), ForeachMacro(),
+                       ReduceMacro(), TakeMacro(), ReverseMacro(), RangeMacro(), GenerateMacro(), StaticAssertMacro(),
+                       TypeMacro(), TypeiMacro()]
