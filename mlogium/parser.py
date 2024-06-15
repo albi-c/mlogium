@@ -400,9 +400,13 @@ class Parser:
         else:
             return name, None, ref
 
-    def _parse_capture(self) -> tuple[str, bool]:
+    def _parse_capture(self) -> tuple[str, bool, Node]:
         ref = bool(self.lookahead(TokenType.OPERATOR, "&"))
-        return self.next(TokenType.ID).value, ref
+        name = self.next(TokenType.ID)
+        if self.lookahead(TokenType.ASSIGNMENT, "="):
+            return name.value, ref, self.parse_value()
+        else:
+            return name.value, ref, VariableValueNode(name.pos, name.value)
 
     def _parse_named_func_type(self) -> NamedParamFunctionType:
         params = self._parse_comma_separated(self._parse_name_with_optional_type_ref)

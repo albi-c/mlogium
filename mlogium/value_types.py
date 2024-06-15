@@ -137,12 +137,12 @@ class NamedParamFunctionType(FunctionType):
 class LambdaType(Type):
     params: list[Type | None]
     ret: Type | None
-    captures: list[tuple[str, bool]]
+    captures: list[tuple[str, bool, 'Node']]
     named_params: list[tuple[str, Type | None, bool]]
 
     attributes: dict
 
-    def __init__(self, named_params: list[tuple[str, Type | None, bool]], ret: Type | None, captures: list[tuple[str, bool]], attributes: dict):
+    def __init__(self, named_params: list[tuple[str, Type | None, bool]], ret: Type | None, captures: list[tuple[str, bool, 'Node']], attributes: dict):
         self.params = [p[1] for p in named_params]
         self.ret = ret
         self.captures = captures

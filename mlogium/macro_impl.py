@@ -81,9 +81,9 @@ class MapMacro(Macro):
     def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
         func = compiler.visit(params[0])
         if not func.callable():
-            PositionedException.custom(params[0].pos, f"Value of type '{params[0].type}' is not callable")
+            PositionedException.custom(params[0].pos, f"Value of type '{func.type}' is not callable")
         if len(func.params()) != 1:
-            PositionedException.custom(params[0].pos, f"Value of type '{params[0].type}' has to take 1 parameter")
+            PositionedException.custom(params[0].pos, f"Value of type '{func.type}' has to take 1 parameter")
 
         tup = compiler.visit(params[1])
         if (values := tup.unpack(ctx.ctx)) is None:
@@ -105,7 +105,7 @@ class UnpackMapMacro(Macro):
     def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
         func = compiler.visit(params[0])
         if not func.callable():
-            PositionedException.custom(params[0].pos, f"Value of type '{params[0].type}' is not callable")
+            PositionedException.custom(params[0].pos, f"Value of type '{func.type}' is not callable")
         func_params = func.params()
 
         tup = compiler.visit(params[1])
@@ -310,9 +310,9 @@ class ForeachMacro(Macro):
     def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
         func = compiler.visit(params[0])
         if not func.callable():
-            PositionedException.custom(params[0].pos, f"Value of type '{params[0].type}' is not callable")
+            PositionedException.custom(params[0].pos, f"Value of type '{func.type}' is not callable")
         if len(func.params()) != 1:
-            PositionedException.custom(params[0].pos, f"Value of type '{params[0].type}' has to take 1 parameter")
+            PositionedException.custom(params[0].pos, f"Value of type '{func.type}' has to take 1 parameter")
 
         tup = compiler.visit(params[1])
         if (values := tup.unpack(ctx.ctx)) is None:
@@ -335,9 +335,9 @@ class ReduceMacro(Macro):
     def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
         func = compiler.visit(params[0])
         if not func.callable():
-            PositionedException.custom(params[0].pos, f"Value of type '{params[0].type}' is not callable")
+            PositionedException.custom(params[0].pos, f"Value of type '{func.type}' is not callable")
         if len(func.params()) != 2:
-            PositionedException.custom(params[0].pos, f"Value of type '{params[0].type}' has to take 1 parameter")
+            PositionedException.custom(params[0].pos, f"Value of type '{func.type}' has to take 1 parameter")
 
         tup = compiler.visit(params[1])
         if (values := tup.unpack(ctx.ctx)) is None:
@@ -403,9 +403,9 @@ class GenerateMacro(Macro):
     def invoke(self, ctx: MacroInvocationContext, compiler, params: list) -> Value:
         func = compiler.visit(params[1])
         if not func.callable():
-            PositionedException.custom(params[1].pos, f"Value of type '{params[1].type}' is not callable")
+            PositionedException.custom(params[1].pos, f"Value of type '{func.type}' is not callable")
         if len(func.params()) != 1:
-            PositionedException.custom(params[1].pos, f"Value of type '{params[1].type}' has to take 1 parameter")
+            PositionedException.custom(params[1].pos, f"Value of type '{func.type}' has to take 1 parameter")
 
         try:
             n = int(params[0].value)
