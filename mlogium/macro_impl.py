@@ -37,23 +37,32 @@ class ImportMacro(Macro):
         if path.type != TokenType.STRING:
             PositionedException.custom(path.pos, "Import macro requires a string")
         path = path.value
-        if ctx.pos.file not in ("<main>", "<clip>"):
-            search_dir = os.path.dirname(os.path.abspath(ctx.pos.file))
-            path = os.path.join(search_dir, path)
+        if path.startswith("std:"):
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stdlib", f"{path[4:]}.mu")
+            display_path = params[0].value
+        else:
+            if ctx.pos.file not in ("<main>", "<clip>"):
+                search_dir = os.path.dirname(os.path.abspath(ctx.pos.file))
+                path = os.path.join(search_dir, path)
+            else:
+                path = os.path.abspath(path)
+            display_path = path
         if not os.path.isfile(path):
-            PositionedException.custom(ctx.pos, f"Can't import file '{path}'")
+            PositionedException.custom(ctx.pos, f"Can't import file '{display_path}'")
 
         if path in self.IMPORTS:
-            PositionedException.custom(ctx.pos, f"Circular imports are not allowed: '{path}'")
+            PositionedException.custom(ctx.pos, f"Circular imports are not allowed: '{display_path}'")
         self.IMPORTS.add(path)
 
         code = open(path).read()
         tokens = Lexer().lex(code, path)
         node = Parser(tokens, ctx.registry).parse_block(False, True)
 
+        result = compiler.visit(node)
+
         self.IMPORTS.remove(path)
 
-        return compiler.visit(node)
+        return result
 
 
 class RepeatMacro(Macro):

@@ -1,4 +1,4 @@
-for (i in 0..@links) {
+for i in 0..@links {
     print(getlink(i));
     print("\n");
 }

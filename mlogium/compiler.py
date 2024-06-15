@@ -319,11 +319,10 @@ class Compiler(AstVisitor[Value]):
         iterable = self.visit(node.iterable)
         iterator = iterable.iterate(self.ctx)
         if iterator is None:
-            self._error(f"Not iterable: {iterable.type}", node.iterable.pos)
-        self.emit(
-            Instruction.label(name + "_start"),
-            Instruction.jump(name + "_break", "equal", iterator.has_value(self.ctx).value, "0")
-        )
+            self._error(f"Not iterable: '{iterable.type}'", node.iterable.pos)
+        self.emit(Instruction.label(name + "_start"))
+        has_value = iterator.has_value(self.ctx).value
+        self.emit(Instruction.jump(name + "_break", "equal", has_value, "0"))
         with self.scope.loop(name):
             self._declare_target(node.target, iterator.get_current(self.ctx), iterable.const)
             self.visit(node.code)

@@ -295,13 +295,10 @@ class Parser:
 
         elif tok.type == TokenType.KW_FOR:
             self.next()
-            self.next(TokenType.LPAREN)
 
             target = self._parse_assignment_target(tok.pos)
             self.next(TokenType.KW_IN)
             iterator = self.parse_value()
-
-            self.next(TokenType.RPAREN)
 
             code = self.parse_statement()
 

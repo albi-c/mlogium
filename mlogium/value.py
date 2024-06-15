@@ -415,6 +415,12 @@ class ConcreteFunctionTypeImpl(TypeImpl):
     #         if type_.params == val_type.params and type_.ret == val_type.ret:
     #             return Value(type_, ABI.label_var(ABI.function_label(val_type.name)), True)
 
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        pass
+
     def callable(self, value: Value) -> bool:
         return True
 
@@ -455,6 +461,12 @@ class ConcreteFunctionTypeImpl(TypeImpl):
 
 
 class LambdaTypeImpl(TypeImpl):
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        pass
+
     def callable(self, value: Value) -> bool:
         return True
 
@@ -501,6 +513,12 @@ class LambdaTypeImpl(TypeImpl):
 
 
 class SpecialFunctionTypeImpl(TypeImpl):
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        pass
+
     def callable(self, value: Value) -> bool:
         return True
 
@@ -520,6 +538,12 @@ class SpecialFunctionTypeImpl(TypeImpl):
 
 
 class IntrinsicFunctionTypeImpl(TypeImpl):
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        pass
+
     def callable(self, value: Value) -> bool:
         return True
 
@@ -558,6 +582,12 @@ class IntrinsicFunctionTypeImpl(TypeImpl):
 
 
 class IntrinsicSubcommandFunctionTypeImpl(TypeImpl):
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        pass
+
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         if not static:
             type_ = value.type
@@ -687,6 +717,22 @@ class TupleTypeImpl(TypeImpl):
             return None
         return Value.tuple(ctx, results)
 
+    def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
+        type_ = value.type
+        assert isinstance(type_, TupleType)
+
+        if len(type_.types) != 2:
+            return None
+
+        next_, has = value.unpack(ctx)
+
+        if not next_.callable() or len(next_.params()) != 0:
+            return None
+        if not has.callable() or len(has.params()) != 0:
+            return None
+
+        return GeneratorValueIterator(ctx, next_, has)
+
 
 class EnumBaseTypeImpl(TypeImpl):
     name: str
@@ -699,6 +745,12 @@ class EnumBaseTypeImpl(TypeImpl):
         self.values = values
         self.has_prefix = has_prefix
         self.is_opaque = is_opaque
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        pass
 
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         if static:
@@ -717,6 +769,12 @@ class CustomEnumBaseTypeImpl(TypeImpl):
     def __init__(self, name: str, values: dict[str, int]):
         self.name = name
         self.values = values
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        pass
 
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         if static:
@@ -745,6 +803,12 @@ class CustomEnumInstanceTypeImpl(TypeImpl):
 
 
 class ExternBlockTypeImpl(TypeImpl):
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        pass
+
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         if static:
             return Value.variable(name, Type.BLOCK, True)
@@ -787,6 +851,9 @@ class IndexReferenceTypeImpl(TypeImpl):
             )
             self.index = new_index
 
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        pass
+
 
 class StructBaseTypeImpl(TypeImpl):
     name: str
@@ -820,6 +887,12 @@ class StructBaseTypeImpl(TypeImpl):
         self.instance_impl = StructInstanceTypeImpl(self, self.fields, self.methods, self.static_values,
                                                     [f for f, _ in self.fields], self.parents)
         TypeImplRegistry.add_basic_type_impl(self.name, self.instance_impl)
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        pass
 
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         if static:
@@ -948,6 +1021,12 @@ class StructMethodTypeImpl(ConcreteFunctionTypeImpl):
         self.instance = instance
         self.const = const
 
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        pass
+
     def params(self, value: Value) -> list[Type | None]:
         return super().params(value)
 
@@ -966,6 +1045,12 @@ class TypeInfoTypeImpl(TypeImpl):
 
     def __init__(self, value: Value):
         self.value = value
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        pass
 
     def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
         return None
@@ -1032,6 +1117,12 @@ class TypeInfoTypeImpl(TypeImpl):
 
 
 class RangeTypeImpl(TypeImpl):
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        pass
+
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         if not static:
             if name == "start":
@@ -1074,6 +1165,28 @@ class RangeValueIterator(ValueIterator):
 
     def to_next(self, ctx: CompilationContext):
         ctx.emit(Instruction.op("add", self.index.value, self.index.value, "1"))
+
+
+class GeneratorValueIterator(ValueIterator):
+    current: Value
+    next: Value
+    has: Value
+
+    def __init__(self, _: CompilationContext, next_: Value, has: Value):
+        assert next_.callable() and len(next_.params()) == 0
+        assert has.callable() and len(has.params()) == 0
+
+        self.next = next_
+        self.has = has
+
+    def has_value(self, ctx: CompilationContext) -> Value:
+        return self.has.call(ctx, [])
+
+    def get_current(self, ctx: CompilationContext) -> Value:
+        return self.next.call(ctx, [])
+
+    def to_next(self, ctx: CompilationContext):
+        pass
 
 
 class TypeImplRegistry:

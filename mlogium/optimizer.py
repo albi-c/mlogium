@@ -89,8 +89,9 @@ class Optimizer:
         (("shr", "shl"), (
             (tuple(), ("0",), None),
         )),
-        (("and",), (
+        (("and", "land", "or"), (
             (("0",), ("0",), "0"),
+            (tuple(), tuple(), None)
         ))
     ]
 
