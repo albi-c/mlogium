@@ -621,6 +621,9 @@ class Parser:
         elif tok.type == TokenType.STRING:
             return StringValueNode(tok.pos, tok.value)
 
+        elif tok.type == TokenType.COLOR:
+            return ColorValueNode(tok.pos, tok.value)
+
         elif tok.type == TokenType.LPAREN:
             value = self.parse_value()
             self.next(TokenType.RPAREN)

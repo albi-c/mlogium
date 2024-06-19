@@ -476,6 +476,9 @@ class Compiler(AstVisitor[Value]):
     def visit_string_value_node(self, node: StringValueNode) -> Value:
         return Value.string(f"\"{node.value}\"")
 
+    def visit_color_value_node(self, node: ColorValueNode) -> Value:
+        return Value(Type.NUM, node.value, True)
+
     def visit_variable_value_node(self, node: VariableValueNode) -> Value:
         return self._var_get(node.name)
 

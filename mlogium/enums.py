@@ -74,11 +74,6 @@ ENUM_UNITS: set[str] = {
     "evoke", "incite", "emanate"
 }
 
-ENUM_EFFECTS: set[str] = {
-    "burning", "freezing", "unmoving", "slow", "wet", "melting", "sapped", "electrified", "overdrive", "overclock",
-    "shielded", "guardian", "shocked", "blasted", "corroded", "disarmed"
-}
-
 ENUM_TEAMS: set[str] = {
     "derelict", "sharded", "crux", "malis"
 }
@@ -143,14 +138,59 @@ ENUM_LOCATE_TYPE = {
     "core", "storage", "generator", "turret", "factory", "repair", "battery", "reactor"
 }
 
+ENUM_STATUS = {
+    "none", "burning", "freezing", "unmoving", "slow", "fase", "wet", "muddy", "melting", "sapped", "electrified",
+    "spore-slowed", "tarred", "overdrive", "overclock", "shielded", "boss", "shocked", "blasted", "corroded",
+    "disarmed", "invincible"
+}
+
+ENUM_RULES = {
+    rule: False for rule in (
+        "currentWaveTimer", "waveTimer", "waves", "wave", "waveSpacing", "waveSending", "attackMode",
+        "enemyCoreBuildRadius", "dropZoneRadius", "unitCap", "lighting", "ambientLight", "solarMultiplier"
+    )
+} | {
+    rule: True for rule in (
+        "buildSpeed", "unitHealth", "unitBuildSpeed", "unitCost", "unitDamage", "blockHealth", "blockDamage",
+        "rtsMinWeight", "rtsMinSquad"
+    )
+}
+
+ENUM_PROPERTY = {
+    "x", "y", "rotation", "flag", "health", "totalPower"
+}
+
+ENUM_EFFECT = {
+    effect: [Type.NUM, Type.NUM] for effect in (
+        "warn", "cross", "spawn", "bubble"
+    )
+} | {
+    effect: [Type.NUM, Type.NUM, Type.NUM] for effect in (
+        "placeBlock", "plackBlockSpark", "breakBlock", "smokeSmall", "smokeBig", "explosion"
+    )
+} | {
+    effect: ([Type.NUM, Type.NUM, Type.ANY, Type.NUM], True, [], {2: "_"}) for effect in (
+        "smokeCloud", "vapor", "hit", "hitSquare", "spark", "sparkBig", "drill", "drillBig", "smokePuff",
+        "sparkExplosion"
+    )
+} | {
+    effect: [Type.NUM, Type.NUM, Type.NUM, Type.NUM] for effect in (
+        "trail", "breakProp", "shootSmall", "shootBig", "smokeColor", "smokeSquare", "smokeSquareBig", "sparkShoot",
+        "sparkShootBig", "lightBlock", "crossExplosion", "wave"
+    )
+} | {
+    "blockFall": ([Type.NUM, Type.NUM, Type.ANY, Type.ANY, Type.BLOCK], True, [], {2: "_", 3: "_"})
+}
+
 ALL_ENUMS: dict[str, tuple[set[str], bool, bool]] = {
     "BlockType": (ENUM_BLOCKS, True, False),
     "ItemType": (ENUM_ITEMS, True, False),
     "LiquidType": (ENUM_LIQUIDS, True, False),
     "UnitType": (ENUM_UNITS, True, False),
-    "Effect": (ENUM_EFFECTS, False, False),
     "Team": (ENUM_TEAMS, True, False),
     "RadarFilter": (ENUM_RADAR_FILTER, False, True),
     "RadarSort": (ENUM_RADAR_SORT, False, True),
-    "LocateType": (ENUM_LOCATE_TYPE, False, True)
+    "LocateType": (ENUM_LOCATE_TYPE, False, True),
+    "Status": (ENUM_STATUS, False, True),
+    "Property": (ENUM_PROPERTY, True, False)
 }

@@ -27,6 +27,7 @@ class TokenType(enum.Flag):
 
     STRING = enum.auto()
     NUMBER = enum.auto()
+    COLOR = enum.auto()
 
     OPERATOR = enum.auto()
     ASSIGNMENT = enum.auto()

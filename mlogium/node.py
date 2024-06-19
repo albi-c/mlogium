@@ -117,6 +117,10 @@ class AstVisitor[T](ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def visit_color_value_node(self, node: ColorValueNode) -> T:
+        raise NotImplementedError
+
+    @abstractmethod
     def visit_variable_value_node(self, node: VariableValueNode) -> T:
         raise NotImplementedError
 
@@ -605,6 +609,21 @@ class StringValueNode(Node):
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_string_value_node(self)
+
+
+class ColorValueNode(Node):
+    value: str
+
+    def __init__(self, pos: Position, value: str):
+        super().__init__(pos)
+
+        self.value = value
+
+    def __str__(self):
+        return self.value
+
+    def accept[T](self, visitor: AstVisitor[T]) -> T:
+        return visitor.visit_color_value_node(self)
 
 
 class VariableValueNode(Node):

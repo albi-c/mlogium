@@ -19,6 +19,7 @@ class Lexer:
 
     CH_INTEGER = string.digits
     CH_ID_START = string.ascii_letters + "_@"
+    CH_HEX_DIGIT = string.hexdigits
     CH_ID = CH_ID_START + string.digits
     CH_OP_DOUBLE = "*<>&|+"
     CH_OP = CH_OP_DOUBLE + "+-!~^/%"
@@ -270,6 +271,16 @@ class Lexer:
 
     def lex_operator(self) -> Token:
         val = self.next()
+
+        if val == "%":
+            if ch := self.lookahead(Lexer.CH_HEX_DIGIT):
+                val += ch
+                for _ in range(5):
+                    if ch := self.lookahead(Lexer.CH_HEX_DIGIT):
+                        val += ch
+                    else:
+                        break
+                return self.make_token(TokenType.COLOR, val)
 
         if val == "!" and self.lookahead("="):
             if self.lookahead("="):

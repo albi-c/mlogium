@@ -146,12 +146,17 @@ class Instruction:
         for n, s in subcommands:
             if isinstance(s, list):
                 subcommands_processed[n] = (s, default_outputs, default_side_effects, {})
-            elif len(s) == 2:
-                subcommands_processed[n] = (s[0], s[1], default_side_effects, {})
-            elif len(s) == 3:
-                subcommands_processed[n] = (s[0], s[2], s[1], {})
+            elif isinstance(s, tuple):
+                if len(s) == 2:
+                    subcommands_processed[n] = (s[0], s[1], default_side_effects, {})
+                elif len(s) == 3:
+                    subcommands_processed[n] = (s[0], s[2], s[1], {})
+                elif len(s) == 4:
+                    subcommands_processed[n] = (s[0], s[2], s[1], s[3])
+                else:
+                    raise ValueError(s)
             else:
-                subcommands_processed[n] = (s[0], s[2], s[1], s[3])
+                raise ValueError(s)
 
         ib = DebugInstructionBase(name, [], False, [], base, base_params, constants, subcommands_processed)
         ALL_INSTRUCTIONS_BASES.append(ib)
@@ -265,3 +270,67 @@ class Instruction:
                       translator=lambda ins: Instruction.set("@counter", ins.params[0]))
 
     noop = _make("noop", [], False, internal=True)
+
+    getblock = _make_with_subcommands("getblock", False, [0], [
+        ("floor", [Type.BLOCK, Type.NUM, Type.NUM]),
+        ("ore", [Type.BLOCK, Type.NUM, Type.NUM]),
+        ("block", [Type.BLOCK, Type.NUM, Type.NUM]),
+        ("building", [Type.BLOCK, Type.NUM, Type.NUM])
+    ])
+    setblock = _make_with_subcommands("setblock", True, [], [
+        ("floor", [Type.BLOCK_TYPE, Type.NUM, Type.NUM]),
+        ("ore", [Type.BLOCK_TYPE, Type.NUM, Type.NUM]),
+        ("block", [Type.BLOCK_TYPE, Type.NUM, Type.NUM, Type.TEAM, Type.NUM])
+    ])
+
+    spawn = _make("spawn", [Type.UNIT_TYPE, Type.NUM, Type.NUM, Type.NUM, Type.TEAM, Type.UNIT], True, [5])
+    status = _make_with_subcommands("status", True, [], [
+        ("apply", ([Type.ANY, BasicType("$Status"), Type.UNIT, Type.NUM], True, [], {0: "false"})),
+        ("clear", ([Type.ANY, BasicType("$Status"), Type.UNIT], True, [], {0: "true"}))
+    ])
+
+    spawnwave = _make("spawnwave", [Type.NUM, Type.NUM, Type.NUM], True)
+
+    setrule = _make_with_subcommands("setrule", True, [], [
+        (rule, [Type.NUM] + ([Type.TEAM] if has_team else []))
+        for rule, has_team in enums.ENUM_RULES.items()
+    ] + [
+        ("mapArea", [Type.ANY] + [Type.NUM] * 4)
+    ])
+
+    message = _make_with_subcommands("message", True, [], [
+        ("notify", []),
+        ("announce", [Type.NUM]),
+        ("toast", [Type.NUM]),
+        ("mission", [])
+    ])
+    cutscene = _make_with_subcommands("cutscene", True, [], [
+        ("pan", [Type.NUM, Type.NUM, Type.NUM]),
+        ("zoom", [Type.NUM]),
+        ("stop", [])
+    ])
+
+    effect = _make_with_subcommands("effect", True, [], [
+        (effect, params) for effect, params in enums.ENUM_EFFECT.items()
+    ])
+    explosion = _make("explosion", [Type.TEAM] + 7 * [Type.NUM], True)
+
+    setrate = _make("setrate", [Type.NUM], True)
+
+    fetch = _make_with_subcommands("fetch", False, [0], [
+        ("unit", [Type.UNIT, Type.TEAM, Type.NUM]),
+        ("player", [Type.UNIT, Type.TEAM, Type.NUM]),
+        ("core", [Type.BLOCK, Type.TEAM, Type.NUM]),
+        ("build", [Type.UNIT, Type.TEAM, Type.NUM, Type.BLOCK_TYPE]),
+        ("unitCount", [Type.NUM, Type.TEAM]),
+        ("playerCount", [Type.NUM, Type.TEAM]),
+        ("coreCount", [Type.NUM, Type.TEAM]),
+        ("buildCount", ([Type.NUM, Type.TEAM, Type.ANY, Type.BLOCK_TYPE], True, [0], {2: "_"}))
+    ])
+
+    sync = _make("sync", [Type.ANY], True, internal=True)
+
+    getflag = _make("getflag", [Type.NUM, Type.STR], False, [0])
+    setflag = _make("setflag", [Type.STR, Type.NUM], True)
+
+    setprop = _make("setprop", [UnionType([Type.ITEM_TYPE, Type.LIQUID_TYPE, BasicType("Property")])], True)

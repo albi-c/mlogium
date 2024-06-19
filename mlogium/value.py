@@ -30,7 +30,7 @@ class Value:
         return True
 
     def __str__(self):
-        return self.impl.debug_str(self)
+        return self.value
 
     def __repr__(self):
         return f"Value({self.type}, {self.value})"
@@ -166,9 +166,6 @@ class TypeImpl:
         "!=": "notEqual",
         "===": "strictEqual"
     }
-
-    def debug_str(self, value: Value) -> str:
-        return value.value
 
     def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
         return None
@@ -761,7 +758,7 @@ class EnumBaseTypeImpl(TypeImpl):
 
             elif name in self.values:
                 return Value.variable(("@" if self.has_prefix else "") + name,
-                                      BasicType(("$" if self.is_opaque else "") + self.name), True)
+                                      BasicType(("$" if self.is_opaque else "") + self.name.replace("_", "-")), True)
 
 
 class CustomEnumBaseTypeImpl(TypeImpl):
