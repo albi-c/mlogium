@@ -25,7 +25,7 @@ class Lexer:
     CH_OP = CH_OP_DOUBLE + "+-!~^/%"
     CH_STR_PREFIXES = "f"
 
-    OP_WITH_ASSIGNMENT = ("+", "-", "*", "**", "/", "%", "<<", ">>", "&", "|", "^")
+    OP_WITH_ASSIGNMENT = ("+", "-", "*", "**", "/", "%", "<<", ">>", "&", "|", "^", "&&", "||")
 
     KEYWORDS: dict[str, TokenType] = {
         "let": TokenType.KW_LET,
