@@ -16,7 +16,8 @@ class Linker:
         return [ins for ins in instructions if ins.name != "$label"], labels
 
     @staticmethod
-    def _translate_instructions(ctx: LinkingContext, instructions: list[InstructionInstance]) -> list[InstructionInstance]:
+    def _translate_instructions(ctx: LinkingContext,
+                                instructions: list[InstructionInstance]) -> list[InstructionInstance]:
         return [i for ins in instructions for i in ins.translate_in_linker(ctx)]
 
     @classmethod

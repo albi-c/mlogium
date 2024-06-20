@@ -1251,7 +1251,8 @@ class WrapperStructBaseTypeImpl(TypeImpl):
     static_values: dict[str, Value]
     instance_impl: WrapperStructInstanceTypeImpl
 
-    def __init__(self, name: str, wrapped: Type, methods: dict[str, tuple[bool, Value]], static_values: dict[str, Value]):
+    def __init__(self, name: str, wrapped: Type, methods: dict[str, tuple[bool, Value]],
+                 static_values: dict[str, Value]):
         self.name = name
         self.wrapped = None if wrapped.contains(Type.ANY) else wrapped
         self.methods = methods

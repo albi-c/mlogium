@@ -4,6 +4,7 @@ import contextlib
 
 from .abi import ABI
 from .value import Value
+from .value_types import Type
 
 
 class ScopeStack:

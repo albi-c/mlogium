@@ -1,5 +1,3 @@
-from typing import Callable
-
 from .value import *
 from .instruction import ALL_INSTRUCTIONS_BASES
 from . import enums
@@ -37,18 +35,18 @@ BUILTIN_VARS = {
 }
 
 
-def builtin_intrinsic(func: Callable, params: list[Type], outputs: set[int] = None, name: str = None):
-    outputs = outputs if outputs is not None else set()
-    if name is None:
-        ins = func(["_"] * len(params))
-        name = ins.name
+def builtin_intrinsic(func: Callable, params_: list[Type], outputs_: set[int] = None, name_: str = None):
+    outputs_ = outputs_ if outputs_ is not None else set()
+    if name_ is None:
+        ins = func(["_"] * len(params_))
+        name_ = ins.name
     return Value(
         IntrinsicFunctionType(
-            name,
-            [(type_, i in outputs) for i, type_ in enumerate(params)],
+            name_,
+            [(type_, i in outputs_) for i, type_ in enumerate(params_)],
             lambda ctx, *par: ctx.emit(func(*par))
         ),
-        name,
+        name_,
         True
     )
 
@@ -65,7 +63,8 @@ for base in ALL_INSTRUCTIONS_BASES:
             subcommands[name] = IntrinsicFunctionType(
                 f"{base.name}.{name}",
                 [(type_, i in outputs) for i, type_ in enumerate(params)],
-                lambda ctx, *values, base_=base, name_=name: ctx.emit(base_.make_subcommand_with_constants(name_, *values)),
+                lambda ctx, *values_, base_=base, name_=name: ctx.emit(
+                    base_.make_subcommand_with_constants(name_, *values_)),
                 subcommand=name
             )
         BUILTIN_FUNCTIONS[base.name] = Value(IntrinsicSubcommandFunctionType(base.name, subcommands), base.name)
@@ -74,7 +73,7 @@ for base in ALL_INSTRUCTIONS_BASES:
         BUILTIN_FUNCTIONS[base.name] = Value(IntrinsicFunctionType(
             base.name,
             [(type_, i in base.outputs) for i, type_ in enumerate(base.params)],
-            lambda ctx, *values, base_=base: ctx.emit(base_.make_with_constants(*values))
+            lambda ctx, *values_, base_=base: ctx.emit(base_.make_with_constants(*values_))
         ), base.name)
 
 
@@ -109,7 +108,7 @@ for op, args in {
     BUILTIN_OPERATIONS[op] = Value(IntrinsicFunctionType(
         op,
         [(BasicType("num"), True)] + args * [(BasicType("num"), False)],
-        lambda ctx, *values, op_=op: ctx.emit(Instruction.op(op_, *values))
+        lambda ctx, *values_, op_=op: ctx.emit(Instruction.op(op_, *values_))
     ), op)
 
 
@@ -118,7 +117,7 @@ BUILTIN_SPECIAL = {
     "print": Value(IntrinsicFunctionType(
         "print",
         [(Type.ANY, False)],
-        lambda ctx, *values: ctx.emit(*(Instruction.print(val) for val in values[0].to_strings(ctx)))
+        lambda ctx, *values_: ctx.emit(*(Instruction.print(val) for val in values_[0].to_strings(ctx)))
     ), "print")
 }
 

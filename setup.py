@@ -5,7 +5,11 @@ here = pathlib.Path(__file__).parent.resolve()
 
 long_description = (here / "README.md").read_text(encoding="utf-8")
 
+__version__ = "INVALID_VERSION"
+
 exec((here / "mlogium" / "__init__.py").read_text(encoding="utf-8"))
+
+assert __version__ != "INVALID_VERSION", "Version not found in __init__.py"
 
 setuptools.setup(
     name="mlogium",

@@ -232,7 +232,8 @@ class Optimizer:
                 pre.successors.add(block)
 
     @classmethod
-    def _eval_block_jumps_internal(cls, blocks: Blocks, labels: dict[str, int], i: int, used: set[int], from_: int = None):
+    def _eval_block_jumps_internal(cls, blocks: Blocks, labels: dict[str, int], i: int, used: set[int],
+                                   from_: int = None):
         if i >= len(blocks):
             return
 
@@ -253,10 +254,6 @@ class Optimizer:
                     cls._eval_block_jumps_internal(blocks, labels, labels[ins.params[0]], used, i)
                     cls._eval_block_jumps_internal(blocks, labels, i + 1, used, i)
                     return
-
-            elif ins.name == Instruction.jump_addr.name:
-                # TODO: properly detect reading @counter as a label
-                pass
 
         return cls._eval_block_jumps_internal(blocks, labels, i + 1, used, i)
 
