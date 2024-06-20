@@ -214,7 +214,7 @@ class Parser:
             wrapped = None
             if self.lookahead(TokenType.COLON):
                 parent = self.next(TokenType.ID).value
-            elif self.lookahead(TokenType.KW_OF):
+            elif self.lookahead(TokenType.ID, "of"):
                 if self.lookahead(TokenType.QUESTION):
                     wrapped = Type.ANY
                 else:

@@ -1283,14 +1283,18 @@ class WrapperStructBaseTypeImpl(TypeImpl):
         assert len(params) == 1
         assert self.wrapped is None or self.wrapped.contains(params[0].type)
 
-        value = Value.variable(ctx.tmp(), WrapperStructInstanceType(
-            self.name, self.wrapped if self.wrapped is not None else params[0].type))
+        value = Value.variable(ctx.tmp(),
+                               BasicType(self.name) if self.wrapped is not None else WrapperStructInstanceType(
+                                   self.name, params[0].type))
         value.assign(ctx, params[0])
 
         return value
 
     def register_type(self):
-        TypeImplRegistry.add_wrapper_struct_instance_type_impl(self.instance_impl)
+        if self.wrapped is None:
+            TypeImplRegistry.add_wrapper_struct_instance_type_impl(self.instance_impl)
+        else:
+            TypeImplRegistry.add_basic_type_impl(self.name, self.instance_impl)
 
 
 class WrapperStructInstanceTypeImpl(TypeImpl):
@@ -1343,7 +1347,7 @@ class WrapperStructInstanceTypeImpl(TypeImpl):
         return self._into_wrapped(value).memcell_deserialize(ctx, values)
 
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
-        return ["["] + self._into_wrapped(value).to_strings(ctx) + ["]"]
+        return ["\"[\""] + self._into_wrapped(value).to_strings(ctx) + ["\"]\""]
 
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         if static:
