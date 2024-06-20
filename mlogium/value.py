@@ -183,6 +183,9 @@ class Value:
     def to_condition(self, ctx: CompilationContext) -> Value | None:
         return self.impl.to_condition(ctx, self)
 
+    def is_primitive(self) -> bool:
+        return self.impl.is_primitive(self)
+
 
 class TypeImpl:
     EQUALITY_OPS = {
@@ -274,6 +277,9 @@ class TypeImpl:
     def to_condition(self, ctx: CompilationContext, value: Value) -> Value | None:
         return None
 
+    def is_primitive(self, value: Value) -> bool:
+        return False
+
 
 class NumberTypeImpl(TypeImpl):
     UNARY_OPS = {
@@ -363,6 +369,9 @@ class NumberTypeImpl(TypeImpl):
     def to_condition(self, ctx: CompilationContext, value: Value) -> Value | None:
         return value
 
+    def is_primitive(self, value: Value) -> bool:
+        return True
+
 
 class StringTypeImpl(TypeImpl):
     def assign_default(self, ctx: CompilationContext, value: Value):
@@ -370,6 +379,9 @@ class StringTypeImpl(TypeImpl):
 
     def to_condition(self, ctx: CompilationContext, value: Value) -> Value | None:
         return value
+
+    def is_primitive(self, value: Value) -> bool:
+        return True
 
 
 class BlockTypeImpl(TypeImpl):
@@ -379,6 +391,9 @@ class BlockTypeImpl(TypeImpl):
 
     def to_condition(self, ctx: CompilationContext, value: Value) -> Value | None:
         return value
+
+    def is_primitive(self, value: Value) -> bool:
+        return True
 
 
 class AnyTypeImpl(TypeImpl):
@@ -830,6 +845,16 @@ class TupleTypeImpl(TypeImpl):
 
         return GeneratorValueIterator(ctx, next_, has)
 
+    def index_at(self, ctx: CompilationContext, value: Value, index: Value) -> Value | None:
+        type_ = value.type
+        assert isinstance(type_, TupleType)
+
+        if len(type_.types) == 0:
+            return None
+
+        # TODO: finish
+        # TODO: write support
+
 
 class EnumBaseTypeImpl(TypeImpl):
     name: str
@@ -868,21 +893,26 @@ class EnumBaseTypeImpl(TypeImpl):
 
 class CustomEnumBaseTypeImpl(TypeImpl):
     name: str
+    indexed_values: dict[int, str]
     values: dict[str, Value]
     prefixed_values: dict[str, Value]
     instance_impl: CustomEnumInstanceTypeImpl
 
     def __init__(self, name: str, values: dict[str, int]):
         self.name = name
+        self.instance_impl = CustomEnumInstanceTypeImpl(self)
+        self.indexed_values = {
+            value: name_
+            for name_, value in values.items()
+        }
         self.values = {
-            name_: Value(BasicType(self.name), str(value), True)
+            name_: Value(BasicType(self.name), str(value), True, impl=self.instance_impl)
             for name_, value in values.items()
         }
         self.prefixed_values = {
             "::" + name_: value
             for name_, value in self.values.items()
         }
-        self.instance_impl = CustomEnumInstanceTypeImpl(self)
 
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
         pass
@@ -922,6 +952,16 @@ class CustomEnumInstanceTypeImpl(TypeImpl):
         if not static:
             if name == "val":
                 return Value(Type.NUM, value.value, True)
+
+            elif name == "name":
+                result = Value(Type.STR, ctx.tmp(), True)
+                ctx.emit(
+                    Instruction.TableRead([result.value], [
+                        [f"\"{self.base.indexed_values.get(i, '')}\""]
+                        for i in range(max(self.base.indexed_values.keys()) + 1)
+                    ], value.value)
+                )
+                return result
 
 
 class ExternBlockTypeImpl(TypeImpl):

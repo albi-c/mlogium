@@ -1,4 +1,5 @@
 from .instruction import InstructionInstance
+from .linking_context import LinkingContext
 
 
 class Linker:
@@ -12,10 +13,17 @@ class Linker:
             else:
                 i += 1
 
-        return [ins.translate_in_linker() for ins in instructions if ins.name != "$label"], labels
+        return [ins for ins in instructions if ins.name != "$label"], labels
+
+    @staticmethod
+    def _translate_instructions(ctx: LinkingContext, instructions: list[InstructionInstance]) -> list[InstructionInstance]:
+        return [i for ins in instructions for i in ins.translate_in_linker(ctx)]
 
     @classmethod
     def link(cls, instructions: list[InstructionInstance]) -> str:
+        ctx = LinkingContext()
+
+        instructions = cls._translate_instructions(ctx, instructions)
         instructions, labels = cls._find_labels(instructions)
         generated = []
         for ins in instructions:

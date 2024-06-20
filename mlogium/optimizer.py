@@ -52,7 +52,7 @@ class Phi(InstructionInstance):
     def __str__(self):
         return f"phi {self.output} = {self.variable} [{", ".join(map(str, self.input_blocks))}]"
 
-    def translate_in_linker(self) -> InstructionInstance:
+    def translate_in_linker(self, _) -> list[InstructionInstance]:
         raise TypeError("Phi instruction must be converted")
 
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from .value_types import *
 from . import enums
 from .abi import ABI
+from .linking_context import LinkingContext
 
 
 @dataclass(frozen=True)
@@ -100,8 +101,8 @@ class InstructionInstance:
     def __str__(self):
         return f"{self.name} {" ".join(self.params)}"
 
-    def translate_in_linker(self) -> InstructionInstance:
-        return self
+    def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
+        return [self]
 
 
 class LinkerInstructionInstance(InstructionInstance):
@@ -112,8 +113,8 @@ class LinkerInstructionInstance(InstructionInstance):
 
         self.translator = translator
 
-    def translate_in_linker(self) -> InstructionInstance:
-        return self.translator(self)
+    def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
+        return [self.translator(self)]
 
 
 ALL_INSTRUCTIONS_BASES: list[InstructionBase] = []
@@ -214,13 +215,65 @@ class Instruction:
 
     _jump_base = _make("jump", [Type.ANY] * 4, True, internal=True)
 
-    class JumpWrapper:
+    class _JumpWrapper:
         name = "jump"
 
         def __call__(self, label: str, cond: str, a: str, b: str):
             return Instruction._jump_base("$" + label, cond, a, b)
 
-    jump = JumpWrapper()
+    jump = _JumpWrapper()
+
+    class TableRead(InstructionInstance):
+        name = "$table_read"
+
+        output_values: list[str]
+        input_values: list[list[str]]
+        index: str
+
+        def __init__(self, output_values: list[str], input_values: list[list[str]], index: str):
+            super().__init__(Instruction.noop, [i for i in range(len(output_values))],
+                             False, {}, Instruction.TableRead.name,
+                             *output_values, *(val for option in input_values for val in option),
+                             internal=True)
+
+            self.output_values = output_values
+            self.input_values = input_values
+            self.index = index
+
+            length_of_one = len(self.output_values)
+            assert all(len(lst) == length_of_one for lst in input_values)
+
+        def __str__(self):
+            return f"$table_read ({', '.join(self.output_values)}) = [{self.index}] : {self.input_values}"
+
+        def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
+            if len(self.input_values) == 0 or len(self.output_values) == 0:
+                return []
+            instructions = []
+
+            name = f"*__$table_read_{ctx.tmp_num()}"
+
+            length_of_one = len(self.output_values)
+            if length_of_one > 1:
+                index = name + "_index"
+                instructions.append(Instruction.op("mul", index, self.index, "2"))
+            else:
+                index = self.index
+            instructions.append(Instruction.op("add", "@counter", "@counter", index))
+
+            end_label = name + "_end"
+
+            for i in range(1, len(self.input_values) + 1):
+                for dst, src in zip(self.outputs, range(length_of_one)):
+                    instructions.append(Instruction.set(self.params[dst], self.params[i * length_of_one + src]))
+                instructions.append(Instruction.jump_always(end_label))
+
+            if len(instructions) > 0 and instructions[-1].name == Instruction.jump.name:
+                instructions.pop(-1)
+
+            instructions.append(Instruction.label(end_label))
+
+            return instructions
 
     ubind = _make("ubind", [Type.UNIT_TYPE], True)
     ucontrol = _make_with_subcommands("ucontrol", True, [], [
