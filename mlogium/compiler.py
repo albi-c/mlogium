@@ -351,9 +351,10 @@ class Compiler(AstVisitor[Value]):
             return self.visit(node.code)
 
     def visit_enum_node(self, node: EnumNode) -> Value:
-        val = Value(BasicType("$Enum_" + node.name), node.name,
-                    impl=CustomEnumBaseTypeImpl(node.name, {name: i for i, name in enumerate(node.options)}))
+        impl = CustomEnumBaseTypeImpl(node.name, {name: i for i, name in enumerate(node.options)})
+        val = Value(BasicType("$Enum_" + node.name), node.name, impl=impl)
         self._var_declare_special(node.name, val)
+        impl.register_type()
         return val
 
     def visit_while_node(self, node: WhileNode) -> Value:
@@ -434,7 +435,7 @@ class Compiler(AstVisitor[Value]):
     def visit_call_node(self, node: CallNode) -> Value:
         func = self.visit(node.value)
         if not func.callable():
-            self._error(f"Not callable: '{func}'", node.value.pos)
+            self._error(f"Value of type '{func.type}' is not callable", node.value.pos)
 
         param_types = func.params()
 
@@ -467,7 +468,8 @@ class Compiler(AstVisitor[Value]):
     def visit_attribute_node(self, node: AttributeNode) -> Value:
         value = self.visit(node.value)
         if (val := value.getattr(self.ctx, node.attr, node.static)) is None:
-            self._error(f"Value '{value}' has no{' static' if node.static else ''} attribute '{node.attr}'")
+            self._error(
+                f"Value of type '{value.type}' has no{' static' if node.static else ''} attribute '{node.attr}'")
         return val
 
     def visit_number_value_node(self, node: NumberValueNode) -> Value:

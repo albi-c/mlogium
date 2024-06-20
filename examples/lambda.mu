@@ -15,7 +15,7 @@ print(doubled_1(3));
 print(doubled_2(3));
 
 fn transform(&f, &s) {
-    s(f(...s)...)
+    #type(s).struct_base(f(...s)...)
 }
 
 struct A {
@@ -34,4 +34,4 @@ let a = A(1);
 a.mod(3)(a);
 a.mod2()(4);
 print(a.x);
-print(transform(|&t| #map(|&x| x + 1, t), a).x);
+print(transform(|&t| t.map(|&x| x + 1), a).x);

@@ -85,6 +85,11 @@ class Value:
     def unpack(self, ctx: CompilationContext) -> list[Value] | None:
         return self.impl.unpack(ctx, self)
 
+    def unpack_req(self, ctx: CompilationContext) -> list[Value]:
+        if (values := self.unpack(ctx)) is None:
+            ctx.error(f"Value of type '{self.type}' is not unpackable")
+        return values
+
     def assignable_type(self) -> Type:
         return self.impl.assignable_type(self)
 
@@ -130,6 +135,11 @@ class Value:
             return None
 
         return self.call(ctx, params)
+
+    def call_req(self, ctx: CompilationContext, params: list[Value]) -> Value:
+        if (result := self.call_maybe(ctx, params)) is None:
+            ctx.error(f"Value of type '{self.type}' is not callable with parameters [{', '.join(str(p.type) for p in params)}]")
+        return result
 
     def needs_function_ref(self) -> bool:
         return self.impl.needs_function_ref(self)
@@ -314,7 +324,9 @@ class NumberTypeImpl(TypeImpl):
 
             except ValueError:
                 try:
-                    return Value.number(cls.to_float_or_int(Optimizer.PRECALC[op](a, None)))
+                    val = Optimizer.PRECALC[op](a, None)
+                    if val is not None:
+                        return Value.number(cls.to_float_or_int(val))
 
                 except (ArithmeticError, ValueError, TypeError, KeyError):
                     return None
@@ -609,6 +621,90 @@ class IntrinsicSubcommandFunctionTypeImpl(TypeImpl):
             return Value(func_type, f"{type_.name}.{name}")
 
 
+def _spec_func(n_params: int, func: Callable[[CompilationContext, list[Value]], Value]) -> Value:
+    return Value(SpecialFunctionType([None] * n_params, func), "null")
+
+
+def _unpackable_reduce(values: list[Value], ctx: CompilationContext, func: Value, start: Value) -> Value:
+    for val in values:
+        start = func.call_req(ctx, [start, val])
+    return start
+
+
+def _unpackable_getattr(ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
+    if not static:
+        values = value.unpack(ctx)
+        assert values is not None
+
+        if name == "reverse":
+            return Value.tuple(ctx, values[::-1])
+
+        elif name == "enumerate":
+            return Value.tuple(ctx, [Value.tuple(ctx, [Value.number(i), v]) for i, v in enumerate(values)])
+
+        elif name == "len":
+            return Value.number(len(values))
+
+        elif name == "take":
+            if len(values) == 0:
+                ctx.error("Cannot take from an empty sequence")
+            return Value.tuple(ctx, [values[0], Value.tuple(ctx, values[1:])])
+
+        elif name == "map":
+            return _spec_func(
+                1,
+                lambda ctx_, params: Value.tuple(ctx_, [params[0].call_req(ctx_, [v]) for v in values])
+            )
+
+        elif name == "foreach":
+            return _spec_func(
+                1,
+                lambda ctx_, params: ([params[0].call_req(ctx_, [v]) for v in values], Value.null())[1]
+            )
+
+        elif name == "unpack_map":
+            return _spec_func(
+                1,
+                lambda ctx_, params: Value.tuple(ctx_, [params[0].call_req(ctx_, v.unpack_req(ctx_)) for v in values])
+            )
+
+        elif name == "zip":
+            return _spec_func(
+                1,
+                lambda ctx_, params: Value.tuple(ctx_, list(zip(values, params[0].unpack_req(ctx_))))
+            )
+
+        elif name == "reduce":
+            return _spec_func(
+                2,
+                lambda ctx_, params: _unpackable_reduce(values, ctx_, *params)
+            )
+
+        elif name == "all":
+            return _unpackable_reduce(values, ctx, _spec_func(
+                2,
+                lambda ctx_, params: params[0].binary_op(ctx_, "&&", params[1])
+            ), Value.boolean(True))
+
+        elif name == "any":
+            return _unpackable_reduce(values, ctx, _spec_func(
+                2,
+                lambda ctx_, params: params[0].binary_op(ctx_, "||", params[1])
+            ), Value.boolean(False))
+
+        elif name == "sum":
+            return _unpackable_reduce(values, ctx, _spec_func(
+                2,
+                lambda ctx_, params: params[0].binary_op(ctx_, "+", params[1])
+            ), Value.number(0))
+
+        elif name == "prod":
+            return _unpackable_reduce(values, ctx, _spec_func(
+                2,
+                lambda ctx_, params: params[0].binary_op(ctx_, "*", params[1])
+            ), Value.number(1))
+
+
 class TupleTypeImpl(TypeImpl):
     def unpack(self, ctx: CompilationContext, value: Value) -> list[Value] | None:
         type_ = value.type
@@ -630,21 +726,7 @@ class TupleTypeImpl(TypeImpl):
         assert isinstance(type_, TupleType)
 
         if not static:
-            if name == "reversed":
-                return Value.tuple(ctx, value.unpack(ctx)[::-1])
-
-            elif name == "len":
-                return Value.number(len(type_.types))
-
-            elif name == "take":
-                values = value.unpack(ctx)
-                assert values is not None
-                if len(values) == 0:
-                    ctx.error("Cannot unpack an empty tuple")
-
-                return Value.tuple(ctx, [values[0], Value.tuple(ctx, values[1:])])
-
-            elif name.startswith("_") and name.count("_") == 2:
+            if name.startswith("_") and name.count("_") == 2:
                 _, a, b = name.split("_")
                 try:
                     a = int(a)
@@ -657,11 +739,13 @@ class TupleTypeImpl(TypeImpl):
             try:
                 index = int(name)
             except ValueError:
-                return None
+                pass
             else:
                 if len(type_.types) <= index or index < 0:
                     return None
                 return Value.variable(ABI.attribute(value.value, str(index)), type_.types[index], value.const)
+
+        return _unpackable_getattr(ctx, value, name, static)
 
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
         for a, b in zip(value.unpack(ctx), other.unpack(ctx)):
@@ -808,11 +892,15 @@ class CustomEnumBaseTypeImpl(TypeImpl):
         assert Type.NUM.contains(params[0].type)
         return Value(BasicType(self.name), params[0].value)
 
+    def register_type(self):
+        TypeImplRegistry.add_basic_type_impl(self.name, CustomEnumInstanceTypeImpl())
+
 
 class CustomEnumInstanceTypeImpl(TypeImpl):
-    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
-        if type_ == Type.NUM:
-            return Value.number(int(value.value))
+    def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
+        if not static:
+            if name == "val":
+                return Value(Type.NUM, value.value, True)
 
 
 class ExternBlockTypeImpl(TypeImpl):
@@ -955,18 +1043,6 @@ class StructInstanceTypeImpl(TypeImpl):
         if isinstance(type_, BasicType):
             if type_.name in self.parents:
                 return Value(type_, value.value, value.const, const_on_write=value.const_on_write)
-
-    def callable(self, value: Value) -> bool:
-        return self.base.callable(value)
-
-    def params(self, value: Value) -> list[Type | None]:
-        return self.base.params(value)
-
-    def params_public(self, value: Value) -> list[Type | None]:
-        return self.base.params_public(value)
-
-    def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
-        return self.base.call(ctx, value, params)
 
     def memcell_length(self, ctx: CompilationContext, value: Value) -> int:
         return sum(value.getattr(ctx, name, False).memcell_length(ctx) for name in self.field_list)
@@ -1267,6 +1343,27 @@ class TypeInfoTypeImpl(TypeImpl):
                 if (values := self.value.unpack(ctx)) is None:
                     ctx.error(f"Value of type {self.value.type} is not unpackable")
                 return Value.number(len(values))
+
+            elif name == "from":
+                return Value(
+                    SpecialFunctionType(
+                        [None],
+                        lambda ctx_, params: params[0].into_req(ctx_, self.value.type)
+                    ), "null")
+
+            elif name == "struct_base":
+                impl = self.value.impl
+                if isinstance(impl, StructInstanceTypeImpl):
+                    return Value(BasicType(f"$StructBase_{impl.base.name}"),
+                                 impl.base.name, True, impl=impl.base)
+                elif isinstance(impl, WrapperStructInstanceTypeImpl):
+                    return Value(BasicType(f"$rapperStructBase_{impl.base.name}"),
+                                 impl.base.name, True, impl=impl.base)
+                else:
+                    ctx.error(f"Value of type '{self.value.type}' is not a struct instance")
+
+            elif name == "name":
+                return Value.string(f"\"{str(self.value.type)}\"")
 
 
 class RangeTypeImpl(TypeImpl):
