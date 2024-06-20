@@ -195,7 +195,7 @@ class Instruction:
         (name, ([type_, UnionType([Type.BLOCK, Type.UNIT])], False, [0])) for name, type_ in enums.ENUM_SENSABLE.items()
     ], param_process=lambda params: [params[1], params[2], "@" + params[0]])
 
-    set = _make("set", [Type.ANY, Type.ANY], True, [0], internal=True)
+    set = _make("set", [Type.ANY, Type.ANY], False, [0], internal=True)
     essential_set = _make("$essential_set", [Type.ANY, Type.ANY], True, [],
                           internal=True, base=LinkerInstructionInstance,
                           translator=lambda ins: Instruction.set(*ins.params))
@@ -211,8 +211,6 @@ class Instruction:
     wait = _make("wait", [Type.NUM], True)
     stop = _make("stop", [], True)
     end = _make("end", [], True)
-    # jump = _make("jump", [Type.ANY] * 4, True, internal=True, base=LinkerInstructionInstance,
-    #              translator=lambda ins: Instruction.jump("$" + ins.params[0], *ins.params[1:]))
 
     _jump_base = _make("jump", [Type.ANY] * 4, True, internal=True)
 

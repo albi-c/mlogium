@@ -673,4 +673,8 @@ class Parser:
         elif tok.type == TokenType.HASH:
             return self._parse_macro(False)
 
+        elif tok.type == TokenType.DOUBLE_COLON:
+            name = self.next(TokenType.ID)
+            return VariableValueNode(tok.pos + name.pos, tok.value + name.value)
+
         ParserError.unexpected_token(tok)

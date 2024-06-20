@@ -569,7 +569,7 @@ class Optimizer:
                     code[i] = Instruction.noop()
                     return True
 
-            elif ins.name == Instruction.jump.name and ins.params[1] == "equal" and ins.params[3] == "0":
+            if ins.name == Instruction.jump.name and ins.params[1] == "equal" and ins.params[3] == "0":
                 tmp = ins.params[2]
                 first = first_uses[tmp]
                 if (inputs[tmp] == 1 and outputs[tmp] == 1 and i != first[0]
@@ -579,7 +579,12 @@ class Optimizer:
                     code[first[0]] = Instruction.noop()
                     return True
 
-            elif (all(uses[ins.params[j]] == 1 for j in ins.outputs) and not ins.side_effects
+            if (all(uses[ins.params[j]] == 1 for j in ins.outputs) and not ins.side_effects
+                  and ins.name != Instruction.noop.name):
+                code[i] = Instruction.noop()
+                return True
+
+            if (all(inputs[ins.params[j]] == 0 for j in ins.outputs) and not ins.side_effects
                   and ins.name != Instruction.noop.name):
                 code[i] = Instruction.noop()
                 return True

@@ -7,7 +7,7 @@ from .compilation_context import CompilationContext, InstructionSection
 from .error import CompilerError
 from .scope import ScopeStack
 from .macro import MacroInvocationContext
-from . import builtins
+from . import builtins, enums
 
 
 class Compiler(AstVisitor[Value]):
@@ -447,7 +447,19 @@ class Compiler(AstVisitor[Value]):
                     self._error(f"Value '{param}' of type {value.type} is not unpackable", param.pos)
                 unpacked_params += unpacked
             else:
-                unpacked_params.append(self.visit(param))
+                bottom_scope = {}
+                if len(unpacked_params) < len(param_types):
+                    type_ = param_types[len(unpacked_params)]
+                    if isinstance(type_, BasicType) and (val := builtins.BUILTIN_ENUMS.get(type_.name.lstrip("$"))):
+                        impl = val.impl
+                        assert isinstance(impl, EnumBaseTypeImpl)
+                        bottom_scope = impl.prefixed_values
+                    else:
+                        impl = TypeImplRegistry.get_impl(type_)
+                        if isinstance(impl, CustomEnumInstanceTypeImpl):
+                            bottom_scope = impl.base.prefixed_values
+                with self.scope.bottom("<enum>", bottom_scope):
+                    unpacked_params.append(self.visit(param))
 
         if len(param_types) != len(unpacked_params):
             self._error(

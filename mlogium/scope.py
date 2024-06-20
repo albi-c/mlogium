@@ -11,9 +11,9 @@ class ScopeStack:
         name: str
         variables: dict[str, Value]
 
-        def __init__(self, name: str):
+        def __init__(self, name: str, variables: dict[str, Value] = None):
             self.name = name
-            self.variables = {}
+            self.variables = variables if variables is not None else {}
 
     scopes: list[Scope]
     functions: list[str]
@@ -39,6 +39,14 @@ class ScopeStack:
             yield
         finally:
             self.scopes.pop(-1)
+
+    @contextlib.contextmanager
+    def bottom(self, name: str, variables: dict[str, Value]):
+        self.scopes.insert(0, ScopeStack.Scope(name, variables))
+        try:
+            yield
+        finally:
+            self.scopes.pop(0)
 
     @contextlib.contextmanager
     def function_call(self, ctx, name: str):

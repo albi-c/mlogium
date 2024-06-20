@@ -833,13 +833,22 @@ class TupleTypeImpl(TypeImpl):
 
 class EnumBaseTypeImpl(TypeImpl):
     name: str
-    values: set[str]
+    values: dict[str, Value]
+    prefixed_values: dict[str, Value]
     has_prefix: bool
     is_opaque: bool
 
     def __init__(self, name: str, values: set[str], has_prefix: bool, is_opaque: bool):
         self.name = name
-        self.values = values
+        self.values = {
+            name_: Value(BasicType(("$" if is_opaque else "") + self.name),
+                         ("@" if has_prefix else "") + name_.replace("_", "-"), True)
+            for name_ in values
+        }
+        self.prefixed_values = {
+            "::" + name_: value
+            for name_, value in self.values.items()
+        }
         self.has_prefix = has_prefix
         self.is_opaque = is_opaque
 
@@ -854,18 +863,26 @@ class EnumBaseTypeImpl(TypeImpl):
             if name == "_len":
                 return Value.number(len(self.values))
 
-            elif name in self.values:
-                return Value.variable(("@" if self.has_prefix else "") + name,
-                                      BasicType(("$" if self.is_opaque else "") + self.name.replace("_", "-")), True)
+            return self.values.get(name)
 
 
 class CustomEnumBaseTypeImpl(TypeImpl):
     name: str
-    values: dict[str, int]
+    values: dict[str, Value]
+    prefixed_values: dict[str, Value]
+    instance_impl: CustomEnumInstanceTypeImpl
 
     def __init__(self, name: str, values: dict[str, int]):
         self.name = name
-        self.values = values
+        self.values = {
+            name_: Value(BasicType(self.name), str(value), True)
+            for name_, value in values.items()
+        }
+        self.prefixed_values = {
+            "::" + name_: value
+            for name_, value in self.values.items()
+        }
+        self.instance_impl = CustomEnumInstanceTypeImpl(self)
 
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
         pass
@@ -878,8 +895,7 @@ class CustomEnumBaseTypeImpl(TypeImpl):
             if name == "_len":
                 return Value.number(len(self.values))
 
-            elif name in self.values:
-                return Value(BasicType(self.name), str(self.values[name]))
+            return self.values.get(name)
 
     def callable(self, value: Value) -> bool:
         return True
@@ -893,10 +909,15 @@ class CustomEnumBaseTypeImpl(TypeImpl):
         return Value(BasicType(self.name), params[0].value)
 
     def register_type(self):
-        TypeImplRegistry.add_basic_type_impl(self.name, CustomEnumInstanceTypeImpl())
+        TypeImplRegistry.add_basic_type_impl(self.name, self.instance_impl)
 
 
 class CustomEnumInstanceTypeImpl(TypeImpl):
+    base: CustomEnumBaseTypeImpl
+
+    def __init__(self, base: CustomEnumBaseTypeImpl):
+        self.base = base
+
     def getattr(self, ctx: CompilationContext, value: Value, name: str, static: bool) -> Value | None:
         if not static:
             if name == "val":
@@ -1491,7 +1512,9 @@ TypeImplRegistry.add_impls({
     IntrinsicFunctionType: IntrinsicFunctionTypeImpl(),
     IntrinsicSubcommandFunctionType: IntrinsicSubcommandFunctionTypeImpl(),
     TupleType: TupleTypeImpl(),
-    NullType: TypeImpl()
+    NullType: TypeImpl(),
+
+    type(None): TypeImpl()
 })
 
 TypeImplRegistry.add_default_basic_type_impls({
