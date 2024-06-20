@@ -440,7 +440,39 @@ class TypeiMacro(Macro):
         return Value(BasicType("$TypeInfo"), "null", impl=TypeInfoTypeImpl(Value(params[0], "null")))
 
 
+class UnrollMacro(Macro):
+    def __init__(self):
+        super().__init__("unroll")
+
+    def inputs(self) -> tuple[Macro.Input, ...]:
+        return MacroInput.TOKEN, MacroInput.VALUE_NODE
+
+    def invoke(self, ctx: MacroInvocationContext, compiler: Compiler, params: list) -> Value:
+        func = compiler.visit(params[1])
+        if not func.callable_with([Type.NUM]):
+            PositionedException.custom(params[1].pos,
+                                       f"Value of type '{func.type}' has to take 1 parameter of type 'num'")
+
+        try:
+            n = int(params[0].value)
+        except ValueError:
+            PositionedException.custom(params[0].pos, "Unroll macro requires an integer")
+        else:
+            for i in range(n):
+                func.call(ctx.ctx, [Value.number(i)])
+
+        return Value.null()
+
+
+class EnumerateMacro(UnpackableOperatorMacro):
+    def __init__(self):
+        super().__init__("enumerate")
+
+    def process(self, ctx: MacroInvocationContext, compiler: Compiler, values: list[Value]) -> Value:
+        return Value.tuple(ctx.ctx, [Value.tuple(ctx.ctx, [Value.number(i), v]) for i, v in enumerate(values)])
+
+
 MACROS: list[Macro] = [CastMacro(), ImportMacro(), RepeatMacro(), MapMacro(), UnpackMapMacro(), ZipMacro(), AllMacro(),
                        AnyMacro(), LenMacro(), SumMacro(), ProdMacro(), OperatorMacro(), TypeofMacro(), ForeachMacro(),
                        ReduceMacro(), TakeMacro(), ReverseMacro(), RangeMacro(), GenerateMacro(), StaticAssertMacro(),
-                       TypeMacro(), TypeiMacro()]
+                       TypeMacro(), TypeiMacro(), UnrollMacro(), EnumerateMacro()]

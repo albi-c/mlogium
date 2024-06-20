@@ -117,6 +117,20 @@ class Value:
     def callable(self) -> bool:
         return self.impl.callable(self)
 
+    def callable_with(self, types: list[Type]) -> bool:
+        if not self.callable():
+            return False
+        params = self.params()
+        if len(params) != len(types):
+            return False
+        return all(p is None or p.contains(t) for p, t in zip(params, types))
+
+    def call_maybe(self, ctx: CompilationContext, params: list[Value]) -> Value | None:
+        if not self.callable_with([p.type for p in params]):
+            return None
+
+        return self.call(ctx, params)
+
     def needs_function_ref(self) -> bool:
         return self.impl.needs_function_ref(self)
 

@@ -26,6 +26,11 @@ struct Gen of ? {
                   ||[&self, &g] self.has() && g.has())
     }
 
+    fn enumerate() {
+        self::new(||[&self, i = -1] { i += 1; (i, self.next) },
+                  ||[&self] self.has())
+    }
+
     static fn range(&n: num) {
         let i = 0;
         Gen::new(||[&i] {
@@ -36,8 +41,12 @@ struct Gen of ? {
     }
 
     static fn generate(&f) {
-        let i = -1;
-        Gen::new(||[&i, &f] { i += 1; f(i) }
+        Gen::new(||[&f, i = -1] { i += 1; f(i) },
+                 || true)
+    }
+
+    static fn count() {
+        Gen::new(||[i = -1] { i += 1; i },
                  || true)
     }
 
