@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Callable, Iterable
+from typing import Callable
 import math
 import itertools
 
-from .instruction import Instruction, InstructionInstance, InstructionBase
+from .instruction import Instruction, InstructionInstance
 
 
 class Block(list[InstructionInstance]):
@@ -53,13 +53,14 @@ class Phi(InstructionInstance):
         return f"phi {self.output} = {self.variable} [{", ".join(map(str, self.input_blocks))}]"
 
     def translate_in_linker(self, _) -> list[InstructionInstance]:
-        raise TypeError("Phi instruction must be converted")
+        raise RuntimeError("Phi instruction must be converted")
+
+
+type Instructions = list[InstructionInstance]
+type Blocks = list[Block]
 
 
 class Optimizer:
-    type Instructions = list[InstructionInstance]
-    type Blocks = list[Block]
-
     JUMP_TRANSLATION: dict[str, str] = {
         "equal": "notEqual",
         "notEqual": "equal",
@@ -450,6 +451,7 @@ class Optimizer:
         for block in blocks:
             for i, ins in enumerate(block):
                 if ins.name == Phi.name:
+                    assert isinstance(ins, Phi)
                     for b in ins.input_blocks:
                         b.add_phi.append(Instruction.set(ins.output, f"{ins.variable}:{b.variables[ins.variable]}"))
                     block[i] = Instruction.noop()
@@ -580,12 +582,12 @@ class Optimizer:
                     return True
 
             if (all(uses[ins.params[j]] == 1 for j in ins.outputs) and not ins.side_effects
-                  and ins.name != Instruction.noop.name):
+                    and ins.name != Instruction.noop.name):
                 code[i] = Instruction.noop()
                 return True
 
             if (all(inputs[ins.params[j]] == 0 for j in ins.outputs) and not ins.side_effects
-                  and ins.name != Instruction.noop.name):
+                    and ins.name != Instruction.noop.name):
                 code[i] = Instruction.noop()
                 return True
 

@@ -7,7 +7,7 @@ from .compilation_context import CompilationContext, InstructionSection
 from .error import CompilerError
 from .scope import ScopeStack
 from .macro import MacroInvocationContext
-from . import builtins, enums
+from . import builtins
 
 
 class Compiler(AstVisitor[Value]):
@@ -416,6 +416,10 @@ class Compiler(AstVisitor[Value]):
             self._error(f"Continue statement must be in a loop")
         self.emit(Instruction.jump_always(name + "_continue"))
         return Value.null()
+
+    def visit_cast_node(self, node: CastNode) -> Value:
+        value = self.visit(node.value)
+        return value.into_req(self.ctx, node.type)
 
     def visit_binary_op_node(self, node: BinaryOpNode) -> Value:
         left = self.visit(node.left)

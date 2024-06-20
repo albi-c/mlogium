@@ -852,8 +852,57 @@ class TupleTypeImpl(TypeImpl):
         if len(type_.types) == 0:
             return None
 
-        # TODO: finish
-        # TODO: write support
+        if any(t != type_.types[0] for t in type_.types[1:]):
+            ctx.error(f"Indexing is not supported for tuples of multiple types")
+
+        values = value.unpack(ctx)
+        assert values is not None
+
+        if any(not val.is_primitive() for val in values):
+            ctx.error(f"Indexing supported only for tuples of primitive types")
+
+        return Value(BasicType("$TupleIndex"), "null", False, impl=TupleIndexReferenceTypeImpl(
+            type_.types[0], index, values))
+
+
+class TupleIndexReferenceTypeImpl(TypeImpl):
+    type: Type
+    index: Value
+    values: list[Value]
+
+    def __init__(self, type_: Type, index: Value, values: list[Value]):
+        self.type = type_
+        self.index = index
+        self.values = values
+
+    def assignable_type(self, value: Value) -> Type:
+        return self.type
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        ctx.emit(
+            Instruction.TableWrite(
+                [
+                    [val.value]
+                    for val in self.values
+                ], [other.value], self.index.value
+            )
+        )
+
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        if type_.contains(self.type):
+            result = Value(self.type, ctx.tmp(), True)
+            ctx.emit(
+                Instruction.TableRead(
+                    [result.value], [
+                        [val.value]
+                        for val in self.values
+                    ], self.index.value
+                )
+            )
+            return result
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return self.into(ctx, value, self.type).to_strings(ctx)
 
 
 class EnumBaseTypeImpl(TypeImpl):
@@ -897,6 +946,7 @@ class CustomEnumBaseTypeImpl(TypeImpl):
     values: dict[str, Value]
     prefixed_values: dict[str, Value]
     instance_impl: CustomEnumInstanceTypeImpl
+    has_name_lookup: bool
 
     def __init__(self, name: str, values: dict[str, int]):
         self.name = name
@@ -913,6 +963,7 @@ class CustomEnumBaseTypeImpl(TypeImpl):
             "::" + name_: value
             for name_, value in self.values.items()
         }
+        self.has_name_lookup = min(values.values()) >= 0
 
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
         pass
@@ -954,6 +1005,9 @@ class CustomEnumInstanceTypeImpl(TypeImpl):
                 return Value(Type.NUM, value.value, True)
 
             elif name == "name":
+                if not self.base.has_name_lookup:
+                    ctx.error(f"Name information is not available for enums with negative values")
+
                 result = Value(Type.STR, ctx.tmp(), True)
                 ctx.emit(
                     Instruction.TableRead([result.value], [

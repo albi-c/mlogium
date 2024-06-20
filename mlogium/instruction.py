@@ -244,7 +244,7 @@ class Instruction:
             assert all(len(lst) == length_of_one for lst in input_values)
 
         def __str__(self):
-            return f"$table_read ({', '.join(self.output_values)}) = [{self.index}] : {self.input_values}"
+            return f"$table_read {self.output_values} = [{self.index}] : {self.input_values}"
 
         def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
             if len(self.input_values) == 0 or len(self.output_values) == 0:
@@ -266,6 +266,66 @@ class Instruction:
             for i in range(1, len(self.input_values) + 1):
                 for dst, src in zip(self.outputs, range(length_of_one)):
                     instructions.append(Instruction.set(self.params[dst], self.params[i * length_of_one + src]))
+                instructions.append(Instruction.jump_always(end_label))
+
+            if len(instructions) > 0 and instructions[-1].name == Instruction.jump.name:
+                instructions.pop(-1)
+
+            instructions.append(Instruction.label(end_label))
+
+            return instructions
+
+    class TableWrite(InstructionInstance):
+        name = "$table_write"
+
+        output_values: list[list[str]]
+        input_values: list[str]
+        index: str
+        initial_values_index: int
+
+        def __init__(self, output_values: list[list[str]], input_values: list[str], index: str):
+            super().__init__(Instruction.noop, [i + len(input_values) for i in range(sum(map(len, output_values)))],
+                             False, {}, Instruction.TableWrite.name,
+                             *input_values, *(val for option in output_values for val in option),
+                             *(val for option in output_values for val in option),
+                             internal=True)
+
+            self.output_values = output_values
+            self.input_values = input_values
+            self.index = index
+            self.initial_values_index = max(self.outputs) + 1
+
+            length_of_one = len(self.input_values)
+            assert all(len(lst) == length_of_one for lst in output_values)
+
+        def __str__(self):
+            return f"$table_write [{self.index}] : {self.output_values} = {self.input_values}"
+
+        def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
+            if len(self.input_values) == 0 or len(self.output_values) == 0:
+                return []
+            instructions = []
+
+            name = f"*__$table_write_{ctx.tmp_num()}"
+
+            length_of_one = len(self.input_values)
+
+            for dst, src in zip(self.params[length_of_one:self.initial_values_index],
+                                self.params[self.initial_values_index:]):
+                instructions.append(Instruction.set(dst, src))
+
+            if length_of_one > 1:
+                index = name + "_index"
+                instructions.append(Instruction.op("mul", index, self.index, "2"))
+            else:
+                index = self.index
+            instructions.append(Instruction.op("add", "@counter", "@counter", index))
+
+            end_label = name + "_end"
+
+            for i in range(1, len(self.output_values) + 1):
+                for dst, src in zip(range(length_of_one), self.inputs):
+                    instructions.append(Instruction.set(self.params[i * length_of_one + dst], self.params[src]))
                 instructions.append(Instruction.jump_always(end_label))
 
             if len(instructions) > 0 and instructions[-1].name == Instruction.jump.name:
@@ -301,10 +361,15 @@ class Instruction:
     uradar = _make("uradar", [BasicType("$RadarFilter")] * 3 + [BasicType("$RadarSort"), Type.ANY, Type.NUM, Type.UNIT],
                    False, [6], constants={5: "0"})
     ulocate = _make_with_subcommands("ulocate", False, [], [
-        ("ore", ([Type.ANY, Type.ANY, Type.BLOCK_TYPE, Type.NUM, Type.NUM, Type.NUM, Type.NUM], False, [3, 4, 5], {0: "_", 1: "_"})),
-        ("building", ([BasicType("$LocateType"), Type.NUM, Type.ANY, Type.NUM, Type.NUM, Type.NUM, Type.BLOCK], False, [3, 4, 5, 6], {2: "_"})),
-        ("spawn", ([Type.ANY, Type.ANY, Type.ANY, Type.NUM, Type.NUM, Type.NUM, Type.BLOCK], False, [3, 4, 5, 6], {0: "_", 1: "_", 2: "_"})),
-        ("damaged", ([Type.ANY, Type.ANY, Type.ANY, Type.NUM, Type.NUM, Type.NUM, Type.BLOCK], False, [3, 4, 5, 6], {0: "_", 1: "_", 2: "_"}))
+        ("ore", ([Type.ANY, Type.ANY, Type.BLOCK_TYPE, Type.NUM, Type.NUM, Type.NUM, Type.NUM], False, [3, 4, 5],
+                 {0: "_", 1: "_"})),
+        ("building", (
+        [BasicType("$LocateType"), Type.NUM, Type.ANY, Type.NUM, Type.NUM, Type.NUM, Type.BLOCK], False, [3, 4, 5, 6],
+        {2: "_"})),
+        ("spawn", ([Type.ANY, Type.ANY, Type.ANY, Type.NUM, Type.NUM, Type.NUM, Type.BLOCK], False, [3, 4, 5, 6],
+                   {0: "_", 1: "_", 2: "_"})),
+        ("damaged", ([Type.ANY, Type.ANY, Type.ANY, Type.NUM, Type.NUM, Type.NUM, Type.BLOCK], False, [3, 4, 5, 6],
+                     {0: "_", 1: "_", 2: "_"}))
     ])
 
     label = _make("$label", [Type.ANY], True, internal=True)
@@ -346,8 +411,8 @@ class Instruction:
         (rule, [Type.NUM] + ([Type.TEAM] if has_team else []))
         for rule, has_team in enums.ENUM_RULES.items()
     ] + [
-        ("mapArea", [Type.ANY] + [Type.NUM] * 4)
-    ])
+                                         ("mapArea", [Type.ANY] + [Type.NUM] * 4)
+                                     ])
 
     message = _make_with_subcommands("message", True, [], [
         ("notify", []),

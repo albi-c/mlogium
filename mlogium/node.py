@@ -89,6 +89,10 @@ class AstVisitor[T](ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def visit_cast_node(self, node: CastNode) -> T:
+        raise NotImplementedError
+
+    @abstractmethod
     def visit_binary_op_node(self, node: BinaryOpNode) -> T:
         raise NotImplementedError
 
@@ -490,6 +494,23 @@ class ContinueNode(Node):
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_continue_node(self)
+
+
+class CastNode(Node):
+    value: Node
+    type: Type
+
+    def __init__(self, pos: Position, value: Node, type_: Type):
+        super().__init__(pos)
+
+        self.value = value
+        self.type = type_
+
+    def __str__(self):
+        return f"{self.value} as {self.type}"
+
+    def accept[T](self, visitor: AstVisitor[T]) -> T:
+        return visitor.visit_cast_node(self)
 
 
 class BinaryOpNode(Node):

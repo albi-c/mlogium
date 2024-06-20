@@ -94,7 +94,10 @@ class Parser:
                          code, returns_last and not top_level)
 
     def _parse_struct_inner(self, has_fields: bool) \
-            -> tuple[list[SingleAssignmentTarget], list[tuple[bool, SingleAssignmentTarget, Node]], list[tuple[bool, str, NamedParamFunctionType, Node]], list[tuple[str, NamedParamFunctionType, Node]]]:
+            -> tuple[list[SingleAssignmentTarget],
+                     list[tuple[bool, SingleAssignmentTarget, Node]],
+                     list[tuple[bool, str, NamedParamFunctionType, Node]],
+                     list[tuple[str, NamedParamFunctionType, Node]]]:
         fields: list[SingleAssignmentTarget] = []
         static_fields: list[tuple[bool, SingleAssignmentTarget, Node]] = []
         methods: list[tuple[bool, str, NamedParamFunctionType, Node]] = []
@@ -493,7 +496,8 @@ class Parser:
 
         return node
 
-    def _parse_unary_op(self, values: tuple[str, ...], func: Callable[[], Node], token_type: TokenType = TokenType.OPERATOR) -> Node:
+    def _parse_unary_op(self, values: tuple[str, ...], func: Callable[[], Node],
+                        token_type: TokenType = TokenType.OPERATOR) -> Node:
         if (op := self.lookahead(token_type, values)) is not None:
             value = self._parse_unary_op(values, func)
             return UnaryOpNode(op.pos + value.pos, op.value, value)
@@ -501,7 +505,15 @@ class Parser:
         return func()
 
     def parse_assignment(self) -> Node:
-        return self._parse_binary_op(None, self.parse_range, TokenType.ASSIGNMENT, True)
+        return self._parse_binary_op(None, self.parse_cast, TokenType.ASSIGNMENT, True)
+
+    def parse_cast(self) -> Node:
+        value = self.parse_range()
+        if self.lookahead(TokenType.KW_AS):
+            type_ = self.parse_type()
+            return CastNode(value.pos, value, type_)
+        else:
+            return value
 
     def parse_range(self) -> Node:
         val = self.parse_logical_or()
