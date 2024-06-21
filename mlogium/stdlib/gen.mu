@@ -12,13 +12,11 @@ struct Gen of ? {
     }
 
     fn map(&f) {
-        self::new(||[&self, &f] f(self.next()),
-                  ||[&self] self.has())
+        self::new(||[&self, &f] f(self.next()), self.has)
     }
 
     fn unpack_map(&f) {
-        self::new(||[&self, &f] f(self.next()...),
-                  ||[&self] self.has())
+        self::new(||[&self, &f] f(self.next()...), self.has)
     }
 
     fn zip(&g) {
@@ -27,8 +25,7 @@ struct Gen of ? {
     }
 
     fn enumerate() {
-        self::new(||[&self, i = -1] { i += 1; (i, self.next) },
-                  ||[&self] self.has())
+        self::new(||[&self, i = -1] { i += 1; (i, self.next) }, self.has)
     }
 
     static fn range(&n: num) {
@@ -51,12 +48,16 @@ struct Gen of ? {
     }
 
     static fn buildings() {
-        Gen::range(@links).map(getlink)
+        let i = 0;
+        Gen::new(||[&i] {
+            let b = getlink(i);
+            i += 1;
+            b
+        }, ||[&i] i < @links)
     }
 
     fn peek(&f) {
-        self::new(||[&self, &f] { let v = self.next(); f(v); v },
-                  ||[&self] self.has())
+        self::new(||[&self, &f] { let v = self.next(); f(v); v }, self.has)
     }
 
     fn foreach(&f) {
@@ -91,19 +92,21 @@ struct Gen of ? {
     }
 
     fn all() {
-        let r = true;
         for v in self {
-            r &&= v;
+            if !v {
+                return false;
+            }
         }
-        r
+        return true;
     }
 
     fn any() {
-        let r = false;
         for v in self {
-            r ||= r;
+            if v {
+                return true;
+            }
         }
-        r
+        return false;
     }
 
     fn limit(&n: num) {
