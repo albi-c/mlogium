@@ -749,7 +749,7 @@ class TupleTypeImpl(TypeImpl):
                 except ValueError:
                     return None
                 else:
-                    return Value.tuple(ctx, value.unpack(ctx)[a:b])
+                    return Value.tuple(ctx, value.unpack(ctx)[a:b+1])
 
             try:
                 index = int(name)
