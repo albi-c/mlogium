@@ -449,4 +449,8 @@ class Instruction:
     getflag = _make("getflag", [Type.NUM, Type.STR], False, [0])
     setflag = _make("setflag", [Type.STR, Type.NUM], True)
 
-    setprop = _make("setprop", [UnionType([Type.ITEM_TYPE, Type.LIQUID_TYPE, BasicType("Property")])], True)
+    setprop = _make("setprop", [
+        UnionType([Type.ITEM_TYPE, Type.LIQUID_TYPE, BasicType("Property")]),
+        UnionType([Type.BLOCK, Type.UNIT]),
+        Type.NUM
+    ], True)
