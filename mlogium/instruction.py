@@ -182,7 +182,7 @@ class Instruction:
 
     draw_flush = _make("drawflush", [Type.BLOCK], True)
     print_flush = _make("printflush", [Type.BLOCK], True)
-    get_link = _make("getlink", [Type.BLOCK, Type.NUM], True, [0])
+    get_link = _make("getlink", [Type.BLOCK, Type.NUM], False, [0])
     control = _make_with_subcommands("control", True, [], [
         ("enabled", [Type.BLOCK, Type.NUM]),
         ("shoot", [Type.BLOCK, Type.NUM, Type.NUM, Type.NUM]),

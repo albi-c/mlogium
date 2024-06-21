@@ -8,7 +8,7 @@ BUILTIN_VARS = {
     "@thisx": Value.variable("@thisx", Type.NUM, True),
     "@thisy": Value.variable("@thisy", Type.NUM, True),
     "@ipt": Value.variable("@ipt", Type.NUM, True),
-    "@timescale": Value.variable("@ipt", Type.NUM, True),
+    "@timescale": Value.variable("@timescale", Type.NUM, True),
     "@counter": Value.variable("@counter", Type.NUM, True),
     "@links": Value.variable("@links", Type.NUM, True),
     "@unit": Value.variable("@unit", Type.UNIT, False),

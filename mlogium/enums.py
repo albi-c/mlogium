@@ -80,7 +80,7 @@ ENUM_TEAMS: set[str] = {
 
 ENUM_SENSABLE: dict[str, Type] = {
     "totalItems": Type.NUM,
-    "firstItem": Type.NUM,
+    "firstItem": Type.ITEM_TYPE,
     "totalLiquids": Type.NUM,
     "totalPower": Type.NUM,
     "itemCapacity": Type.NUM,
@@ -112,16 +112,16 @@ ENUM_SENSABLE: dict[str, Type] = {
     "mineY": Type.NUM,
     "mining": Type.NUM,
     "speed": Type.NUM,
-    "team": Type.NUM,
+    "team": Type.TEAM,
     "type": Type.NUM,
     "flag": Type.NUM,
     "controlled": Type.CONTROLLER,
     "controller": UnionType([Type.BLOCK, Type.UNIT]),
     "name": Type.NUM,
     "payloadCount": Type.NUM,
-    "payloadType": Type.NUM,
+    "payloadType": UnionType([Type.BLOCK_TYPE, Type.UNIT_TYPE]),
     "enabled": Type.NUM,
-    "config": Type.NUM,
+    "config": Type.CONTENT,
     "color": Type.NUM
 } | {
     name: Type.NUM for name in ENUM_ITEMS | ENUM_LIQUIDS

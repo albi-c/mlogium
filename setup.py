@@ -26,6 +26,7 @@ setuptools.setup(
     },
     url="https://github.com/albi-c/mlogium",
     project_urls={
+        "Documentation": "https://github.com/albi-c/mlogium/wiki",
         "Bug Tracker": "https://github.com/albi-c/mlogium/issues"
     },
     classifiers=[
