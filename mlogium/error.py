@@ -20,7 +20,7 @@ class PositionedException(Exception):
 class LexerError(PositionedException):
     @staticmethod
     def unexpected_character(pos: Position, ch: str):
-        raise LexerError(f"Unexpected character [{ch}]", pos)
+        raise LexerError(f"Unexpected character: '{ch}'", pos)
 
     @staticmethod
     def unexpected_eof(pos: Position):
@@ -34,7 +34,7 @@ class ParserError(PositionedException):
 
     @staticmethod
     def unexpected_token(tok: Token):
-        raise ParserError(f"Unexpected token [{tok.value}]", tok.pos)
+        raise ParserError(f"Unexpected token: '{tok.value}'", tok.pos)
 
     @staticmethod
     def unexpected_eof(pos: Position):

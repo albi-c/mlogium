@@ -169,7 +169,7 @@ class Parser:
             case _:
                 raise ValueError("Unknown macro parameter type")
 
-    def _parse_macro(self, top_level: bool, is_type: bool = False) -> Node:
+    def _parse_macro(self, top_level: bool, is_type: bool = False) -> Node | Type:
         name = self.next(TokenType.ID)
         if (macro := self.macro_registry.get(name.value)) is None:
             ParserError.custom(name.pos, f"Macro not found: '{name.value}'")
@@ -402,7 +402,7 @@ class Parser:
         ref = bool(self.lookahead(TokenType.OPERATOR, "&"))
         name = self.next(TokenType.ID).value
         if self.lookahead(TokenType.COLON):
-            return name, self.parse_type(), ref
+            return name, self.parse_type(ref), ref
         else:
             return name, None, ref
 
@@ -445,23 +445,24 @@ class Parser:
 
     def _parse_basic_type(self) -> BasicType:
         name = self.next(TokenType.ID).value
-
         return BasicType(name)
 
-    def parse_type(self) -> Type:
+    def parse_type(self, allow_private: bool = False) -> Type:
         if self.lookahead(TokenType.HASH):
-            type_ = self._parse_macro(False, True)
+            return self._parse_macro(False, True)
 
         elif self.lookahead(TokenType.KW_FN):
-            type_ = self._parse_func_type()
+            return self._parse_func_type()
 
         elif self.lookahead(TokenType.LPAREN | TokenType.LBRACK, take_if_matches=False):
-            type_ = self._parse_tuple_type()
+            return self._parse_tuple_type()
+
+        elif allow_private and self.lookahead(TokenType.DOLLAR):
+            name = self.next(TokenType.ID).value
+            return BasicType("$" + name)
 
         else:
-            type_ = self._parse_basic_type()
-
-        return type_
+            return self._parse_basic_type()
 
     def parse_value(self) -> Node:
         tok = self.lookahead()

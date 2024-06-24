@@ -210,7 +210,8 @@ class Lexer:
                 ("}", TokenType.RBRACE),
                 ("[", TokenType.LBRACK),
                 ("]", TokenType.RBRACK),
-                ("?", TokenType.QUESTION)
+                ("?", TokenType.QUESTION),
+                ("$", TokenType.DOLLAR)
             ]):
                 pass
 

@@ -1,27 +1,27 @@
 struct Marker {
     let id: num;
 
-    static fn _new(&type, id: num, x: num, y: num, replace: num) -> Marker {
+    static fn new(&type: $MarkerType, id: num, x: num, y: num, replace: num) -> Marker {
         makemarker(type, id, x, y, replace);
         Marker(id)
     }
     static fn shapeText(id: num, x: num, y: num, replace: num) -> Marker {
-        Marker::_new(MarkerType::shapeText, id, x, y, replace)
+        Marker::new(::shapeText, id, x, y, replace)
     }
     static fn point(id: num, x: num, y: num, replace: num) -> Marker {
-        Marker::_new(MarkerType::point, id, x, y, replace)
+        Marker::new(::point, id, x, y, replace)
     }
     static fn shape(id: num, x: num, y: num, replace: num) -> Marker {
-        Marker::_new(MarkerType::shape, id, x, y, replace)
+        Marker::new(::shape, id, x, y, replace)
     }
     static fn text(id: num, x: num, y: num, replace: num) -> Marker {
-        Marker::_new(MarkerType::text, id, x, y, replace)
+        Marker::new(::text, id, x, y, replace)
     }
     static fn line(id: num, x: num, y: num, replace: num) -> Marker {
-        Marker::_new(MarkerType::line, id, x, y, replace)
+        Marker::new(::line, id, x, y, replace)
     }
     static fn texture(id: num, x: num, y: num, replace: num) -> Marker {
-        Marker::_new(MarkerType::texture, id, x, y, replace)
+        Marker::new(::texture, id, x, y, replace)
     }
     static fn quad(id: num, x: num, y: num, replace: num) -> Marker {
         Marker::new(::quad, id, x, y, replace)
