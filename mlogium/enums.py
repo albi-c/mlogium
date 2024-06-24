@@ -182,6 +182,14 @@ ENUM_EFFECT = {
     "blockFall": ([Type.NUM, Type.NUM, Type.ANY, Type.ANY, Type.BLOCK], True, [], {2: "_", 3: "_"})
 }
 
+ENUM_WEATHER = {
+    "snowing", "rain", "sandstorm", "sporestorm", "fog", "suspend-particles"
+}
+
+ENUM_MARKER_TYPE = {
+    "shapeText", "point", "shape", "text", "line", "texture", "quad"
+}
+
 ALL_ENUMS: dict[str, tuple[set[str], bool, bool]] = {
     "BlockType": (ENUM_BLOCKS, True, False),
     "ItemType": (ENUM_ITEMS, True, False),
@@ -192,5 +200,7 @@ ALL_ENUMS: dict[str, tuple[set[str], bool, bool]] = {
     "RadarSort": (ENUM_RADAR_SORT, False, True),
     "LocateType": (ENUM_LOCATE_TYPE, False, True),
     "Status": (ENUM_STATUS, False, True),
-    "Property": (ENUM_PROPERTY, True, False)
+    "Property": (ENUM_PROPERTY, True, False),
+    "Weather": (ENUM_WEATHER, True, False),
+    "MarkerType": (ENUM_MARKER_TYPE, False, True)
 }

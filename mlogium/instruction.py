@@ -179,6 +179,7 @@ class Instruction:
         ("image", [Type.NUM, Type.NUM, Type.CONTENT, Type.NUM, Type.BLOCK])
     ])
     print = _make("print", [Type.ANY], True, internal=True)
+    format = _make("format", [Type.ANY], True)
 
     draw_flush = _make("drawflush", [Type.BLOCK], True)
     print_flush = _make("printflush", [Type.BLOCK], True)
@@ -405,6 +406,9 @@ class Instruction:
         ("clear", ([Type.ANY, BasicType("$Status"), Type.UNIT], True, [], {0: "true"}))
     ])
 
+    weather_sense = _make("weathersense", [Type.NUM, BasicType("Weather")], False, [0])
+    weather_set = _make("weatherset", [BasicType("Weather"), Type.NUM], True)
+
     spawnwave = _make("spawnwave", [Type.NUM, Type.NUM, Type.NUM], True)
 
     setrule = _make_with_subcommands("setrule", True, [], [
@@ -454,3 +458,32 @@ class Instruction:
         UnionType([Type.BLOCK, Type.UNIT]),
         Type.NUM
     ], True)
+
+    make_marker = _make("makemarker", [BasicType("$MarkerType"), Type.NUM, Type.NUM, Type.NUM, Type.NUM],
+                        True, [])
+    set_marker = _make_with_subcommands("setmarker", True, [], [
+        ("remove", [Type.NUM]),
+        ("world", [Type.NUM, Type.NUM]),
+        ("minimap", [Type.NUM, Type.NUM]),
+        ("autoscale", [Type.NUM, Type.NUM]),
+        ("pos", [Type.NUM, Type.NUM, Type.NUM]),
+        ("endPos", [Type.NUM, Type.NUM, Type.NUM]),
+        ("drawLayer", [Type.NUM, Type.NUM]),
+        ("color", [Type.NUM, Type.NUM]),
+        ("radius", [Type.NUM, Type.NUM]),
+        ("stroke", [Type.NUM, Type.NUM]),
+        ("rotation", [Type.NUM, Type.NUM]),
+        ("shape", [Type.NUM, Type.NUM, Type.NUM, Type.NUM]),
+        ("arc", [Type.NUM, Type.NUM, Type.NUM]),
+        ("flushText", [Type.NUM, Type.NUM]),
+        ("fontSize", [Type.NUM, Type.NUM]),
+        ("textHeight", [Type.NUM, Type.NUM]),
+        ("labelFlags", [Type.NUM, Type.NUM, Type.NUM]),
+        ("texture", [Type.NUM, Type.NUM, Type.STR]),
+        ("textureSize", [Type.NUM, Type.NUM, Type.NUM]),
+        ("posi", [Type.NUM, Type.NUM, Type.NUM, Type.NUM]),
+        ("uvi", [Type.NUM, Type.NUM, Type.NUM, Type.NUM]),
+        ("colori", [Type.NUM, Type.NUM, Type.NUM])
+    ])
+
+    locale_print = _make("localeprint", [Type.STR], True, [])
