@@ -31,8 +31,3 @@ class Position:
 
     def __iadd__(self, _):
         return NotImplemented
-
-
-def cast[T](value, type_: type[T]) -> T:
-    assert isinstance(value, type_)
-    return value

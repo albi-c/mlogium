@@ -38,6 +38,4 @@ class Linker:
                 else:
                     ln += f" {p}"
             generated.append(ln)
-        if len(generated) > 0 and generated[-1] == "jump 0 always _ _":
-            generated.pop(-1)
         return "\n".join(generated)

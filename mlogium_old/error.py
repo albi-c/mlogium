@@ -33,18 +33,12 @@ class ParserError(PositionedException):
         raise ParserError(msg, pos)
 
     @staticmethod
-    def unexpected_token(tok: Token, expected: str = None):
-        if expected is not None:
-            raise ParserError(f"Unexpected token: '{tok.value}' (expected {expected})", tok.pos)
-        else:
-            raise ParserError(f"Unexpected token: '{tok.value}'", tok.pos)
+    def unexpected_token(tok: Token):
+        raise ParserError(f"Unexpected token: '{tok.value}'", tok.pos)
 
     @staticmethod
-    def unexpected_eof(pos: Position, expected: str = None):
-        if expected is not None:
-            raise ParserError(f"Unexpected EOF (expected {expected})", pos)
-        else:
-            raise ParserError("Unexpected EOF", pos)
+    def unexpected_eof(pos: Position):
+        raise ParserError("Unexpected EOF", pos)
 
 
 class CompilerError(PositionedException):

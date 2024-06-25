@@ -1,4 +1,4 @@
-from .value_types import Types, UnionType
+from .value_types import Type, UnionType
 
 
 ENUM_BLOCKS: set[str] = {
@@ -78,53 +78,53 @@ ENUM_TEAMS: set[str] = {
     "derelict", "sharded", "crux", "malis"
 }
 
-ENUM_SENSABLE: dict[str, Types] = {
-    "totalItems": Types.NUM,
-    "firstItem": Types.ITEM_TYPE,
-    "totalLiquids": Types.NUM,
-    "totalPower": Types.NUM,
-    "itemCapacity": Types.NUM,
-    "liquidCapacity": Types.NUM,
-    "powerCapacity": Types.NUM,
-    "powerNetStored": Types.NUM,
-    "powerNetCapacity": Types.NUM,
-    "powerNetIn": Types.NUM,
-    "powerNetOut": Types.NUM,
-    "ammo": Types.NUM,
-    "ammoCapacity": Types.NUM,
-    "health": Types.NUM,
-    "maxHealth": Types.NUM,
-    "heat": Types.NUM,
-    "efficiency": Types.NUM,
-    "progress": Types.NUM,
-    "timescale": Types.NUM,
-    "rotation": Types.NUM,
-    "x": Types.NUM,
-    "y": Types.NUM,
-    "shootX": Types.NUM,
-    "shootY": Types.NUM,
-    "size": Types.NUM,
-    "dead": Types.NUM,
-    "range": Types.NUM,
-    "shooting": Types.NUM,
-    "boosting": Types.NUM,
-    "mineX": Types.NUM,
-    "mineY": Types.NUM,
-    "mining": Types.NUM,
-    "speed": Types.NUM,
-    "team": Types.TEAM,
-    "type": Types.NUM,
-    "flag": Types.NUM,
-    "controlled": Types.CONTROLLER,
-    "controller": UnionType([Types.BLOCK, Types.UNIT]),
-    "name": Types.NUM,
-    "payloadCount": Types.NUM,
-    "payloadType": UnionType([Types.BLOCK_TYPE, Types.UNIT_TYPE]),
-    "enabled": Types.NUM,
-    "config": Types.CONTENT,
-    "color": Types.NUM
+ENUM_SENSABLE: dict[str, Type] = {
+    "totalItems": Type.NUM,
+    "firstItem": Type.ITEM_TYPE,
+    "totalLiquids": Type.NUM,
+    "totalPower": Type.NUM,
+    "itemCapacity": Type.NUM,
+    "liquidCapacity": Type.NUM,
+    "powerCapacity": Type.NUM,
+    "powerNetStored": Type.NUM,
+    "powerNetCapacity": Type.NUM,
+    "powerNetIn": Type.NUM,
+    "powerNetOut": Type.NUM,
+    "ammo": Type.NUM,
+    "ammoCapacity": Type.NUM,
+    "health": Type.NUM,
+    "maxHealth": Type.NUM,
+    "heat": Type.NUM,
+    "efficiency": Type.NUM,
+    "progress": Type.NUM,
+    "timescale": Type.NUM,
+    "rotation": Type.NUM,
+    "x": Type.NUM,
+    "y": Type.NUM,
+    "shootX": Type.NUM,
+    "shootY": Type.NUM,
+    "size": Type.NUM,
+    "dead": Type.NUM,
+    "range": Type.NUM,
+    "shooting": Type.NUM,
+    "boosting": Type.NUM,
+    "mineX": Type.NUM,
+    "mineY": Type.NUM,
+    "mining": Type.NUM,
+    "speed": Type.NUM,
+    "team": Type.TEAM,
+    "type": Type.NUM,
+    "flag": Type.NUM,
+    "controlled": Type.CONTROLLER,
+    "controller": UnionType([Type.BLOCK, Type.UNIT]),
+    "name": Type.NUM,
+    "payloadCount": Type.NUM,
+    "payloadType": UnionType([Type.BLOCK_TYPE, Type.UNIT_TYPE]),
+    "enabled": Type.NUM,
+    "config": Type.CONTENT,
+    "color": Type.NUM
 } | {
-    name: Types.NUM for name in ENUM_ITEMS | ENUM_LIQUIDS
+    name: Type.NUM for name in ENUM_ITEMS | ENUM_LIQUIDS
 }
 
 ENUM_RADAR_FILTER = {
@@ -161,25 +161,25 @@ ENUM_PROPERTY = {
 }
 
 ENUM_EFFECT = {
-    effect: [Types.NUM, Types.NUM] for effect in (
+    effect: [Type.NUM, Type.NUM] for effect in (
         "warn", "cross", "spawn", "bubble"
     )
 } | {
-    effect: [Types.NUM, Types.NUM, Types.NUM] for effect in (
+    effect: [Type.NUM, Type.NUM, Type.NUM] for effect in (
         "placeBlock", "plackBlockSpark", "breakBlock", "smokeSmall", "smokeBig", "explosion"
     )
 } | {
-    effect: ([Types.NUM, Types.NUM, Types.ANY, Types.NUM], True, [], {2: "_"}) for effect in (
+    effect: ([Type.NUM, Type.NUM, Type.ANY, Type.NUM], True, [], {2: "_"}) for effect in (
         "smokeCloud", "vapor", "hit", "hitSquare", "spark", "sparkBig", "drill", "drillBig", "smokePuff",
         "sparkExplosion"
     )
 } | {
-    effect: [Types.NUM, Types.NUM, Types.NUM, Types.NUM] for effect in (
+    effect: [Type.NUM, Type.NUM, Type.NUM, Type.NUM] for effect in (
         "trail", "breakProp", "shootSmall", "shootBig", "smokeColor", "smokeSquare", "smokeSquareBig", "sparkShoot",
         "sparkShootBig", "lightBlock", "crossExplosion", "wave"
     )
 } | {
-    "blockFall": ([Types.NUM, Types.NUM, Types.ANY, Types.ANY, Types.BLOCK], True, [], {2: "_", 3: "_"})
+    "blockFall": ([Type.NUM, Type.NUM, Type.ANY, Type.ANY, Type.BLOCK], True, [], {2: "_", 3: "_"})
 }
 
 ENUM_WEATHER = {

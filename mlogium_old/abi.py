@@ -20,7 +20,7 @@ class ABI:
         return f"%__func_ret_val"
 
     @staticmethod
-    def attribute(name: str, attrib: str | int) -> str:
+    def attribute(name: str, attrib: str) -> str:
         return f"{name}.{attrib}"
 
     @staticmethod

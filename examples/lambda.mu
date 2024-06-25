@@ -15,11 +15,11 @@ print(doubled_1(3));
 print(doubled_2(3));
 
 fn transform(&f, &s) {
-    #type(s).struct_base(f(...s)...)
+    typeof(s).struct_base(f(...s)...)
 }
 
 struct A {
-    let x: num
+    let x: num;
 
     fn mod(n) {
         |&a|[n] { a.x += n }

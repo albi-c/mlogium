@@ -3,7 +3,7 @@ for i in 0..@links {
 
     let enemy = radar(::enemy, ::any, ::any, ::distance, turret, 1);
 
-    if (enemy === null) {
+    if enemy === null {
         control.shoot(turret, 0, 0, false);
     } else {
         control.shootp(turret, enemy, true);

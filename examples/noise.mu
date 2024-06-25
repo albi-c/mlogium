@@ -15,7 +15,7 @@ while true {
         let y_seed = y + seed;
         for x in 0..dsize {
             let val = abs(noise(x + seed, y_seed)) * 255;
-            draw.color((#repeat(3, val) * fg_color)..., 255);
+            draw.color((val * fg_color)..., 255);
             draw.rect(x * PM, y_offset, PM, PM);
         }
         drawflush(ExternBlock::display1);

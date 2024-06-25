@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from dataclasses import dataclass
 
-from .value_types import Types, BasicType, UnionType, TypeRef
+from .value_types import *
 from . import enums
 from .abi import ABI
 from .linking_context import LinkingContext
@@ -12,13 +12,13 @@ from .linking_context import LinkingContext
 @dataclass(frozen=True)
 class InstructionBase:
     name: str
-    params: list[TypeRef]
+    params: list[Type]
     side_effects: bool
     outputs: list[int]
     base_class: type[InstructionInstance]
     base_params: dict[str, Any]
     constants: dict[int, str]
-    _subcommands: dict[str, tuple[list[TypeRef], list[int], bool, dict[int, str]]] | None
+    _subcommands: dict[str, tuple[list[Type], list[int], bool, dict[int, str]]] | None
 
     def __call__(self, *params: Any) -> InstructionInstance:
         params = params + tuple(["_"] * (len(self.params) - len(params)))
@@ -65,7 +65,7 @@ class InstructionBase:
     def has_subcommands(self) -> bool:
         return self._subcommands is not None
 
-    def subcommands(self) -> dict[str, tuple[list[TypeRef], list[int], bool, dict[int, str]]]:
+    def subcommands(self) -> dict[str, tuple[list[Type], list[int], bool, dict[int, str]]]:
         return self._subcommands
 
 
@@ -125,7 +125,7 @@ class Instruction:
         raise TypeError("Not instantiable")
 
     @staticmethod
-    def _make(name: str, params: list[TypeRef], side_effects: bool, outputs: list[int] = None,
+    def _make(name: str, params: list[Type], side_effects: bool, outputs: list[int] = None,
               base: type[InstructionInstance] = None, constants: dict[int, str] = None, **base_params):
         outputs = outputs if outputs is not None else []
         base = base if base is not None else InstructionInstance
@@ -136,14 +136,14 @@ class Instruction:
 
     @staticmethod
     def _make_with_subcommands(name: str, default_side_effects: bool, default_outputs: list[int],
-                               subcommands: list[tuple[str, list[TypeRef]
-                                                            | tuple[list[TypeRef], bool]
-                                                            | tuple[list[TypeRef], bool, list[int]]
-                                                            | tuple[list[TypeRef], bool, list[int], dict[int, str]]]],
+                               subcommands: list[tuple[str, list[Type]
+                                                            | tuple[list[Type], bool]
+                                                            | tuple[list[Type], bool, list[int]]
+                                                            | tuple[list[Type], bool, list[int], dict[int, str]]]],
                                base: type[InstructionInstance] = None, constants: dict[int, str] = None, **base_params):
         base = base if base is not None else InstructionInstance
         constants = constants if constants is not None else {}
-        subcommands_processed: dict[str, tuple[list[TypeRef], list[int], bool, dict[int, str]]] = {}
+        subcommands_processed: dict[str, tuple[list[Type], list[int], bool, dict[int, str]]] = {}
         for n, s in subcommands:
             if isinstance(s, list):
                 subcommands_processed[n] = (s, default_outputs, default_side_effects, {})
@@ -163,58 +163,58 @@ class Instruction:
         ALL_INSTRUCTIONS_BASES.append(ib)
         return ib
 
-    read = _make("read", [Types.NUM, Types.BLOCK, Types.NUM], False, [0])
-    write = _make("write", [Types.NUM, Types.BLOCK, Types.NUM], True)
+    read = _make("read", [Type.NUM, Type.BLOCK, Type.NUM], False, [0])
+    write = _make("write", [Type.NUM, Type.BLOCK, Type.NUM], True)
     draw = _make_with_subcommands("draw", True, [], [
-        ("clear", [Types.NUM] * 3),
-        ("color", [Types.NUM] * 4),
-        ("col", [Types.NUM]),
-        ("stroke", [Types.NUM]),
-        ("line", [Types.NUM] * 4),
-        ("rect", [Types.NUM] * 4),
-        ("lineRect", [Types.NUM] * 4),
-        ("poly", [Types.NUM] * 5),
-        ("linePoly", [Types.NUM] * 5),
-        ("triangle", [Types.NUM] * 6),
-        ("image", [Types.NUM, Types.NUM, Types.CONTENT, Types.NUM, Types.BLOCK])
+        ("clear", [Type.NUM] * 3),
+        ("color", [Type.NUM] * 4),
+        ("col", [Type.NUM]),
+        ("stroke", [Type.NUM]),
+        ("line", [Type.NUM] * 4),
+        ("rect", [Type.NUM] * 4),
+        ("lineRect", [Type.NUM] * 4),
+        ("poly", [Type.NUM] * 5),
+        ("linePoly", [Type.NUM] * 5),
+        ("triangle", [Type.NUM] * 6),
+        ("image", [Type.NUM, Type.NUM, Type.CONTENT, Type.NUM, Type.BLOCK])
     ])
-    print = _make("print", [Types.ANY], True, internal=True)
-    format = _make("format", [Types.ANY], True)
+    print = _make("print", [Type.ANY], True, internal=True)
+    format = _make("format", [Type.ANY], True)
 
-    draw_flush = _make("drawflush", [Types.BLOCK], True)
-    print_flush = _make("printflush", [Types.BLOCK], True)
-    get_link = _make("getlink", [Types.BLOCK, Types.NUM], False, [0])
+    draw_flush = _make("drawflush", [Type.BLOCK], True)
+    print_flush = _make("printflush", [Type.BLOCK], True)
+    get_link = _make("getlink", [Type.BLOCK, Type.NUM], False, [0])
     control = _make_with_subcommands("control", True, [], [
-        ("enabled", [Types.BLOCK, Types.NUM]),
-        ("shoot", [Types.BLOCK, Types.NUM, Types.NUM, Types.NUM]),
-        ("shootp", [Types.BLOCK, Types.UNIT, Types.NUM]),
-        ("config", [Types.BLOCK, Types.CONTENT]),
-        ("color", [Types.BLOCK, Types.NUM])
+        ("enabled", [Type.BLOCK, Type.NUM]),
+        ("shoot", [Type.BLOCK, Type.NUM, Type.NUM, Type.NUM]),
+        ("shootp", [Type.BLOCK, Type.UNIT, Type.NUM]),
+        ("config", [Type.BLOCK, Type.CONTENT]),
+        ("color", [Type.BLOCK, Type.NUM])
     ])
-    radar = _make("radar", [BasicType("$RadarFilter")] * 3 + [BasicType("$RadarSort"), Types.BLOCK, Types.NUM, Types.UNIT],
+    radar = _make("radar", [BasicType("$RadarFilter")] * 3 + [BasicType("$RadarSort"), Type.BLOCK, Type.NUM, Type.UNIT],
                   False, [6])
     sensor = _make_with_subcommands("sensor", False, [0], [
-        (name, ([type_, UnionType([Types.BLOCK, Types.UNIT])], False, [0])) for name, type_ in enums.ENUM_SENSABLE.items()
+        (name, ([type_, UnionType([Type.BLOCK, Type.UNIT])], False, [0])) for name, type_ in enums.ENUM_SENSABLE.items()
     ], param_process=lambda params: [params[1], params[2], "@" + params[0]])
 
-    set = _make("set", [Types.ANY, Types.ANY], False, [0], internal=True)
-    essential_set = _make("$essential_set", [Types.ANY, Types.ANY], True, [],
+    set = _make("set", [Type.ANY, Type.ANY], False, [0], internal=True)
+    essential_set = _make("$essential_set", [Type.ANY, Type.ANY], True, [],
                           internal=True, base=LinkerInstructionInstance,
                           translator=lambda ins: Instruction.set(*ins.params))
-    op = _make("op", [Types.ANY, Types.NUM, Types.NUM, Types.NUM], False, [1], internal=True)
+    op = _make("op", [Type.ANY, Type.NUM, Type.NUM, Type.NUM], False, [1], internal=True)
     lookup = _make_with_subcommands("lookup", False, [0], [
-        ("block", [Types.BLOCK_TYPE, Types.NUM]),
-        ("unit", [Types.UNIT_TYPE, Types.NUM]),
-        ("item", [Types.ITEM_TYPE, Types.NUM]),
-        ("liquid", [Types.LIQUID_TYPE, Types.NUM])
+        ("block", [Type.BLOCK_TYPE, Type.NUM]),
+        ("unit", [Type.UNIT_TYPE, Type.NUM]),
+        ("item", [Type.ITEM_TYPE, Type.NUM]),
+        ("liquid", [Type.LIQUID_TYPE, Type.NUM])
     ])
-    pack_color = _make("packcolor", [Types.NUM] * 5, False, [0])
+    pack_color = _make("packcolor", [Type.NUM] * 5, False, [0])
 
-    wait = _make("wait", [Types.NUM], True)
+    wait = _make("wait", [Type.NUM], True)
     stop = _make("stop", [], True)
     end = _make("end", [], True)
 
-    _jump_base = _make("jump", [Types.ANY] * 4, True, internal=True)
+    _jump_base = _make("jump", [Type.ANY] * 4, True, internal=True)
 
     class _JumpWrapper:
         name = "jump"
@@ -336,44 +336,44 @@ class Instruction:
 
             return instructions
 
-    ubind = _make("ubind", [Types.UNIT_TYPE], True)
+    ubind = _make("ubind", [Type.UNIT_TYPE], True)
     ucontrol = _make_with_subcommands("ucontrol", True, [], [
         ("idle", []),
         ("stop", []),
-        ("move", [Types.NUM] * 2),
-        ("approach", [Types.NUM] * 3),
-        ("pathfind", [Types.NUM] * 2),
+        ("move", [Type.NUM] * 2),
+        ("approach", [Type.NUM] * 3),
+        ("pathfind", [Type.NUM] * 2),
         ("autoPathfind", []),
-        ("boost", [Types.NUM]),
-        ("target", [Types.NUM] * 3),
-        ("targetp", [Types.UNIT, Types.NUM]),
-        ("itemDrop", [Types.BLOCK, Types.NUM]),
-        ("itemTake", [Types.BLOCK, Types.ITEM_TYPE, Types.NUM]),
+        ("boost", [Type.NUM]),
+        ("target", [Type.NUM] * 3),
+        ("targetp", [Type.UNIT, Type.NUM]),
+        ("itemDrop", [Type.BLOCK, Type.NUM]),
+        ("itemTake", [Type.BLOCK, Type.ITEM_TYPE, Type.NUM]),
         ("payDrop", []),
-        ("payTake", [Types.NUM]),
+        ("payTake", [Type.NUM]),
         ("payEnter", []),
-        ("mine", [Types.NUM] * 2),
-        ("flag", [Types.NUM]),
-        ("build", [Types.NUM, Types.NUM, Types.BLOCK_TYPE, Types.NUM, UnionType([Types.CONTENT, Types.BLOCK])]),
-        ("getBlock", ([Types.NUM, Types.NUM, Types.BLOCK_TYPE, Types.BLOCK, Types.NUM], [2, 3])),
-        ("within", ([Types.NUM] * 4, [3])),
+        ("mine", [Type.NUM] * 2),
+        ("flag", [Type.NUM]),
+        ("build", [Type.NUM, Type.NUM, Type.BLOCK_TYPE, Type.NUM, UnionType([Type.CONTENT, Type.BLOCK])]),
+        ("getBlock", ([Type.NUM, Type.NUM, Type.BLOCK_TYPE, Type.BLOCK, Type.NUM], [2, 3])),
+        ("within", ([Type.NUM] * 4, [3])),
         ("unbind", []),
     ])
-    uradar = _make("uradar", [BasicType("$RadarFilter")] * 3 + [BasicType("$RadarSort"), Types.ANY, Types.NUM, Types.UNIT],
+    uradar = _make("uradar", [BasicType("$RadarFilter")] * 3 + [BasicType("$RadarSort"), Type.ANY, Type.NUM, Type.UNIT],
                    False, [6], constants={5: "0"})
     ulocate = _make_with_subcommands("ulocate", False, [], [
-        ("ore", ([Types.ANY, Types.ANY, Types.BLOCK_TYPE, Types.NUM, Types.NUM, Types.NUM, Types.NUM], False, [3, 4, 5],
+        ("ore", ([Type.ANY, Type.ANY, Type.BLOCK_TYPE, Type.NUM, Type.NUM, Type.NUM, Type.NUM], False, [3, 4, 5],
                  {0: "_", 1: "_"})),
         ("building", (
-            [BasicType("$LocateType"), Types.NUM, Types.ANY, Types.NUM, Types.NUM, Types.NUM, Types.BLOCK], False, [3, 4, 5, 6],
-            {2: "_"})),
-        ("spawn", ([Types.ANY, Types.ANY, Types.ANY, Types.NUM, Types.NUM, Types.NUM, Types.BLOCK], False, [3, 4, 5, 6],
+        [BasicType("$LocateType"), Type.NUM, Type.ANY, Type.NUM, Type.NUM, Type.NUM, Type.BLOCK], False, [3, 4, 5, 6],
+        {2: "_"})),
+        ("spawn", ([Type.ANY, Type.ANY, Type.ANY, Type.NUM, Type.NUM, Type.NUM, Type.BLOCK], False, [3, 4, 5, 6],
                    {0: "_", 1: "_", 2: "_"})),
-        ("damaged", ([Types.ANY, Types.ANY, Types.ANY, Types.NUM, Types.NUM, Types.NUM, Types.BLOCK], False, [3, 4, 5, 6],
+        ("damaged", ([Type.ANY, Type.ANY, Type.ANY, Type.NUM, Type.NUM, Type.NUM, Type.BLOCK], False, [3, 4, 5, 6],
                      {0: "_", 1: "_", 2: "_"}))
     ])
 
-    label = _make("$label", [Types.ANY], True, internal=True)
+    label = _make("$label", [Type.ANY], True, internal=True)
     prepare_return_address = _make("$prepare_return_address", [], True, [],
                                    internal=True, base=LinkerInstructionInstance,
                                    translator=lambda ins: Instruction.op("add", ABI.function_return_address(),
@@ -383,107 +383,107 @@ class Instruction:
     def jump_always(cls, label: str) -> InstructionInstance:
         return cls.jump(label, "always", "_", "_")
 
-    jump_addr = _make("$jump_addr", [Types.NUM], True, internal=True, base=LinkerInstructionInstance,
+    jump_addr = _make("$jump_addr", [Type.NUM], True, internal=True, base=LinkerInstructionInstance,
                       translator=lambda ins: Instruction.set("@counter", ins.params[0]))
 
     noop = _make("noop", [], False, internal=True)
 
     getblock = _make_with_subcommands("getblock", False, [0], [
-        ("floor", [Types.BLOCK, Types.NUM, Types.NUM]),
-        ("ore", [Types.BLOCK, Types.NUM, Types.NUM]),
-        ("block", [Types.BLOCK, Types.NUM, Types.NUM]),
-        ("building", [Types.BLOCK, Types.NUM, Types.NUM])
+        ("floor", [Type.BLOCK, Type.NUM, Type.NUM]),
+        ("ore", [Type.BLOCK, Type.NUM, Type.NUM]),
+        ("block", [Type.BLOCK, Type.NUM, Type.NUM]),
+        ("building", [Type.BLOCK, Type.NUM, Type.NUM])
     ])
     setblock = _make_with_subcommands("setblock", True, [], [
-        ("floor", [Types.BLOCK_TYPE, Types.NUM, Types.NUM]),
-        ("ore", [Types.BLOCK_TYPE, Types.NUM, Types.NUM]),
-        ("block", [Types.BLOCK_TYPE, Types.NUM, Types.NUM, Types.TEAM, Types.NUM])
+        ("floor", [Type.BLOCK_TYPE, Type.NUM, Type.NUM]),
+        ("ore", [Type.BLOCK_TYPE, Type.NUM, Type.NUM]),
+        ("block", [Type.BLOCK_TYPE, Type.NUM, Type.NUM, Type.TEAM, Type.NUM])
     ])
 
-    spawn = _make("spawn", [Types.UNIT_TYPE, Types.NUM, Types.NUM, Types.NUM, Types.TEAM, Types.UNIT], True, [5])
+    spawn = _make("spawn", [Type.UNIT_TYPE, Type.NUM, Type.NUM, Type.NUM, Type.TEAM, Type.UNIT], True, [5])
     status = _make_with_subcommands("status", True, [], [
-        ("apply", ([Types.ANY, BasicType("$Status"), Types.UNIT, Types.NUM], True, [], {0: "false"})),
-        ("clear", ([Types.ANY, BasicType("$Status"), Types.UNIT], True, [], {0: "true"}))
+        ("apply", ([Type.ANY, BasicType("$Status"), Type.UNIT, Type.NUM], True, [], {0: "false"})),
+        ("clear", ([Type.ANY, BasicType("$Status"), Type.UNIT], True, [], {0: "true"}))
     ])
 
-    weather_sense = _make("weathersense", [Types.NUM, BasicType("Weather")], False, [0])
-    weather_set = _make("weatherset", [BasicType("Weather"), Types.NUM], True)
+    weather_sense = _make("weathersense", [Type.NUM, BasicType("Weather")], False, [0])
+    weather_set = _make("weatherset", [BasicType("Weather"), Type.NUM], True)
 
-    spawnwave = _make("spawnwave", [Types.NUM, Types.NUM, Types.NUM], True)
+    spawnwave = _make("spawnwave", [Type.NUM, Type.NUM, Type.NUM], True)
 
     setrule = _make_with_subcommands("setrule", True, [], [
-        (rule, [Types.NUM] + ([Types.TEAM] if has_team else []))
+        (rule, [Type.NUM] + ([Type.TEAM] if has_team else []))
         for rule, has_team in enums.ENUM_RULES.items()
     ] + [
-                                         ("mapArea", [Types.ANY] + [Types.NUM] * 4)
+                                         ("mapArea", [Type.ANY] + [Type.NUM] * 4)
                                      ])
 
     message = _make_with_subcommands("message", True, [], [
         ("notify", []),
-        ("announce", [Types.NUM]),
-        ("toast", [Types.NUM]),
+        ("announce", [Type.NUM]),
+        ("toast", [Type.NUM]),
         ("mission", [])
     ])
     cutscene = _make_with_subcommands("cutscene", True, [], [
-        ("pan", [Types.NUM, Types.NUM, Types.NUM]),
-        ("zoom", [Types.NUM]),
+        ("pan", [Type.NUM, Type.NUM, Type.NUM]),
+        ("zoom", [Type.NUM]),
         ("stop", [])
     ])
 
     effect = _make_with_subcommands("effect", True, [], [
         (effect, params) for effect, params in enums.ENUM_EFFECT.items()
     ])
-    explosion = _make("explosion", [Types.TEAM] + 7 * [Types.NUM], True)
+    explosion = _make("explosion", [Type.TEAM] + 7 * [Type.NUM], True)
 
-    setrate = _make("setrate", [Types.NUM], True)
+    setrate = _make("setrate", [Type.NUM], True)
 
     fetch = _make_with_subcommands("fetch", False, [0], [
-        ("unit", [Types.UNIT, Types.TEAM, Types.NUM]),
-        ("player", [Types.UNIT, Types.TEAM, Types.NUM]),
-        ("core", [Types.BLOCK, Types.TEAM, Types.NUM]),
-        ("build", [Types.UNIT, Types.TEAM, Types.NUM, Types.BLOCK_TYPE]),
-        ("unitCount", [Types.NUM, Types.TEAM]),
-        ("playerCount", [Types.NUM, Types.TEAM]),
-        ("coreCount", [Types.NUM, Types.TEAM]),
-        ("buildCount", ([Types.NUM, Types.TEAM, Types.ANY, Types.BLOCK_TYPE], True, [0], {2: "_"}))
+        ("unit", [Type.UNIT, Type.TEAM, Type.NUM]),
+        ("player", [Type.UNIT, Type.TEAM, Type.NUM]),
+        ("core", [Type.BLOCK, Type.TEAM, Type.NUM]),
+        ("build", [Type.UNIT, Type.TEAM, Type.NUM, Type.BLOCK_TYPE]),
+        ("unitCount", [Type.NUM, Type.TEAM]),
+        ("playerCount", [Type.NUM, Type.TEAM]),
+        ("coreCount", [Type.NUM, Type.TEAM]),
+        ("buildCount", ([Type.NUM, Type.TEAM, Type.ANY, Type.BLOCK_TYPE], True, [0], {2: "_"}))
     ])
 
-    sync = _make("sync", [Types.ANY], True, internal=True)
+    sync = _make("sync", [Type.ANY], True, internal=True)
 
-    getflag = _make("getflag", [Types.NUM, Types.STR], False, [0])
-    setflag = _make("setflag", [Types.STR, Types.NUM], True)
+    getflag = _make("getflag", [Type.NUM, Type.STR], False, [0])
+    setflag = _make("setflag", [Type.STR, Type.NUM], True)
 
     setprop = _make("setprop", [
-        UnionType([Types.ITEM_TYPE, Types.LIQUID_TYPE, BasicType("Property")]),
-        UnionType([Types.BLOCK, Types.UNIT]),
-        Types.NUM
+        UnionType([Type.ITEM_TYPE, Type.LIQUID_TYPE, BasicType("Property")]),
+        UnionType([Type.BLOCK, Type.UNIT]),
+        Type.NUM
     ], True)
 
-    make_marker = _make("makemarker", [BasicType("$MarkerType"), Types.NUM, Types.NUM, Types.NUM, Types.NUM],
+    make_marker = _make("makemarker", [BasicType("$MarkerType"), Type.NUM, Type.NUM, Type.NUM, Type.NUM],
                         True, [])
     set_marker = _make_with_subcommands("setmarker", True, [], [
-        ("remove", [Types.NUM]),
-        ("world", [Types.NUM, Types.NUM]),
-        ("minimap", [Types.NUM, Types.NUM]),
-        ("autoscale", [Types.NUM, Types.NUM]),
-        ("pos", [Types.NUM, Types.NUM, Types.NUM]),
-        ("endPos", [Types.NUM, Types.NUM, Types.NUM]),
-        ("drawLayer", [Types.NUM, Types.NUM]),
-        ("color", [Types.NUM, Types.NUM]),
-        ("radius", [Types.NUM, Types.NUM]),
-        ("stroke", [Types.NUM, Types.NUM]),
-        ("rotation", [Types.NUM, Types.NUM]),
-        ("shape", [Types.NUM, Types.NUM, Types.NUM, Types.NUM]),
-        ("arc", [Types.NUM, Types.NUM, Types.NUM]),
-        ("flushText", [Types.NUM, Types.NUM]),
-        ("fontSize", [Types.NUM, Types.NUM]),
-        ("textHeight", [Types.NUM, Types.NUM]),
-        ("labelFlags", [Types.NUM, Types.NUM, Types.NUM]),
-        ("texture", [Types.NUM, Types.NUM, Types.STR]),
-        ("textureSize", [Types.NUM, Types.NUM, Types.NUM]),
-        ("posi", [Types.NUM, Types.NUM, Types.NUM, Types.NUM]),
-        ("uvi", [Types.NUM, Types.NUM, Types.NUM, Types.NUM]),
-        ("colori", [Types.NUM, Types.NUM, Types.NUM])
+        ("remove", [Type.NUM]),
+        ("world", [Type.NUM, Type.NUM]),
+        ("minimap", [Type.NUM, Type.NUM]),
+        ("autoscale", [Type.NUM, Type.NUM]),
+        ("pos", [Type.NUM, Type.NUM, Type.NUM]),
+        ("endPos", [Type.NUM, Type.NUM, Type.NUM]),
+        ("drawLayer", [Type.NUM, Type.NUM]),
+        ("color", [Type.NUM, Type.NUM]),
+        ("radius", [Type.NUM, Type.NUM]),
+        ("stroke", [Type.NUM, Type.NUM]),
+        ("rotation", [Type.NUM, Type.NUM]),
+        ("shape", [Type.NUM, Type.NUM, Type.NUM, Type.NUM]),
+        ("arc", [Type.NUM, Type.NUM, Type.NUM]),
+        ("flushText", [Type.NUM, Type.NUM]),
+        ("fontSize", [Type.NUM, Type.NUM]),
+        ("textHeight", [Type.NUM, Type.NUM]),
+        ("labelFlags", [Type.NUM, Type.NUM, Type.NUM]),
+        ("texture", [Type.NUM, Type.NUM, Type.STR]),
+        ("textureSize", [Type.NUM, Type.NUM, Type.NUM]),
+        ("posi", [Type.NUM, Type.NUM, Type.NUM, Type.NUM]),
+        ("uvi", [Type.NUM, Type.NUM, Type.NUM, Type.NUM]),
+        ("colori", [Type.NUM, Type.NUM, Type.NUM])
     ])
 
-    locale_print = _make("localeprint", [Types.STR], True, [])
+    locale_print = _make("localeprint", [Type.STR], True, [])

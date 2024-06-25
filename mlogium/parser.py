@@ -1,7 +1,6 @@
-from .tokens import TokenType
+from .tokens import TokenType, Token
 from .error import ParserError
 from .node import *
-from .macro import MacroInput, CustomMacroInput, RepeatMacroInput, MacroRegistry
 
 from typing import Callable
 
@@ -9,12 +8,10 @@ from typing import Callable
 class Parser:
     i: int
     tokens: list[Token]
-    macro_registry: MacroRegistry
 
-    def __init__(self, tokens: list[Token], macro_registry: MacroRegistry):
+    def __init__(self, tokens: list[Token]):
         self.i = -1
         self.tokens = tokens
-        self.macro_registry = macro_registry
 
     def _current_pos(self) -> Position:
         if len(self.tokens) == 0 or self.i < 0:
@@ -36,14 +33,19 @@ class Parser:
 
         return True
 
+    def current(self) -> Token | None:
+        if 0 <= self.i < len(self.tokens):
+            return self.tokens[self.i]
+        return None
+
     def next(self, type_: TokenType = None, value: str | tuple[str, ...] = None) -> Token:
         if not self.has():
-            ParserError.unexpected_eof(self._current_pos())
+            ParserError.unexpected_eof(self._current_pos(), type_.name if type_ is not None else None)
 
         self.i += 1
         tok = self.tokens[self.i]
         if not self._match_token(tok, type_, value):
-            ParserError.unexpected_token(tok)
+            ParserError.unexpected_token(tok, type_.name if type_ is not None else None)
 
         return tok
 
@@ -65,233 +67,38 @@ class Parser:
         return tok
 
     def parse(self) -> Node:
-        return self.parse_block(False, True)
+        return self.parse_block(False, False)
 
-    def parse_block(self, end_on_rbrace: bool, top_level: bool = False) -> Node:
+    def parse_block(self, end_on_rbrace: bool, can_return_last: bool) -> Node:
         code = []
-        returns_last = True
+        returns_last = False
 
         while self.has():
             if end_on_rbrace and self.lookahead(TokenType.RBRACE):
-                returns_last = True
-                break
-
-            elif end_on_rbrace and self.lookahead(TokenType.SEMICOLON, take_if_matches=False) \
-                    and self.lookahead(TokenType.RBRACE, n=2, take_if_matches=False):
-                self.next()
-                self.next()
                 returns_last = False
                 break
 
-            self.lookahead(TokenType.SEMICOLON)
+            statement = self.parse_statement()
+            code.append(statement)
 
-            if not self.has():
+            if can_return_last and end_on_rbrace and self.lookahead(TokenType.RBRACE):
+                returns_last = True
                 break
 
-            code.append(self.parse_top_level_statement() if top_level else self.parse_statement())
+            else:
+                if (curr := self.current()) and curr.type == TokenType.RBRACE:
+                    self.lookahead(TokenType.SEMICOLON)
+                else:
+                    self.next(TokenType.SEMICOLON)
+                if end_on_rbrace and self.lookahead(TokenType.RBRACE):
+                    returns_last = False
+                    break
+
+        assert can_return_last or not returns_last
+        returns_last = returns_last and len(code) > 0
 
         return BlockNode(self._current_pos() if not code else code[0].pos + code[-1].pos,
-                         code, returns_last and not top_level)
-
-    def _parse_struct_inner(self, has_fields: bool) \
-            -> tuple[list[SingleAssignmentTarget],
-                     list[tuple[bool, SingleAssignmentTarget, Node]],
-                     list[tuple[bool, str, NamedParamFunctionType, Node]],
-                     list[tuple[str, NamedParamFunctionType, Node]]]:
-        fields: list[SingleAssignmentTarget] = []
-        static_fields: list[tuple[bool, SingleAssignmentTarget, Node]] = []
-        methods: list[tuple[bool, str, NamedParamFunctionType, Node]] = []
-        static_methods: list[tuple[str, NamedParamFunctionType, Node]] = []
-
-        while self.has() and not self.lookahead(TokenType.RBRACE, take_if_matches=False):
-            if self.lookahead(TokenType.KW_STATIC):
-                if (const := bool(self.lookahead(TokenType.KW_CONST))) or self.lookahead(TokenType.KW_LET):
-                    name = self.next(TokenType.ID).value
-                    if self.lookahead(TokenType.COLON):
-                        type_ = self.parse_type()
-                    else:
-                        type_ = None
-                    self.next(TokenType.ASSIGNMENT, "=")
-                    value = self.parse_value()
-                    static_fields.append((const, SingleAssignmentTarget(name, type_), value))
-
-                else:
-                    self.next(TokenType.KW_FN)
-                    name = self.next(TokenType.ID).value
-                    type_ = self._parse_named_func_type()
-                    self.next(TokenType.LBRACE)
-                    code = self.parse_block(True)
-                    static_methods.append((name, type_, code))
-
-            else:
-                if has_fields and self.lookahead(TokenType.KW_LET):
-                    name = self.next(TokenType.ID).value
-                    if self.lookahead(TokenType.COLON):
-                        type_ = self.parse_type()
-                    else:
-                        type_ = None
-                    fields.append(SingleAssignmentTarget(name, type_))
-
-                else:
-                    const = bool(self.lookahead(TokenType.KW_CONST))
-                    self.next(TokenType.KW_FN)
-                    name = self.next(TokenType.ID).value
-                    type_ = self._parse_named_func_type()
-                    self.next(TokenType.LBRACE)
-                    code = self.parse_block(True)
-                    methods.append((const, name, type_, code))
-
-            while self.lookahead(TokenType.SEMICOLON):
-                pass
-
-        self.next(TokenType.RBRACE)
-
-        return fields, static_fields, methods, static_methods
-
-    def _parse_macro_input(self, inp: MacroInput | CustomMacroInput) -> list[Type | Token | Node]:
-        match inp:
-            case MacroInput.TYPE:
-                return [self.parse_type()]
-            case MacroInput.TOKEN:
-                return [self.next()]
-            case MacroInput.VALUE_NODE:
-                return [self.parse_value()]
-            case MacroInput.BLOCK_NODE:
-                self.next(TokenType.LBRACE)
-                return [self.parse_block(True)]
-            case CustomMacroInput(func):
-                return [func(self)]
-            case RepeatMacroInput(inp_):
-                params = self._parse_macro_input(inp_)
-                while self.lookahead(TokenType.COMMA):
-                    params += self._parse_macro_input(inp_)
-                return params
-            case _:
-                raise ValueError("Unknown macro parameter type")
-
-    def _parse_macro(self, top_level: bool, is_type: bool = False) -> Node | Type:
-        name = self.next(TokenType.ID)
-        if (macro := self.macro_registry.get(name.value)) is None:
-            ParserError.custom(name.pos, f"Macro not found: '{name.value}'")
-        if macro.top_level_only() and not top_level:
-            ParserError.custom(name.pos, f"Macro must be called in the top level")
-
-        self.next(TokenType.LPAREN)
-        params = []
-        for i, inp in enumerate(macro.inputs()):
-            if i > 0:
-                self.next(TokenType.COMMA)
-
-            params += self._parse_macro_input(inp)
-
-        self.next(TokenType.RPAREN)
-
-        if macro.is_type() and not is_type:
-            ParserError.custom(name.pos, "Use of type macro in a value context")
-        elif not macro.is_type() and is_type:
-            ParserError.custom(name.pos, "Use of value macro in a type context")
-
-        if macro.is_type():
-            ParserError.custom(name.pos, "Type macros are not yet implemented")
-
-        return MacroInvocationNode(name.pos, self.macro_registry, name.value, params)
-
-    def _parse_top_level_statement_or_none(self) -> Node | None:
-        tok = self.lookahead()
-
-        if tok.type == TokenType.KW_FN:
-            self.next()
-            name = self.next(TokenType.ID).value
-            type_ = self._parse_named_func_type()
-            self.next(TokenType.LBRACE)
-            code = self.parse_block(True)
-            return FunctionNode(tok.pos + code.pos, name, type_, code)
-
-        elif tok.type in TokenType.KW_STRUCT:
-            self.next()
-            name = self.next(TokenType.ID).value
-            parent = None
-            wrapped = None
-            if self.lookahead(TokenType.COLON):
-                parent = self.next(TokenType.ID).value
-            elif self.lookahead(TokenType.ID, "of"):
-                if self.lookahead(TokenType.QUESTION):
-                    wrapped = Type.ANY
-                else:
-                    wrapped = self.parse_type()
-            self.next(TokenType.LBRACE)
-
-            fields, static_fields, methods, static_methods = self._parse_struct_inner(wrapped is None)
-
-            return StructNode(tok.pos, name, parent, wrapped, fields, static_fields, methods, static_methods)
-
-        elif tok.type == TokenType.KW_ENUM:
-            self.next()
-            name = self.next(TokenType.ID).value
-            options = self._parse_comma_separated(lambda: self.next(TokenType.ID).value, TokenType.LBRACE,
-                                                  TokenType.RBRACE)
-            return EnumNode(tok.pos, name, options)
-
-        elif tok.type == TokenType.HASH:
-            self.next()
-            return self._parse_macro(True)
-
-        elif tok.type == TokenType.KW_IF:
-            self.next()
-            const = bool(self.lookahead(TokenType.KW_CONST))
-            cond = self.parse_value()
-            code_if = self.parse_top_level_statement() if const else self.parse_statement()
-            pos = tok.pos + code_if.pos
-            if self.lookahead(TokenType.KW_ELSE):
-                code_else = self.parse_top_level_statement() if const else self.parse_statement()
-                pos = pos + code_else.pos
-            else:
-                code_else = None
-            return IfNode(pos, const, cond, code_if, code_else)
-
-        elif tok.type == TokenType.LBRACE:
-            self.next()
-            return self.parse_block(True, True)
-
-        return None
-
-    def parse_top_level_statement(self) -> Node:
-        if (node := self._parse_top_level_statement_or_none()) is not None:
-            return node
-
-        return self.parse_statement()
-
-    def _parse_optional_type(self) -> Type | None:
-        if self.lookahead(TokenType.ID, "_"):
-            return None
-
-        return self.parse_type()
-
-    def _parse_unpack(self, pos: Position) -> list[str | tuple[str, Type]]:
-        names = self._parse_comma_separated(lambda: self.next(TokenType.ID).value)
-        if self.lookahead(TokenType.COLON):
-            types = self._parse_comma_separated(self._parse_optional_type)
-        else:
-            types = None
-
-        if types is None:
-            return names
-
-        if len(names) != len(types):
-            ParserError.custom(pos, f"Unpack count doesn't match")
-        return list(zip(names, types))
-
-    def _parse_assignment_target(self, pos: Position) -> AssignmentTarget:
-        if self.lookahead(TokenType.LPAREN, take_if_matches=False):
-            unpack = self._parse_unpack(pos)
-            return UnpackAssignmentTarget(unpack)
-
-        name = self.next().value
-        if self.lookahead(TokenType.COLON):
-            type_ = self.parse_type()
-        else:
-            type_ = None
-        return SingleAssignmentTarget(name, type_)
+                         code, returns_last)
 
     def parse_statement(self) -> Node:
         tok = self.lookahead()
@@ -299,28 +106,25 @@ class Parser:
         if tok.type == TokenType.KW_WHILE:
             self.next()
             cond = self.parse_value()
-            code = self.parse_statement()
-            return WhileNode(tok.pos + code.pos, cond, code)
+            self.next(TokenType.LBRACE)
+            code = self.parse_block(True, False)
+            return WhileNode(tok.pos, cond, code)
 
         elif tok.type == TokenType.KW_FOR:
             self.next()
-
-            target = self._parse_assignment_target(tok.pos)
+            target = self._parse_assignment_target(False)
             self.next(TokenType.KW_IN)
-            iterator = self.parse_value()
-
-            code = self.parse_statement()
-
-            return ForNode(tok.pos + code.pos, target, iterator, code)
+            iterable = self.parse_value()
+            self.next(TokenType.LBRACE)
+            code = self.parse_block(True, False)
+            return ForNode(tok.pos, target, iterable, code)
 
         elif tok.type == TokenType.KW_RETURN:
             self.next()
-
-            if self.lookahead(TokenType.SEMICOLON, take_if_matches=False):
+            if self.lookahead(TokenType.SEMICOLON | TokenType.RBRACE, take_if_matches=False):
                 return ReturnNode(tok.pos, None)
-
-            val = self.parse_value()
-            return ReturnNode(tok.pos + val.pos, val)
+            else:
+                return ReturnNode(tok.pos, self.parse_value())
 
         elif tok.type == TokenType.KW_BREAK:
             self.next()
@@ -330,16 +134,7 @@ class Parser:
             self.next()
             return ContinueNode(tok.pos)
 
-        elif tok.type == TokenType.KW_SCOPE:
-            self.next()
-            start = self.next(TokenType.LBRACE)
-            code = self.parse_block(True)
-            return ScopeNode(start.pos + code.pos, code)
-
-        elif tok.type in (TokenType.KW_FN, TokenType.KW_STRUCT, TokenType.KW_ENUM):
-            ParserError.custom(tok.pos, "This construct must be used in a global context")
-
-        return self.parse_value()
+        return self._parse_binary_op(None, self.parse_value, TokenType.ASSIGNMENT, True)
 
     def _parse_comma_separated[T](self, func: Callable[[], T], start: TokenType | None = TokenType.LPAREN,
                                   end: TokenType = TokenType.RPAREN, end_val: str = None) -> list[T]:
@@ -364,13 +159,13 @@ class Parser:
                 self.next()
 
                 if prev == TokenType.COMMA:
-                    ParserError.unexpected_token(tok)
+                    ParserError.unexpected_token(tok, "value")
 
                 break
 
             else:
                 if prev == TokenType.ID:
-                    ParserError.unexpected_token(tok)
+                    ParserError.unexpected_token(tok, "comma or closing parenthesis")
 
                 values.append(func())
 
@@ -378,104 +173,49 @@ class Parser:
 
         return values
 
-    def _parse_name_with_type(self) -> tuple[str, Type]:
-        name = self.next(TokenType.ID).value
-        self.next(TokenType.COLON)
-        type_ = self.parse_type()
-        return name, type_
+    def parse_type(self) -> Node:
+        if tok := self.lookahead(TokenType.LPAREN):
+            types = self._parse_comma_separated(self.parse_type, None)
+            return TupleTypeNode(tok.pos, types)
 
-    def _parse_name_with_type_ref(self) -> tuple[str, Type, bool]:
-        ref = bool(self.lookahead(TokenType.OPERATOR, "&"))
-        name = self.next(TokenType.ID).value
-        self.next(TokenType.COLON)
-        type_ = self.parse_type()
-        return name, type_, ref
+        elif tok := self.lookahead(TokenType.LBRACK):
+            n = int(self.next(TokenType.INTEGER).value)
+            self.next(TokenType.RBRACK)
+            type_ = self.parse_type()
+            return TupleTypeNode(tok.pos, [type_] * n)
 
-    def _parse_name_with_optional_type(self) -> tuple[str, Type | None]:
-        name = self.next(TokenType.ID).value
-        if self.lookahead(TokenType.COLON):
-            return name, self.parse_type()
-        else:
-            return name, None
+        return self.parse_value()
 
-    def _parse_name_with_optional_type_ref(self) -> tuple[str, Type | None, bool]:
-        ref = bool(self.lookahead(TokenType.OPERATOR, "&"))
-        name = self.next(TokenType.ID).value
-        if self.lookahead(TokenType.COLON):
-            return name, self.parse_type(ref), ref
-        else:
-            return name, None, ref
-
-    def _parse_capture(self) -> tuple[str, bool, Node]:
-        ref = bool(self.lookahead(TokenType.OPERATOR, "&"))
-        name = self.next(TokenType.ID)
-        if self.lookahead(TokenType.ASSIGNMENT, "="):
-            return name.value, ref, self.parse_value()
-        else:
-            return name.value, ref, VariableValueNode(name.pos, name.value)
-
-    def _parse_named_func_type(self) -> NamedParamFunctionType:
-        params = self._parse_comma_separated(self._parse_name_with_optional_type_ref)
-
-        if self.lookahead(TokenType.ARROW):
-            return NamedParamFunctionType(params, self.parse_type())
-        else:
-            return NamedParamFunctionType(params, None)
-
-    def _parse_func_type(self) -> FunctionType:
-        params = self._parse_comma_separated(self.parse_type)
-
-        if self.lookahead(TokenType.ARROW):
-            return FunctionType(params, self.parse_type())
-
-        return FunctionType(params, NullType())
-
-    def _parse_tuple_type(self) -> TupleType:
-        if self.lookahead(TokenType.LBRACK):
-            n_tok = self.next(TokenType.NUMBER)
-            try:
-                n = int(n_tok.value)
-            except ValueError:
-                ParserError.custom(n_tok.pos, "Expected an integer")
+    def _parse_assignment_target(self, const: bool) -> AssignmentTarget:
+        if self.lookahead(TokenType.LPAREN):
+            values = self._parse_comma_separated(lambda: self.next(TokenType.ID).value, None)
+            if self.lookahead(TokenType.COLON):
+                types = self._parse_comma_separated(self.parse_type)
+                if len(values) != len(types):
+                    ParserError.custom(self._current_pos(),
+                                       f"Provided {len(values)} values, but {len(types)} types")
             else:
-                self.next(TokenType.RBRACK)
-                return TupleType([self.parse_type()] * n)
+                types = None
+            return UnpackAssignmentTarget(const, values, types)
 
-        return TupleType(self._parse_comma_separated(self.parse_type))
-
-    def _parse_basic_type(self) -> BasicType:
         name = self.next(TokenType.ID).value
-        return BasicType(name)
-
-    def parse_type(self, allow_private: bool = False) -> Type:
-        if self.lookahead(TokenType.HASH):
-            return self._parse_macro(False, True)
-
-        elif self.lookahead(TokenType.KW_FN):
-            return self._parse_func_type()
-
-        elif self.lookahead(TokenType.LPAREN | TokenType.LBRACK, take_if_matches=False):
-            return self._parse_tuple_type()
-
-        elif allow_private and self.lookahead(TokenType.DOLLAR):
-            name = self.next(TokenType.ID).value
-            return BasicType("$" + name)
-
+        if self.lookahead(TokenType.COLON):
+            type_ = self.parse_type()
         else:
-            return self._parse_basic_type()
+            type_ = None
+        return SingleAssignmentTarget(const, name, type_)
 
     def parse_value(self) -> Node:
         tok = self.lookahead()
 
-        if tok.type in TokenType.KW_LET | TokenType.KW_CONST:
+        if tok.type in (TokenType.KW_LET, TokenType.KW_CONST):
+            self.next()
             const = tok.type == TokenType.KW_CONST
 
-            self.next()
-
-            target = self._parse_assignment_target(tok.pos)
+            target = self._parse_assignment_target(const)
             self.next(TokenType.ASSIGNMENT, "=")
             val = self.parse_value()
-            return DeclarationNode(tok.pos + val.pos, const, target, val)
+            return DeclarationNode(tok.pos, target, val)
 
         return self.parse_assignment()
 
@@ -506,15 +246,15 @@ class Parser:
         return func()
 
     def parse_assignment(self) -> Node:
-        return self._parse_binary_op(None, self.parse_cast, TokenType.ASSIGNMENT, True)
+        return self._parse_binary_op(None, self.parse_cast, TokenType.WALRUS, True)
 
     def parse_cast(self) -> Node:
-        value = self.parse_range()
+        val = self.parse_range()
         if self.lookahead(TokenType.KW_AS):
             type_ = self.parse_type()
-            return CastNode(value.pos, value, type_)
-        else:
-            return value
+            return CastNode(val.pos + type_.pos, val, type_)
+
+        return val
 
     def parse_range(self) -> Node:
         val = self.parse_logical_or()
@@ -576,20 +316,60 @@ class Parser:
                 node = CallNode(node.pos, node, params)
 
             elif self.lookahead(TokenType.LBRACK):
-                index = self.parse_value()
-                self.next(TokenType.RBRACK)
-                node = IndexNode(node.pos, node, index)
+                indices = self._parse_comma_separated(self.parse_type, None, TokenType.RBRACK)
+                node = IndexNode(node.pos, node, indices)
 
             elif tok := self.lookahead(TokenType.DOT | TokenType.DOUBLE_COLON):
-                attr = self.next(TokenType.ID | TokenType.NUMBER)
-                if attr.type == TokenType.NUMBER and "." in attr.value:
-                    ParserError.unexpected_token(attr)
+                attr = self.next(TokenType.ID | TokenType.INTEGER)
                 node = AttributeNode(node.pos, node, attr.value, tok.type == TokenType.DOUBLE_COLON)
 
             else:
                 break
 
         return node
+
+    def _parse_function_param(self) -> FunctionParam:
+        ref = bool(self.lookahead(TokenType.OPERATOR, "&"))
+        name = self.next(TokenType.ID).value
+        if self.lookahead(TokenType.COLON):
+            type_ = self.parse_type()
+        else:
+            type_ = None
+        if self.lookahead(TokenType.OPERATOR, "="):
+            default = self.parse_value()
+        else:
+            default = None
+        return FunctionParam(name, ref, type_, default)
+
+    def _parse_function_signature(self) -> tuple[list[FunctionParam], Node | None]:
+        params = self._parse_comma_separated(self._parse_function_param)
+        if self.lookahead(TokenType.ARROW):
+            type_ = self.parse_type()
+        else:
+            type_ = None
+        return params, type_
+
+    def _parse_function_declaration(self, require_name: bool) -> FunctionDeclaration:
+        if require_name:
+            name = self.next(TokenType.ID).value
+        else:
+            if name_tok := self.lookahead(TokenType.ID):
+                name = name_tok.value
+            else:
+                name = None
+        params, result = self._parse_function_signature()
+        self.next(TokenType.LBRACE)
+        code = self.parse_block(True, True)
+        return FunctionDeclaration(name, params, result, code)
+
+    def _parse_capture(self) -> LambdaCapture:
+        ref = bool(self.lookahead(TokenType.OPERATOR, "&"))
+        name = self.next(TokenType.ID).value
+        if self.lookahead(TokenType.OPERATOR, "="):
+            value = self.parse_value()
+        else:
+            value = None
+        return LambdaCapture(name, ref, value)
 
     def parse_atom(self) -> Node:
         tok = self.next()
@@ -606,8 +386,85 @@ class Parser:
                 code_else = None
             return IfNode(pos, const, cond, code_if, code_else)
 
+        elif tok.type == TokenType.KW_FN:
+            func = self._parse_function_declaration(False)
+            return FunctionNode(tok.pos, func.name, func.params, func.result, func.code)
+
+        elif tok.type == TokenType.KW_STRUCT:
+            if name_tok := self.lookahead(TokenType.ID):
+                name = name_tok.value
+            else:
+                name = None
+            if self.lookahead(TokenType.COLON):
+                parent = self.parse_type()
+            else:
+                parent = None
+
+            self.next(TokenType.LBRACE)
+            fields = []
+            static_fields = []
+            methods = []
+            static_methods = []
+            while not self.lookahead(TokenType.RBRACE):
+                if self.lookahead(TokenType.KW_STATIC):
+                    if var_tok := self.lookahead(TokenType.KW_LET | TokenType.KW_CONST):
+                        const = var_tok.type == TokenType.KW_CONST
+                        name = self.next(TokenType.ID).value
+                        if self.lookahead(TokenType.COLON):
+                            type_ = self.parse_type()
+                        else:
+                            type_ = None
+                        self.next(TokenType.ASSIGNMENT, "=")
+                        val = self.parse_value()
+                        static_fields.append((SingleAssignmentTarget(const, name, type_), val))
+                        self.next(TokenType.SEMICOLON)
+
+                    else:
+                        self.next(TokenType.KW_FN)
+                        static_methods.append(self._parse_function_declaration(True))
+
+                elif self.lookahead(TokenType.KW_CONST):
+                    self.next(TokenType.KW_FN)
+                    methods.append((True, self._parse_function_declaration(True)))
+
+                elif self.lookahead(TokenType.KW_LET):
+                    name = self.next(TokenType.ID).value
+                    self.next(TokenType.COLON)
+                    type_ = self.parse_type()
+                    fields.append(SingleAssignmentTarget(False, name, type_))
+                    self.next(TokenType.SEMICOLON)
+
+                else:
+                    self.next(TokenType.KW_FN)
+                    methods.append((False, self._parse_function_declaration(True)))
+
+            return StructNode(tok.pos, name, parent, fields, static_fields, methods, static_methods)
+
+        elif tok.type == TokenType.KW_ENUM:
+            if name_tok := self.lookahead(TokenType.ID):
+                name = name_tok.value
+            else:
+                name = None
+            options = self._parse_comma_separated(lambda: self.next(TokenType.ID).value,
+                                                  TokenType.LBRACE, TokenType.RBRACE)
+            option_set = set(options)
+            if len(option_set) != len(options):
+                for opt in option_set:
+                    if options.count(opt) > 1:
+                        ParserError.custom(tok.pos, f"Duplicate option in enum: '{opt}'")
+            return EnumNode(tok.pos, name, options)
+
+        elif tok.type == TokenType.KW_NAMESPACE:
+            if name_tok := self.lookahead(TokenType.ID):
+                name = name_tok.value
+            else:
+                name = None
+            self.next(TokenType.LBRACE)
+            code = self.parse_block(True, False)
+            return NamespaceNode(tok.pos, name, code)
+
         elif tok.type == TokenType.LBRACE:
-            return self.parse_block(True)
+            return self.parse_block(True, True)
 
         elif tok.type == TokenType.LPAREN:
             if self.lookahead(TokenType.RPAREN):
@@ -615,8 +472,8 @@ class Parser:
             val = self.parse_value()
             if self.lookahead(TokenType.COMMA):
                 return TupleValueNode(tok.pos, [val] + self._parse_comma_separated(self.parse_value, None))
-            elif for_tok := self.lookahead(TokenType.KW_FOR):
-                target = self._parse_assignment_target(for_tok.pos)
+            elif self.lookahead(TokenType.KW_FOR):
+                target = self._parse_assignment_target(False)
                 self.next(TokenType.KW_IN)
                 iterable = self.parse_value()
                 end = self.next(TokenType.RPAREN)
@@ -625,11 +482,11 @@ class Parser:
                 self.next(TokenType.RPAREN)
                 return val
 
-        elif tok.type == TokenType.NUMBER:
-            number = float(tok.value)
-            if number.is_integer():
-                number = int(number)
-            return NumberValueNode(tok.pos, number)
+        elif tok.type == TokenType.INTEGER:
+            return NumberValueNode(tok.pos, int(tok.value))
+
+        elif tok.type == TokenType.FLOAT:
+            return NumberValueNode(tok.pos, float(tok.value))
 
         elif tok.type == TokenType.STRING:
             return StringValueNode(tok.pos, tok.value)
@@ -637,16 +494,11 @@ class Parser:
         elif tok.type == TokenType.COLOR:
             return ColorValueNode(tok.pos, tok.value)
 
-        elif tok.type == TokenType.LPAREN:
-            value = self.parse_value()
-            self.next(TokenType.RPAREN)
-            return value
-
         elif tok.type == TokenType.ID:
             return VariableValueNode(tok.pos, tok.value)
 
         elif tok.type == TokenType.OPERATOR and tok.value == "|":
-            params = self._parse_comma_separated(self._parse_name_with_optional_type_ref, None, TokenType.OPERATOR, "|")
+            params = self._parse_comma_separated(self._parse_function_param, None, TokenType.OPERATOR, "|")
 
             if self.lookahead(TokenType.LBRACK):
                 captures = self._parse_comma_separated(self._parse_capture, None, TokenType.RBRACK)
@@ -659,11 +511,11 @@ class Parser:
                 ret = None
 
             if self.lookahead(TokenType.LBRACE):
-                code = self.parse_block(True)
+                code = self.parse_block(True, True)
             else:
                 code = self.parse_value()
 
-            return LambdaNode(tok.pos + code.pos, LambdaType(params, ret, captures, {}), code)
+            return LambdaNode(tok.pos + code.pos, params, captures, ret, code)
 
         elif tok.type == TokenType.OPERATOR and tok.value == "||":
             if self.lookahead(TokenType.LBRACK):
@@ -677,14 +529,11 @@ class Parser:
                 ret = None
 
             if self.lookahead(TokenType.LBRACE):
-                code = self.parse_block(True)
+                code = self.parse_block(True, True)
             else:
                 code = self.parse_value()
 
-            return LambdaNode(tok.pos + code.pos, LambdaType([], ret, captures, {}), code)
-
-        elif tok.type == TokenType.HASH:
-            return self._parse_macro(False)
+            return LambdaNode(tok.pos + code.pos, [], captures, ret, code)
 
         elif tok.type == TokenType.DOUBLE_COLON:
             name = self.next(TokenType.ID)

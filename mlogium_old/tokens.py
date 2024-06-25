@@ -19,21 +19,20 @@ class TokenType(enum.Flag):
     KW_CONTINUE = enum.auto()
     KW_IN = enum.auto()
     KW_STRUCT = enum.auto()
+    # KW_MATCH = enum.auto()
     KW_ENUM = enum.auto()
     KW_STATIC = enum.auto()
+    KW_SCOPE = enum.auto()
     KW_AS = enum.auto()
-    KW_NAMESPACE = enum.auto()
 
     STRING = enum.auto()
-    INTEGER = enum.auto()
-    FLOAT = enum.auto()
+    NUMBER = enum.auto()
     COLOR = enum.auto()
 
     OPERATOR = enum.auto()
     ASSIGNMENT = enum.auto()
 
     ARROW = enum.auto()
-    WALRUS = enum.auto()
 
     SEMICOLON = enum.auto()
     COLON = enum.auto()

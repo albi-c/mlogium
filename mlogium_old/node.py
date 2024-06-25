@@ -1,64 +1,11 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
+import copy
 
 from .util import Position
-
-
-class AssignmentTargetVisitor[T](ABC):
-    def visit(self, target: AssignmentTarget) -> T:
-        return target.accept(self)
-
-    @abstractmethod
-    def visit_single_assignment_target(self, target: SingleAssignmentTarget) -> T:
-        raise NotImplementedError
-
-    @abstractmethod
-    def visit_unpack_assignment_target(self, target: UnpackAssignmentTarget) -> T:
-        raise NotImplementedError
-
-
-@dataclass
-class AssignmentTarget(ABC):
-    const: bool
-
-    @abstractmethod
-    def __str__(self):
-        raise NotImplementedError
-
-    @abstractmethod
-    def accept[T](self, visitor: AssignmentTargetVisitor[T]) -> T:
-        raise NotImplementedError
-
-
-@dataclass
-class SingleAssignmentTarget(AssignmentTarget):
-    name: str
-    type: Node | None
-
-    def __str__(self):
-        if self.type is None:
-            return self.name
-        return f"{self.name}: {self.type}"
-
-    def accept[T](self, visitor: AssignmentTargetVisitor[T]) -> T:
-        return visitor.visit_single_assignment_target(self)
-
-
-@dataclass
-class UnpackAssignmentTarget(AssignmentTarget):
-    values: list[str]
-    types: list[Node] | None
-
-    def __str__(self):
-        if self.types is None:
-            return f"({', '.join(self.values)})"
-        else:
-            return f"({', '.join(self.values)}): ({', '.join(map(str, self.types))})"
-
-    def accept[T](self, visitor: AssignmentTargetVisitor[T]) -> T:
-        return visitor.visit_unpack_assignment_target(self)
+from .value_types import *
+from .tokens import Token
+from .macro import MacroRegistry
 
 
 class AstVisitor[T](ABC):
@@ -79,6 +26,10 @@ class AstVisitor[T](ABC):
 
     @abstractmethod
     def visit_block_node(self, node: BlockNode) -> T:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_macro_invocation_node(self, node: MacroInvocationNode) -> T:
         raise NotImplementedError
 
     @abstractmethod
@@ -106,8 +57,12 @@ class AstVisitor[T](ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def visit_namespace_node(self, node: NamespaceNode) -> T:
+    def visit_scope_node(self, node: ScopeNode) -> T:
         raise NotImplementedError
+
+    # @abstractmethod
+    # def visit_match_node(self, node: MatchNode) -> T:
+    #     raise NotImplementedError
 
     @abstractmethod
     def visit_enum_node(self, node: EnumNode) -> T:
@@ -181,14 +136,25 @@ class AstVisitor[T](ABC):
     def visit_range_value_node(self, node: RangeValueNode) -> T:
         raise NotImplementedError
 
+
+class AssignmentTargetVisitor[T](ABC):
+    def visit(self, target: AssignmentTarget) -> T:
+        return target.accept(self)
+
     @abstractmethod
-    def visit_tuple_type_node(self, node: TupleTypeNode) -> T:
+    def visit_single_assignment_target(self, target: SingleAssignmentTarget) -> T:
+        raise NotImplementedError
+
+    @abstractmethod
+    def visit_unpack_assignment_target(self, target: UnpackAssignmentTarget) -> T:
         raise NotImplementedError
 
 
-@dataclass
 class Node(ABC):
     pos: Position
+
+    def __init__(self, pos: Position):
+        self.pos = pos
 
     @abstractmethod
     def __str__(self):
@@ -201,95 +167,155 @@ class Node(ABC):
     def __bool__(self):
         return True
 
+    def copy(self) -> Node:
+        return copy.deepcopy(self)
 
-@dataclass
+
 class BlockNode(Node):
     code: list[Node]
     returns_last: bool
 
+    def __init__(self, pos: Position, code: list[Node], returns_last: bool):
+        super().__init__(pos)
+
+        self.code = code
+        self.returns_last = returns_last
+
     def __str__(self):
-        lines = []
-        for i, node in enumerate(self.code):
-            lines.append(str(node))
-            if not self.returns_last or i != len(self.code) - 1:
-                lines[-1] += ";"
-        return f"{{\n{'\n'.join(lines)}\n}}"
+        code = '\n'.join(map(str, self.code))
+        return f"{'[returns_last]' if self.returns_last else ''}{{\n{code}\n}}"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_block_node(self)
 
+    @staticmethod
+    def empty(pos: Position):
+        return BlockNode(pos, [], False)
 
-@dataclass
+
+class MacroInvocationNode(Node):
+    registry: MacroRegistry
+    name: str
+    params: list[Type | Token | Node]
+
+    def __init__(self, pos: Position, registry: MacroRegistry, name: str, params: list[Type | Token | Node]):
+        super().__init__(pos)
+
+        self.registry = registry
+        self.name = name
+        self.params = params
+
+    def __str__(self):
+        return f"#{self.name}({','.join(p.value if isinstance(p, Token) else str(p) for p in self.params)})"
+
+    def accept[T](self, visitor: AstVisitor[T]) -> T:
+        return visitor.visit_macro_invocation_node(self)
+
+
+class AssignmentTarget(ABC):
+    @abstractmethod
+    def __str__(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def accept[T](self, visitor: AssignmentTargetVisitor[T]) -> T:
+        raise NotImplementedError
+
+
+class SingleAssignmentTarget(AssignmentTarget):
+    name: str
+    type: Type | None
+
+    def __init__(self, name: str, type_: Type | None):
+        self.name = name
+        self.type = type_
+
+    def __str__(self):
+        if self.type is None:
+            return self.name
+        return f"{self.name}: {self.type}"
+
+    def accept[T](self, visitor: AssignmentTargetVisitor[T]) -> T:
+        return visitor.visit_single_assignment_target(self)
+
+
+class UnpackAssignmentTarget(AssignmentTarget):
+    values: list[str | tuple[str, Type]]
+
+    def __init__(self, values: list[tuple[str, Type]]):
+        self.values = values
+
+    def __str__(self):
+        if len(self.values) > 0 and isinstance(self.values[0], str):
+            return f"({', '.join(self.values)})"
+        return f"({', '.join(p[0] for p in self.values)}): ({', '.join(str(p[1]) for p in self.values)})"
+
+    def accept[T](self, visitor: AssignmentTargetVisitor[T]) -> T:
+        return visitor.visit_unpack_assignment_target(self)
+
+
 class DeclarationNode(Node):
+    const: bool
     target: AssignmentTarget
     value: Node
 
+    def __init__(self, pos: Position, const: bool, target: AssignmentTarget, value: Node):
+        super().__init__(pos)
+
+        self.const = const
+        self.target = target
+        self.value = value
+
     def __str__(self):
-        return f"{'const' if self.target.const else 'let'} {self.target} = {self.value}"
+        return f"let {self.target} = {self.value}"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_declaration_node(self)
 
 
-@dataclass
-class FunctionParam:
+class FunctionNode(Node):
     name: str
-    reference: bool
-    type: Node | None
-    default: Node | None
-
-    def __str__(self):
-        return f"{'&' if self.reference else ''}{self.name}{': ' + str(self.type) if self.type is not None else ''}{' = ' + str(self.default) if self.default is not None else ''}"
-
-
-@dataclass
-class FunctionDeclaration:
-    name: str | None
-    params: list[FunctionParam]
-    result: Node | None
+    type: NamedParamFunctionType
     code: Node
 
-    def __str__(self):
-        return f"fn {self.name if self.name is not None else ''}({', '.join(map(str, self.params))}){' -> ' + str(self.result) if self.result is not None else ''} {self.code}"
+    def __init__(self, pos: Position, name: str, type_: NamedParamFunctionType, code: Node):
+        super().__init__(pos)
 
+        self.name = name
+        self.type = type_
+        self.code = code
 
-@dataclass
-class FunctionNode(FunctionDeclaration, Node):
     def __str__(self):
-        return super().__str__()
+        return f"fn {self.name}{self.type} {self.code}"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_function_node(self)
 
 
-@dataclass
-class LambdaCapture:
-    name: str
-    reference: bool
-    value: Node | None
-
-    def __str__(self):
-        return f"{'&' if self.reference else ''}{self.name}{' = ' + str(self.value) if self.value is not None else ''}"
-
-
-@dataclass
 class LambdaNode(Node):
-    params: list[FunctionParam]
-    captures: list[LambdaCapture]
-    result: Node | None
+    type: LambdaType
     code: Node
 
+    def __init__(self, pos: Position, type_: LambdaType, code: Node):
+        super().__init__(pos)
+
+        self.type = type_
+        self.code = code
+
     def __str__(self):
-        captures = f"[{', '.join(map(str, self.captures))}]" if len(self.captures) > 0 else ""
-        return f"|{', '.join(map(str, self.params))}|{captures}{' -> ' + str(self.result) if self.result is not None else ''} {self.code}"
+        return f"fn{self.type} {self.code}"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_lambda_node(self)
 
 
-@dataclass
 class ReturnNode(Node):
     value: Node | None
+
+    def __init__(self, pos: Position, value: Node | None):
+        super().__init__(pos)
+
+        self.value = value
 
     def __str__(self):
         return f"return {self.value if self.value is not None else ''}"
@@ -298,28 +324,50 @@ class ReturnNode(Node):
         return visitor.visit_return_node(self)
 
 
-@dataclass
 class StructNode(Node):
-    name: str | None
-    parent: Node | None
+    name: str
+    parent: str | None
+    wrapped: Type | None
     fields: list[SingleAssignmentTarget]
-    static_fields: list[tuple[SingleAssignmentTarget, Node]]
-    methods: list[tuple[bool, FunctionDeclaration]]
-    static_methods: list[FunctionDeclaration]
+    static_fields: list[tuple[bool, SingleAssignmentTarget, Node]]
+    methods: list[tuple[bool, str, NamedParamFunctionType, Node]]
+    static_methods: list[tuple[str, NamedParamFunctionType, Node]]
+
+    def __init__(self, pos: Position, name: str, parent: str | None, wrapped: Type | None,
+                 fields: list[SingleAssignmentTarget],
+                 static_fields: list[tuple[bool, SingleAssignmentTarget, Node]],
+                 methods: list[tuple[bool, str, NamedParamFunctionType, Node]],
+                 static_methods: list[tuple[str, NamedParamFunctionType, Node]]):
+        super().__init__(pos)
+
+        self.name = name
+        self.parent = parent
+        self.wrapped = wrapped
+        self.fields = fields
+        self.static_fields = static_fields
+        self.methods = methods
+        self.static_methods = static_methods
 
     def __str__(self):
-        return f"struct {self.name}{' : ' + str(self.parent) if self.parent is not None else ''} {{ ... }}"
+        return f"struct {self.name}{' : ' + self.parent if self.parent is not None else ''}{' of ' + str(self.wrapped) if self.wrapped is not None else ''} {{...}}"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_struct_node(self)
 
 
-@dataclass
 class IfNode(Node):
     const: bool
     cond: Node
     code_if: Node
     code_else: Node | None
+
+    def __init__(self, pos: Position, const: bool, cond: Node, code_if: Node, code_else: Node | None):
+        super().__init__(pos)
+
+        self.const = const
+        self.cond = cond
+        self.code_if = code_if
+        self.code_else = code_else
 
     def __str__(self):
         return f"if {'const ' if self.const else ''}{self.cond} {self.code_if}{(' else ' + str(self.code_else)) if self.code_else is not None else ''}"
@@ -328,34 +376,64 @@ class IfNode(Node):
         return visitor.visit_if_node(self)
 
 
-@dataclass
-class NamespaceNode(Node):
-    name: str | None
+class ScopeNode(Node):
     code: Node
 
+    def __init__(self, pos: Position, code: Node):
+        super().__init__(pos)
+
+        self.code = code
+
     def __str__(self):
-        return f"scope {self.name + ' ' if self.name is not None else ''}{self.code}"
+        return f"scope {{ {self.code} }}"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
-        return visitor.visit_namespace_node(self)
+        return visitor.visit_scope_node(self)
 
 
-@dataclass
+# class MatchNode(Node):
+#     value: Node
+#     patterns: list[tuple[list[Pattern], Node]]
+#
+#     def __init__(self, pos: Position, value: Node, patterns: list[tuple[list[Pattern], Node]]):
+#         super().__init__(pos)
+#
+#         self.value = value
+#         self.patterns = patterns
+#
+#     def __str__(self):
+#         return f"match {self.value} {{{'\n'.join(f'{' | '.join(map(str, p[0]))} -> {p[1]}' for p in self.patterns)}}}"
+#
+#     def accept[T](self, visitor: AstVisitor[T]) -> T:
+#         return visitor.visit_match_node(self)
+
+
 class EnumNode(Node):
-    name: str | None
+    name: str
     options: list[str]
 
+    def __init__(self, pos: Position, name: str, options: list[str]):
+        super().__init__(pos)
+
+        self.name = name
+        self.options = options
+
     def __str__(self):
-        return f"enum {self.name + ' ' if self.name is not None else ''}{{ {', '.join(self.options)} }}"
+        return f"enum {self.name} {{ {', '.join(self.options)} }}"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_enum_node(self)
 
 
-@dataclass
 class WhileNode(Node):
     cond: Node
     code: Node
+
+    def __init__(self, pos: Position, cond: Node, code: Node):
+        super().__init__(pos)
+
+        self.cond = cond
+        self.code = code
 
     def __str__(self):
         return f"while {self.cond} {self.code}"
@@ -364,11 +442,17 @@ class WhileNode(Node):
         return visitor.visit_while_node(self)
 
 
-@dataclass
 class ForNode(Node):
     target: AssignmentTarget
     iterable: Node
     code: Node
+
+    def __init__(self, pos: Position, target: AssignmentTarget, iterable: Node, code: Node):
+        super().__init__(pos)
+
+        self.target = target
+        self.iterable = iterable
+        self.code = code
 
     def __str__(self):
         return f"for {self.target} in {self.iterable} {self.code}"
@@ -377,11 +461,17 @@ class ForNode(Node):
         return visitor.visit_for_node(self)
 
 
-@dataclass
 class ComprehensionNode(Node):
     expr: Node
     target: AssignmentTarget
     iterable: Node
+
+    def __init__(self, pos: Position, expr: Node, target: AssignmentTarget, iterable: Node):
+        super().__init__(pos)
+
+        self.expr = expr
+        self.target = target
+        self.iterable = iterable
 
     def __str__(self):
         return f"({self.expr} for {self.target} in {self.iterable})"
@@ -390,7 +480,6 @@ class ComprehensionNode(Node):
         return visitor.visit_comprehension_node(self)
 
 
-@dataclass
 class BreakNode(Node):
     def __str__(self):
         return "break"
@@ -399,7 +488,6 @@ class BreakNode(Node):
         return visitor.visit_break_node(self)
 
 
-@dataclass
 class ContinueNode(Node):
     def __str__(self):
         return "continue"
@@ -408,10 +496,15 @@ class ContinueNode(Node):
         return visitor.visit_continue_node(self)
 
 
-@dataclass
 class CastNode(Node):
     value: Node
-    type: Node
+    type: Type
+
+    def __init__(self, pos: Position, value: Node, type_: Type):
+        super().__init__(pos)
+
+        self.value = value
+        self.type = type_
 
     def __str__(self):
         return f"{self.value} as {self.type}"
@@ -420,11 +513,17 @@ class CastNode(Node):
         return visitor.visit_cast_node(self)
 
 
-@dataclass
 class BinaryOpNode(Node):
     left: Node
     op: str
     right: Node
+
+    def __init__(self, pos: Position, left: Node, op: str, right: Node):
+        super().__init__(pos)
+
+        self.left = left
+        self.op = op
+        self.right = right
 
     def __str__(self):
         return f"{self.left} {self.op} {self.right}"
@@ -433,10 +532,15 @@ class BinaryOpNode(Node):
         return visitor.visit_binary_op_node(self)
 
 
-@dataclass
 class UnaryOpNode(Node):
     op: str
     value: Node
+
+    def __init__(self, pos: Position, op: str, value: Node):
+        super().__init__(pos)
+
+        self.op = op
+        self.value = value
 
     def __str__(self):
         return f"{self.op}{self.value}"
@@ -445,10 +549,15 @@ class UnaryOpNode(Node):
         return visitor.visit_unary_op_node(self)
 
 
-@dataclass
 class CallNode(Node):
     value: Node
     params: list[tuple[Node, bool]]
+
+    def __init__(self, pos: Position, value: Node, params: list[tuple[Node, bool]]):
+        super().__init__(pos)
+
+        self.value = value
+        self.params = params
 
     def __str__(self):
         return f"{self.value}({', '.join(str(p) + ('...' if u else '') for p, u in self.params)})"
@@ -457,23 +566,34 @@ class CallNode(Node):
         return visitor.visit_call_node(self)
 
 
-@dataclass
 class IndexNode(Node):
     value: Node
-    indices: list[Node]
+    index: Node
+
+    def __init__(self, pos: Position, value: Node, index: Node):
+        super().__init__(pos)
+
+        self.value = value
+        self.index = index
 
     def __str__(self):
-        return f"{self.value}[{', '.join(map(str, self.indices))}]"
+        return f"{self.value}[{self.index}]"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_index_node(self)
 
 
-@dataclass
 class AttributeNode(Node):
     value: Node
     attr: str
     static: bool
+
+    def __init__(self, pos: Position, value: Node, attr: str, static: bool):
+        super().__init__(pos)
+
+        self.value = value
+        self.attr = attr
+        self.static = static
 
     def __str__(self):
         return f"{self.value}{'::' if self.static else '.'}{self.attr}"
@@ -482,9 +602,13 @@ class AttributeNode(Node):
         return visitor.visit_attribute_node(self)
 
 
-@dataclass
 class NumberValueNode(Node):
     value: int | float
+
+    def __init__(self, pos: Position, value: int | float):
+        super().__init__(pos)
+
+        self.value = value
 
     def __str__(self):
         return str(self.value)
@@ -493,9 +617,13 @@ class NumberValueNode(Node):
         return visitor.visit_number_value_node(self)
 
 
-@dataclass
 class StringValueNode(Node):
     value: str
+
+    def __init__(self, pos: Position, value: str):
+        super().__init__(pos)
+
+        self.value = value
 
     def __str__(self):
         return f"\"{self.value}\""
@@ -504,9 +632,13 @@ class StringValueNode(Node):
         return visitor.visit_string_value_node(self)
 
 
-@dataclass
 class ColorValueNode(Node):
     value: str
+
+    def __init__(self, pos: Position, value: str):
+        super().__init__(pos)
+
+        self.value = value
 
     def __str__(self):
         return self.value
@@ -515,9 +647,13 @@ class ColorValueNode(Node):
         return visitor.visit_color_value_node(self)
 
 
-@dataclass
 class VariableValueNode(Node):
     name: str
+
+    def __init__(self, pos: Position, value: str):
+        super().__init__(pos)
+
+        self.name = value
 
     def __str__(self):
         return self.name
@@ -526,9 +662,13 @@ class VariableValueNode(Node):
         return visitor.visit_variable_value_node(self)
 
 
-@dataclass
 class TupleValueNode(Node):
     values: list[Node]
+
+    def __init__(self, pos: Position, values: list[Node]):
+        super().__init__(pos)
+
+        self.values = values
 
     def __str__(self):
         return f"({', '.join(map(str, self.values))})"
@@ -537,24 +677,18 @@ class TupleValueNode(Node):
         return visitor.visit_tuple_value_node(self)
 
 
-@dataclass
 class RangeValueNode(Node):
     start: Node
     end: Node
+
+    def __init__(self, pos: Position, start: Node, end: Node):
+        super().__init__(pos)
+
+        self.start = start
+        self.end = end
 
     def __str__(self):
         return f"{self.start}..{self.end}"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_range_value_node(self)
-
-
-@dataclass
-class TupleTypeNode(Node):
-    types: list[Node]
-
-    def __str__(self):
-        return f"({', '.join(map(str, self.types))})"
-
-    def accept[T](self, visitor: AstVisitor[T]) -> T:
-        return visitor.visit_tuple_type_node(self)

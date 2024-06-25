@@ -4,7 +4,7 @@ import contextlib
 
 from .abi import ABI
 from .value import Value
-from .value_types import Types
+from .value_types import Type
 
 
 class ScopeStack:
@@ -32,12 +32,6 @@ class ScopeStack:
 
     def get_loop(self) -> str | None:
         return self.loops[-1] if len(self.loops) > 0 else None
-
-    def push(self, name: str, variables: dict[str, Value] = None):
-        self.scopes.append(ScopeStack.Scope(name, variables))
-
-    def pop(self):
-        self.scopes.pop(-1)
 
     @contextlib.contextmanager
     def __call__(self, name: str):
@@ -68,6 +62,16 @@ class ScopeStack:
             self.functions.pop(-1)
 
     @contextlib.contextmanager
+    def anon_function(self, ctx):
+        if self.in_anon_function:
+            ctx.error(f"Cannot call function by reference inside a call to function by reference")
+        self.in_anon_function = True
+        try:
+            yield
+        finally:
+            self.in_anon_function = False
+
+    @contextlib.contextmanager
     def loop(self, name: str):
         self.scopes.append(ScopeStack.Scope(name))
         self.loops.append(name)
@@ -84,11 +88,11 @@ class ScopeStack:
 
         return None
 
-    def declare(self, name: str, type_: Types, const_on_write: bool) -> Value | None:
+    def declare(self, name: str, type_: Type, const_on_write: bool) -> Value | None:
         if name in self.scopes[-1].variables:
             return None
 
-        value = Value(type_, ABI.namespaced_name(self.scopes[-1].name, name), False, const_on_write=const_on_write)
+        value = Value.variable(ABI.namespaced_name(self.scopes[-1].name, name), type_, const_on_write=const_on_write)
         self.scopes[-1].variables[name] = value
         return value
 

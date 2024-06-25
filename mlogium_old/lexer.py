@@ -40,10 +40,11 @@ class Lexer:
         "continue": TokenType.KW_CONTINUE,
         "in": TokenType.KW_IN,
         "struct": TokenType.KW_STRUCT,
+        # "match": TokenType.KW_MATCH,
         "enum": TokenType.KW_ENUM,
         "static": TokenType.KW_STATIC,
-        "as": TokenType.KW_AS,
-        "namespace": TokenType.KW_NAMESPACE
+        "scope": TokenType.KW_SCOPE,
+        "as": TokenType.KW_AS
     }
 
     def _reset(self, code: str, filename: str, start_pos: tuple[int, int, list[str] | None] = (0, 0, None)):
@@ -188,9 +189,6 @@ class Lexer:
             if self.lookahead_str("->"):
                 tokens.append(self.make_token(TokenType.ARROW, "->"))
 
-            elif self.lookahead_str(":="):
-                tokens.append(self.make_token(TokenType.WALRUS, ":="))
-
             elif self._lex_simple_match(ch, tokens, [
                 (Lexer.CH_INTEGER, self.lex_number),
                 ("\"", self.lex_string),
@@ -234,10 +232,7 @@ class Lexer:
             while ch := self.lookahead(Lexer.CH_INTEGER):
                 val += ch
 
-            return self.make_token(TokenType.FLOAT, val)
-
-        else:
-            return self.make_token(TokenType.INTEGER, val)
+        return self.make_token(TokenType.NUMBER, val)
 
     def lex_string(self) -> Token:
         if self.lookahead_str("\"\"\""):
@@ -286,8 +281,6 @@ class Lexer:
                         val += ch
                     else:
                         break
-                if self.lookahead(Lexer.CH_HEX_DIGIT):
-                    LexerError.custom(self.make_pos(1), "Maximum length of color literal is 6 characters")
                 return self.make_token(TokenType.COLOR, val)
 
         if val == "!" and self.lookahead("="):
