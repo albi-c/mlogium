@@ -273,6 +273,26 @@ class AnyType(Type):
         raise NotImplementedError
 
 
+class UnderscoreType(Type):
+    def __str__(self):
+        return "?"
+
+    def __eq__(self, other):
+        return isinstance(other, UnderscoreType)
+
+    def contains(self, other: Type) -> bool:
+        return True
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        pass
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [_stringify(str(self))]
+
+
 @dataclass(slots=True)
 class TypeType(Type):
     type: Type
@@ -418,6 +438,25 @@ class StringType(Type):
         return value.value
 
 
+class BlockType(Type):
+    def __str__(self):
+        return "Block"
+
+    def __eq__(self, other):
+        return isinstance(other, BlockType)
+
+    def to_condition(self, ctx: CompilationContext, value: Value) -> str | None:
+        return value.value
+
+
+class ControllerType(Type):
+    def __str__(self):
+        return "Controller"
+
+    def __eq__(self, other):
+        return isinstance(other, ControllerType)
+
+
 @dataclass(slots=True)
 class TupleType(Type):
     types: list[Type]
@@ -450,6 +489,26 @@ class TupleType(Type):
 
     def unpack(self, ctx: CompilationContext, value: Value) -> list[Value]:
         return [Value(t, ABI.attribute(value.value, i), value.const) for i, t in enumerate(self.types)]
+
+
+@dataclass(slots=True)
+class UnionType(Type):
+    types: list[Type]
+
+    def __str__(self):
+        return " | ".join(map(str, self.types))
+
+    def __eq__(self, other):
+        return isinstance(other, UnionType) and self.types == other.types
+
+    def contains(self, other: Type) -> bool:
+        return any(t.contains(other) for t in self.types)
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        raise NotImplementedError
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        raise NotImplementedError
 
 
 class RangeType(Type):
@@ -521,6 +580,26 @@ class SpecialFunctionType(Type):
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
         return self.function(ctx, params)
+
+
+@dataclass(slots=True)
+class IntrinsicFunctionType(Type):
+    name: str
+    params: list[Type]
+    function: Callable[[CompilationContext, list[Value]], None]
+    subcommand: str | None = None
+
+    def __str__(self):
+        return f"fn {self.name}{'.' + self.subcommand if self.subcommand else ''}(...)"
+
+    def __eq__(self, other):
+        return isinstance(other, IntrinsicFunctionType) and self.name == other.name
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [_stringify(str(self))]
 
 
 @dataclass(slots=True)
@@ -863,8 +942,8 @@ class EnumBaseType(Type):
             for name, val in self.values_.items()
         }
         self.bottom_values: dict[str, Value] = {
-            "::" + name: Value(self._instance_type, str(val))
-            for name, val in self.values_.items()
+            "::" + name: val
+            for name, val in self.values.items()
         }
 
     def __str__(self):
@@ -926,6 +1005,72 @@ class EnumInstanceType(Type):
             return Value(NumberType(), value.value, value.const)
 
         return super(EnumInstanceType, self).into(ctx, value, type_)
+
+    def bottom_scope(self) -> dict[str, Value] | None:
+        return self.base.bottom_scope()
+
+
+class BuiltinEnumBaseType(Type):
+    name: str
+    values: dict[str, Value]
+    bottom_values: dict[str, Value]
+    copyable: bool
+    _instance_type: BuiltinEnumInstanceType
+
+    def __init__(self, name: str, values: set[str], content: bool, copyable: bool):
+        self.name = name
+        self._instance_type = BuiltinEnumInstanceType(self)
+        self.values = {
+            val.replace("-", "_"): Value(self._instance_type, ("@" if content else "") + val)
+            for val in values
+        }
+        self.bottom_values = {
+            "::" + name: val
+            for name, val in self.values.items()
+        }
+        self.copyable = copyable
+
+    def __str__(self):
+        return f"Enum[{self.name}]"
+
+    def __eq__(self, other):
+        return isinstance(other, BuiltinEnumBaseType) and self.name == other.name
+
+    def wrapped_type(self, ctx: CompilationContext) -> Type:
+        return self._instance_type
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [_stringify(str(self))]
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
+        if static:
+            if (val := self.values.get(name)) is not None:
+                return val
+
+        return super(BuiltinEnumBaseType, self).getattr(ctx, value, static, name)
+
+    def bottom_scope(self) -> dict[str, Value] | None:
+        return self.bottom_values
+
+
+@dataclass(slots=True)
+class BuiltinEnumInstanceType(Type):
+    base: BuiltinEnumBaseType
+
+    def __str__(self):
+        return self.base.name
+
+    def __eq__(self, other):
+        return isinstance(other, BuiltinEnumInstanceType) and self.base == other.base
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        if not self.base.copyable:
+            ctx.error(f"Enum of type '{self.base.name}' is not copyable")
+
+        super(BuiltinEnumInstanceType, self).assign(ctx, value, other)
 
     def bottom_scope(self) -> dict[str, Value] | None:
         return self.base.bottom_scope()

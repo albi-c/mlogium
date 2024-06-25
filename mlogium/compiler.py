@@ -128,7 +128,7 @@ class Compiler(AstVisitor[Value]):
                     capture.value) if capture.value else self._var_get(capture.name), f"&{capture.name}"))
             else:
                 val = self.visit(capture.value) if capture.value else self._var_get(capture.name)
-                copied = Value(val.type, self.ctx.tmp())
+                copied = Value(val.type, self.ctx.tmp(), False)
                 copied.assign(self.ctx, val)
                 captures.append(LambdaType.Capture(capture.name, copied, capture.name))
         value = Value(LambdaType(f"$lambda_{self.ctx.tmp_num()}",

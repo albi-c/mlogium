@@ -4,6 +4,9 @@ from .value import *
 from .lexer import Lexer
 from .parser import Parser
 from .node import NamespaceNode
+from .enums import ALL_ENUMS
+from .instruction import ALL_INSTRUCTIONS_BASES
+from .value_types import TypeRef
 
 
 def _parse_code(code: str, filename: str) -> Node:
@@ -18,6 +21,44 @@ def _construct_builtin_types(builtins: dict[str, Value]):
         "str": Value.of_type(StringType()),
         "Range": Value.of_type(RangeType()),
         "Tuple": Value(TupleTypeSourceType(), "")
+    }
+
+
+def _construct_builtin_enums(builtins: dict[str, Value]):
+    for name, (values, content, non_copyable) in ALL_ENUMS.items():
+        builtins[name] = Value(BuiltinEnumBaseType(name, values, content, not non_copyable), "")
+
+
+def _construct_builtin_variables(builtins: dict[str, Value]):
+    builtins |= {
+        "@this": Value(BlockType(), "@this", True),
+        "@thisx": Value(NumberType(), "@thisx", True),
+        "@thisy": Value(NumberType(), "@thisy", True),
+        "@ipt": Value(NumberType(), "@ipt", True),
+        "@timescale": Value(NumberType(), "@timescale", True),
+        "@counter": Value(NumberType(), "@counter", True),
+        "@links": Value(NumberType(), "@links", True),
+        "@unit": Value(NumberType(), "@unit", False),
+        "@time": Value(NumberType(), "@time", True),
+        "@tick": Value(NumberType(), "@tick", True),
+        "@second": Value(NumberType(), "@second", True),
+        "@minute": Value(NumberType(), "@minute", True),
+        "@waveNumber": Value(NumberType(), "@waveNumber", True),
+        "@waveTime": Value(NumberType(), "@waveTime", True),
+        "@mapw": Value(NumberType(), "@mapw", True),
+        "@maph": Value(NumberType(), "@maph", True),
+
+        "@ctrlProcessor": Value(ControllerType(), "@ctrlProcessor", True),
+        "@ctrlPlayer": Value(ControllerType(), "@ctrlPlayer", True),
+        "@ctrlCommand": Value(ControllerType(), "@ctrlCommand", True),
+
+        "@solid": Value(builtins["BlockType"].type, "@solid", True),
+
+        "_": Value(UnderscoreType(), "_", False),
+
+        "true": Value(NumberType(), "true", True),
+        "false": Value(NumberType(), "false", True),
+        "null": Value(NullType(), "null", True)
     }
 
 
@@ -74,6 +115,10 @@ def _construct_special_builtin_functions(builtins: dict[str, Value]):
     }
 
 
+def _resolve_type_ref(builtins: dict[str, Value], ref: TypeRef) -> Type:
+    pass
+
+
 def _construct_builtin_functions(builtins: dict[str, Value]):
     def _print_impl(ctx: CompilationContext, params: list[Value]) -> Value:
         ctx.emit(*(
@@ -86,10 +131,24 @@ def _construct_builtin_functions(builtins: dict[str, Value]):
         "print": Value(SpecialFunctionType("print", [AnyType()], NullType(), _print_impl), "")
     }
 
+    for base in ALL_INSTRUCTIONS_BASES:
+        if base.base_params.get("internal", False):
+            continue
+
+        if base.has_subcommands():
+            subcommands = {}
+            for name, (params, outputs, side_effects, _) in base.subcommands().items():
+                subcommands[name] = Value(SpecialFunctionType(
+                    f"{base.name}.{name}",
+                    []
+                ), "")
+
 
 def construct_builtins() -> dict[str, Value]:
     builtins = {}
     _construct_builtin_types(builtins)
+    _construct_builtin_enums(builtins)
+    _construct_builtin_variables(builtins)
     _construct_special_builtin_functions(builtins)
     _construct_builtin_functions(builtins)
     return builtins
