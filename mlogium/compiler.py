@@ -3,6 +3,7 @@ from __future__ import annotations
 from .node import *
 from .value import *
 from .compilation_context import CompilationContext
+from .instruction import Instruction, InstructionInstance
 from .error import CompilerError
 from .scope import ScopeStack
 from .builtins import construct_builtins
@@ -13,7 +14,7 @@ class Compiler(AstVisitor[Value]):
         compiler: Compiler
 
         def __init__(self, compiler: Compiler):
-            super().__init__()
+            super().__init__(compiler.scope)
 
             self.compiler = compiler
 
@@ -22,6 +23,9 @@ class Compiler(AstVisitor[Value]):
 
         def error(self, msg: str):
             self.compiler.error(msg)
+
+        def current_pos(self) -> Position:
+            return self.compiler.current_pos
 
     scope: ScopeStack
     ctx: CompilationContext
@@ -46,10 +50,12 @@ class Compiler(AstVisitor[Value]):
 
     def resolve_type(self, value: Node | Value) -> Type:
         type_ = self.visit(value) if isinstance(value, Node) else value
-        type_type = type_.type
-        if isinstance(type_type, TypeType):
-            return type_type.type
-        self.error(f"Value of type '{type_.type}' is not a type")
+        return type_.type.wrapped_type(self.ctx)
+
+    def resolve_type_opt(self, value: Node | Value | Node) -> Type | None:
+        if value is None:
+            return None
+        return self.resolve_type(value)
 
     def _var_get(self, name: str) -> Value:
         if (var := self.scope.get(name)) is None:
@@ -101,20 +107,104 @@ class Compiler(AstVisitor[Value]):
     def visit_declaration_node(self, node: DeclarationNode) -> Value:
         return self._declare_target(node.target, self.visit(node.value))
 
+    def _build_function(self, func: FunctionDeclaration) -> Value:
+        return Value(FunctionType(func.name if func.name is not None else self.ctx.tmp(),
+                                  [FunctionType.Param(p.name, p.reference, self.resolve_type_opt(p.type))
+                                   for p in func.params],
+                                  self.resolve_type_opt(func.result),
+                                  func.code), "")
+
     def visit_function_node(self, node: FunctionNode) -> Value:
-        pass
+        value = self._build_function(node)
+        if node.name is not None:
+            self._var_declare_special(node.name, value)
+        return value
 
     def visit_lambda_node(self, node: LambdaNode) -> Value:
-        pass
+        captures = []
+        for capture in node.captures:
+            if capture.reference:
+                captures.append(LambdaType.Capture(capture.name, self.visit(
+                    capture.value) if capture.value else self._var_get(capture.name), f"&{capture.name}"))
+            else:
+                val = self.visit(capture.value) if capture.value else self._var_get(capture.name)
+                copied = Value(val.type, self.ctx.tmp())
+                copied.assign(self.ctx, val)
+                captures.append(LambdaType.Capture(capture.name, copied, capture.name))
+        value = Value(LambdaType(f"$lambda_{self.ctx.tmp_num()}",
+                                 [FunctionType.Param(p.name, p.reference, self.resolve_type_opt(p.type))
+                                  for p in node.params],
+                                 captures,
+                                 self.resolve_type_opt(node.result),
+                                 node.code), "")
+        return value
 
     def visit_return_node(self, node: ReturnNode) -> Value:
-        pass
+        if (func := self.scope.get_function()) is None:
+            self.error(f"Return statement must be used inside a function")
+        if node.value is not None:
+            value = self.visit(node.value)
+            Value(value.type, ABI.return_value(func), False).assign(self.ctx, value)
+        self.emit(Instruction.jump_always(ABI.function_end(func)))
+        return Value.null()
 
     def visit_struct_node(self, node: StructNode) -> Value:
-        pass
+        name = node.name if node.name is not None else self.ctx.tmp()
+
+        parent = self.resolve_type_opt(node.parent)
+        if parent is not None:
+            # TODO
+            self.error(f"Struct inheritance is not yet supported")
+
+        fields = []
+        static_fields = {}
+        methods = {}
+        static_methods = {}
+
+        for field in node.fields:
+            assert not field.const
+            assert field.type is not None
+            fields.append((field.name, self.resolve_type(field.type)))
+
+        for target, value_ in node.static_fields:
+            value = self.visit(value_)
+            val = Value(value.type, ABI.static_attribute(name, target.name), False, const_on_write=target.const)
+            val.assign(self.ctx, value)
+            static_fields[target.name] = val
+
+        for const, method in node.methods:
+            assert method.name is not None
+            methods[method.name] = (
+                const,
+                StructMethodData(
+                    method.name,
+                    [FunctionType.Param(p.name, p.reference, self.resolve_type_opt(p.type))
+                     for p in method.params],
+                    self.resolve_type_opt(method.result),
+                    method.code
+                )
+            )
+
+        for method in node.static_methods:
+            assert method.name is not None
+            static_methods[method.name] = StructMethodData(method.name,
+                                                           [FunctionType.Param(p.name, p.reference,
+                                                                               self.resolve_type_opt(p.type))
+                                                            for p in method.params],
+                                                           self.resolve_type_opt(method.result),
+                                                           method.code)
+
+        value = Value(StructBaseType(node.name, fields, static_fields, methods, static_methods), "")
+        if node.name is not None:
+            self._var_declare_special(node.name, value)
+        return value
 
     def visit_if_node(self, node: IfNode) -> Value:
         cond_value = self.visit(node.cond).to_condition_req(self.ctx)
+
+        if node.const:
+            # TODO
+            self.error(f"Constant if is not yet supported")
 
         end_true_branch = self.ctx.tmp()
         end_false_branch = "" if node.code_else is None else self.ctx.tmp()
@@ -136,10 +226,21 @@ class Compiler(AstVisitor[Value]):
         return result
 
     def visit_namespace_node(self, node: NamespaceNode) -> Value:
-        pass
+        name = node.name if node.name is not None else self.ctx.tmp()
+        with self.scope(f"$namespace_{name}:{self.ctx.tmp_num()}"):
+            self.visit(node.code)
+            variables = self.scope.scopes[-1].variables.copy()
+        value = Value(NamespaceType(node.name, variables), "")
+        if node.name is not None:
+            self._var_declare_special(node.name, value)
+        return value
 
     def visit_enum_node(self, node: EnumNode) -> Value:
-        pass
+        value = Value(EnumBaseType(node.name if node.name is not None else self.ctx.tmp(),
+                                   {opt: i for i, opt in enumerate(node.options)}), "")
+        if node.name is not None:
+            self._var_declare_special(node.name, value)
+        return value
 
     def visit_while_node(self, node: WhileNode) -> Value:
         name = self.ctx.tmp()
@@ -165,13 +266,13 @@ class Compiler(AstVisitor[Value]):
 
     def visit_break_node(self, node: BreakNode) -> Value:
         if (name := self.scope.get_loop()) is None:
-            self._error(f"Break statement must be in a loop")
+            self.error(f"Break statement must be in a loop")
         self.emit(Instruction.jump_always(name + "_break"))
         return Value.null()
 
     def visit_continue_node(self, node: ContinueNode) -> Value:
         if (name := self.scope.get_loop()) is None:
-            self._error(f"Continue statement must be in a loop")
+            self.error(f"Continue statement must be in a loop")
         self.emit(Instruction.jump_always(name + "_continue"))
         return Value.null()
 
@@ -197,17 +298,26 @@ class Compiler(AstVisitor[Value]):
         if not func.callable():
             self.error(f"Value of type '{func.type}' is not callable")
 
+        param_types = func.call_with_suggestion()
+
         unpacked_params = []
         for param, unpack in node.params:
             if unpack:
                 unpacked_params += self.visit(param).unpack_req(self.ctx)
 
             else:
-                unpacked_params.append(self.visit(param))
+                bottom_scope = None
+                if param_types is not None and len(unpacked_params) < len(param_types):
+                    type_ = param_types[len(unpacked_params)]
+                    if type_ is not None:
+                        bottom_scope = type_.bottom_scope()
+
+                with self.scope.bottom("<enum>", bottom_scope):
+                    unpacked_params.append(self.visit(param))
 
         if not func.callable_with([v.type for v in unpacked_params]):
             self.error(f"Function of type '{func.type}' is not callable with parameters of types \
-[{', '.join(str(v.type for v in unpacked_params))}]")
+[{', '.join(str(v.type) for v in unpacked_params)}]")
 
         return func.call(self.ctx, unpacked_params)
 

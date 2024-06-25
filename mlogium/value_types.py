@@ -16,9 +16,9 @@ class _TypeSupplier:
 Types = _TypeSupplier()
 
 
-def BasicType(name: str) -> TypeRef:
+def BasicTypeRef(name: str) -> TypeRef:
     return TypeRef("basic", name)
 
 
-def UnionType(types: list[TypeRef]) -> TypeRef:
+def UnionTypeRef(types: list[TypeRef]) -> TypeRef:
     return TypeRef("union", types)

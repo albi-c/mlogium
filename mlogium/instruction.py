@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from dataclasses import dataclass
 
-from .value_types import Types, BasicType, UnionType, TypeRef
+from .value_types import Types, BasicTypeRef, UnionTypeRef, TypeRef
 from . import enums
 from .abi import ABI
 from .linking_context import LinkingContext
@@ -191,10 +191,10 @@ class Instruction:
         ("config", [Types.BLOCK, Types.CONTENT]),
         ("color", [Types.BLOCK, Types.NUM])
     ])
-    radar = _make("radar", [BasicType("$RadarFilter")] * 3 + [BasicType("$RadarSort"), Types.BLOCK, Types.NUM, Types.UNIT],
+    radar = _make("radar", [BasicTypeRef("$RadarFilter")] * 3 + [BasicTypeRef("$RadarSort"), Types.BLOCK, Types.NUM, Types.UNIT],
                   False, [6])
     sensor = _make_with_subcommands("sensor", False, [0], [
-        (name, ([type_, UnionType([Types.BLOCK, Types.UNIT])], False, [0])) for name, type_ in enums.ENUM_SENSABLE.items()
+        (name, ([type_, UnionTypeRef([Types.BLOCK, Types.UNIT])], False, [0])) for name, type_ in enums.ENUM_SENSABLE.items()
     ], param_process=lambda params: [params[1], params[2], "@" + params[0]])
 
     set = _make("set", [Types.ANY, Types.ANY], False, [0], internal=True)
@@ -354,18 +354,18 @@ class Instruction:
         ("payEnter", []),
         ("mine", [Types.NUM] * 2),
         ("flag", [Types.NUM]),
-        ("build", [Types.NUM, Types.NUM, Types.BLOCK_TYPE, Types.NUM, UnionType([Types.CONTENT, Types.BLOCK])]),
+        ("build", [Types.NUM, Types.NUM, Types.BLOCK_TYPE, Types.NUM, UnionTypeRef([Types.CONTENT, Types.BLOCK])]),
         ("getBlock", ([Types.NUM, Types.NUM, Types.BLOCK_TYPE, Types.BLOCK, Types.NUM], [2, 3])),
         ("within", ([Types.NUM] * 4, [3])),
         ("unbind", []),
     ])
-    uradar = _make("uradar", [BasicType("$RadarFilter")] * 3 + [BasicType("$RadarSort"), Types.ANY, Types.NUM, Types.UNIT],
+    uradar = _make("uradar", [BasicTypeRef("$RadarFilter")] * 3 + [BasicTypeRef("$RadarSort"), Types.ANY, Types.NUM, Types.UNIT],
                    False, [6], constants={5: "0"})
     ulocate = _make_with_subcommands("ulocate", False, [], [
         ("ore", ([Types.ANY, Types.ANY, Types.BLOCK_TYPE, Types.NUM, Types.NUM, Types.NUM, Types.NUM], False, [3, 4, 5],
                  {0: "_", 1: "_"})),
         ("building", (
-            [BasicType("$LocateType"), Types.NUM, Types.ANY, Types.NUM, Types.NUM, Types.NUM, Types.BLOCK], False, [3, 4, 5, 6],
+            [BasicTypeRef("$LocateType"), Types.NUM, Types.ANY, Types.NUM, Types.NUM, Types.NUM, Types.BLOCK], False, [3, 4, 5, 6],
             {2: "_"})),
         ("spawn", ([Types.ANY, Types.ANY, Types.ANY, Types.NUM, Types.NUM, Types.NUM, Types.BLOCK], False, [3, 4, 5, 6],
                    {0: "_", 1: "_", 2: "_"})),
@@ -402,12 +402,12 @@ class Instruction:
 
     spawn = _make("spawn", [Types.UNIT_TYPE, Types.NUM, Types.NUM, Types.NUM, Types.TEAM, Types.UNIT], True, [5])
     status = _make_with_subcommands("status", True, [], [
-        ("apply", ([Types.ANY, BasicType("$Status"), Types.UNIT, Types.NUM], True, [], {0: "false"})),
-        ("clear", ([Types.ANY, BasicType("$Status"), Types.UNIT], True, [], {0: "true"}))
+        ("apply", ([Types.ANY, BasicTypeRef("$Status"), Types.UNIT, Types.NUM], True, [], {0: "false"})),
+        ("clear", ([Types.ANY, BasicTypeRef("$Status"), Types.UNIT], True, [], {0: "true"}))
     ])
 
-    weather_sense = _make("weathersense", [Types.NUM, BasicType("Weather")], False, [0])
-    weather_set = _make("weatherset", [BasicType("Weather"), Types.NUM], True)
+    weather_sense = _make("weathersense", [Types.NUM, BasicTypeRef("Weather")], False, [0])
+    weather_set = _make("weatherset", [BasicTypeRef("Weather"), Types.NUM], True)
 
     spawnwave = _make("spawnwave", [Types.NUM, Types.NUM, Types.NUM], True)
 
@@ -454,12 +454,12 @@ class Instruction:
     setflag = _make("setflag", [Types.STR, Types.NUM], True)
 
     setprop = _make("setprop", [
-        UnionType([Types.ITEM_TYPE, Types.LIQUID_TYPE, BasicType("Property")]),
-        UnionType([Types.BLOCK, Types.UNIT]),
+        UnionTypeRef([Types.ITEM_TYPE, Types.LIQUID_TYPE, BasicTypeRef("Property")]),
+        UnionTypeRef([Types.BLOCK, Types.UNIT]),
         Types.NUM
     ], True)
 
-    make_marker = _make("makemarker", [BasicType("$MarkerType"), Types.NUM, Types.NUM, Types.NUM, Types.NUM],
+    make_marker = _make("makemarker", [BasicTypeRef("$MarkerType"), Types.NUM, Types.NUM, Types.NUM, Types.NUM],
                         True, [])
     set_marker = _make_with_subcommands("setmarker", True, [], [
         ("remove", [Types.NUM]),

@@ -1,4 +1,4 @@
-from .value_types import Types, UnionType
+from .value_types import Types, UnionTypeRef
 
 
 ENUM_BLOCKS: set[str] = {
@@ -116,10 +116,10 @@ ENUM_SENSABLE: dict[str, Types] = {
     "type": Types.NUM,
     "flag": Types.NUM,
     "controlled": Types.CONTROLLER,
-    "controller": UnionType([Types.BLOCK, Types.UNIT]),
+    "controller": UnionTypeRef([Types.BLOCK, Types.UNIT]),
     "name": Types.NUM,
     "payloadCount": Types.NUM,
-    "payloadType": UnionType([Types.BLOCK_TYPE, Types.UNIT_TYPE]),
+    "payloadType": UnionTypeRef([Types.BLOCK_TYPE, Types.UNIT_TYPE]),
     "enabled": Types.NUM,
     "config": Types.CONTENT,
     "color": Types.NUM

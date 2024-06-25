@@ -48,12 +48,14 @@ class ScopeStack:
             self.scopes.pop(-1)
 
     @contextlib.contextmanager
-    def bottom(self, name: str, variables: dict[str, Value]):
-        self.scopes.insert(0, ScopeStack.Scope(name, variables))
+    def bottom(self, name: str, variables: dict[str, Value] = None):
+        if variables is not None:
+            self.scopes.insert(0, ScopeStack.Scope(name, variables))
         try:
             yield
         finally:
-            self.scopes.pop(0)
+            if variables is not None:
+                self.scopes.pop(0)
 
     @contextlib.contextmanager
     def function_call(self, ctx, name: str):

@@ -236,10 +236,9 @@ class FunctionParam:
     name: str
     reference: bool
     type: Node | None
-    default: Node | None
 
     def __str__(self):
-        return f"{'&' if self.reference else ''}{self.name}{': ' + str(self.type) if self.type is not None else ''}{' = ' + str(self.default) if self.default is not None else ''}"
+        return f"{'&' if self.reference else ''}{self.name}{': ' + str(self.type) if self.type is not None else ''}"
 
 
 @dataclass

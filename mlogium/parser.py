@@ -316,7 +316,7 @@ class Parser:
                 node = CallNode(node.pos, node, params)
 
             elif self.lookahead(TokenType.LBRACK):
-                indices = self._parse_comma_separated(self.parse_type, None, TokenType.RBRACK)
+                indices = self._parse_comma_separated(self.parse_value, None, TokenType.RBRACK)
                 node = IndexNode(node.pos, node, indices)
 
             elif tok := self.lookahead(TokenType.DOT | TokenType.DOUBLE_COLON):
@@ -335,11 +335,7 @@ class Parser:
             type_ = self.parse_type()
         else:
             type_ = None
-        if self.lookahead(TokenType.OPERATOR, "="):
-            default = self.parse_value()
-        else:
-            default = None
-        return FunctionParam(name, ref, type_, default)
+        return FunctionParam(name, ref, type_)
 
     def _parse_function_signature(self) -> tuple[list[FunctionParam], Node | None]:
         params = self._parse_comma_separated(self._parse_function_param)
@@ -409,14 +405,14 @@ class Parser:
                 if self.lookahead(TokenType.KW_STATIC):
                     if var_tok := self.lookahead(TokenType.KW_LET | TokenType.KW_CONST):
                         const = var_tok.type == TokenType.KW_CONST
-                        name = self.next(TokenType.ID).value
+                        name_ = self.next(TokenType.ID).value
                         if self.lookahead(TokenType.COLON):
                             type_ = self.parse_type()
                         else:
                             type_ = None
                         self.next(TokenType.ASSIGNMENT, "=")
                         val = self.parse_value()
-                        static_fields.append((SingleAssignmentTarget(const, name, type_), val))
+                        static_fields.append((SingleAssignmentTarget(const, name_, type_), val))
                         self.next(TokenType.SEMICOLON)
 
                     else:
@@ -428,10 +424,10 @@ class Parser:
                     methods.append((True, self._parse_function_declaration(True)))
 
                 elif self.lookahead(TokenType.KW_LET):
-                    name = self.next(TokenType.ID).value
+                    name_ = self.next(TokenType.ID).value
                     self.next(TokenType.COLON)
                     type_ = self.parse_type()
-                    fields.append(SingleAssignmentTarget(False, name, type_))
+                    fields.append(SingleAssignmentTarget(False, name_, type_))
                     self.next(TokenType.SEMICOLON)
 
                 else:
@@ -535,7 +531,7 @@ class Parser:
 
             return LambdaNode(tok.pos + code.pos, [], captures, ret, code)
 
-        elif tok.type == TokenType.DOUBLE_COLON:
+        elif tok.type in TokenType.DOUBLE_COLON | TokenType.HASH:
             name = self.next(TokenType.ID)
             return VariableValueNode(tok.pos + name.pos, tok.value + name.value)
 
