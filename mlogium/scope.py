@@ -19,13 +19,13 @@ class ScopeStack:
     scopes: list[Scope]
     functions: list[str]
     loops: list[str]
-    in_anon_function: bool
+    global_closures: list[dict[str, Value]]
 
     def __init__(self):
         self.scopes = []
         self.functions = []
         self.loops = []
-        self.in_anon_function = False
+        self.global_closures = []
 
     def get_function(self) -> str | None:
         return self.functions[-1] if len(self.functions) > 0 else None
@@ -40,12 +40,20 @@ class ScopeStack:
         self.scopes.pop(-1)
 
     @contextlib.contextmanager
-    def __call__(self, name: str):
-        self.scopes.append(ScopeStack.Scope(name))
+    def __call__(self, name: str, variables: dict[str, Value] = None):
+        self.scopes.append(ScopeStack.Scope(name, variables))
         try:
             yield
         finally:
             self.scopes.pop(-1)
+
+    @contextlib.contextmanager
+    def global_closure(self, variables: dict[str, Value]):
+        self.global_closures.append(variables)
+        try:
+            yield
+        finally:
+            self.global_closures.pop(-1)
 
     @contextlib.contextmanager
     def bottom(self, name: str, variables: dict[str, Value] = None):
@@ -58,8 +66,8 @@ class ScopeStack:
                 self.scopes.pop(0)
 
     @contextlib.contextmanager
-    def function_call(self, ctx, name: str):
-        self.scopes.append(ScopeStack.Scope(name))
+    def function_call(self, ctx, name: str, variables: dict[str, Value] = None):
+        self.scopes.append(ScopeStack.Scope(name, variables))
         if name in self.functions:
             ctx.error(f"Recursion is not allowed: '{name}'")
         self.functions.append(name)
@@ -78,6 +86,16 @@ class ScopeStack:
         finally:
             self.scopes.pop(-1)
             self.loops.pop(-1)
+
+    def get_global_closures(self) -> list[dict[str, Value]]:
+        return self.global_closures.copy()
+
+    @staticmethod
+    def combine_global_closures(closures: list[dict[str, Value]]) -> dict[str, Value]:
+        values = {}
+        for closure in closures:
+            values |= closure
+        return values
 
     def get(self, name: str) -> Value | None:
         for scope in reversed(self.scopes):

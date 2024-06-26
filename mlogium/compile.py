@@ -10,7 +10,6 @@ def compile_code(code: str, filename: str) -> str:
     ast = Parser(tokens).parse()
     compiler = Compiler()
     compiler.compile(ast)
-    print("\n".join(map(str, compiler.ctx.get_instructions())))
     instructions = Optimizer.optimize(compiler.ctx.get_instructions())
     result = Linker.link(instructions)
     return result

@@ -146,11 +146,21 @@ class Value:
     def binary_op(self, ctx: CompilationContext, op: str, other: Value) -> Value | None:
         return self.type.binary_op(ctx, self, op, other)
 
+    def binary_op_req(self, ctx: CompilationContext, op: str, other: Value) -> Value | None:
+        if (result := self.binary_op(ctx, op, other)) is None:
+            ctx.error(f"Operator '{op}' is not supported between values of types '{self.type}' and '{other.type}'")
+        return result
+
     def binary_op_r(self, ctx: CompilationContext, other: Value, op: str) -> Value | None:
         return self.type.binary_op_r(ctx, other, op, self)
 
     def unary_op(self, ctx: CompilationContext, op: str) -> Value | None:
         return self.type.unary_op(ctx, self, op)
+
+    def unary_op_req(self, ctx: CompilationContext, op: str) -> Value | None:
+        if (result := self.unary_op(ctx, op)) is None:
+            ctx.error(f"Operator '{op}' is not supported for value of type '{self.type}'")
+        return result
 
     def bottom_scope(self) -> dict[str, Value] | None:
         return self.type.bottom_scope()
@@ -520,6 +530,20 @@ class ControllerType(Type):
 
 @dataclass(slots=True)
 class TupleType(Type):
+    class ValueIterator(ValueIterator):
+        has_func: Value
+        next_func: Value
+
+        def __init__(self, has_func: Value, next_func: Value):
+            self.has_func = has_func
+            self.next_func = next_func
+
+        def has_value(self, ctx: CompilationContext) -> Value:
+            return self.has_func.call(ctx, [])
+
+        def next_value(self, ctx: CompilationContext) -> Value:
+            return self.next_func.call(ctx, [])
+
     types: list[Type]
 
     def __str__(self):
@@ -550,6 +574,47 @@ class TupleType(Type):
 
     def unpack(self, ctx: CompilationContext, value: Value) -> list[Value]:
         return [Value(t, ABI.attribute(value.value, i), value.const) for i, t in enumerate(self.types)]
+
+    def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> Value | None:
+        return Value.of_tuple(ctx, [val.unary_op_req(ctx, op) for val in value.unpack_req(ctx)])
+
+    def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
+        if op == "++":
+            return Value.of_tuple(ctx, value.unpack_req(ctx) + other.unpack_req(ctx))
+
+        if other.unpackable():
+            values = value.unpack_req(ctx)
+            other_values = other.unpack_req(ctx)
+            if len(values) != len(other_values):
+                ctx.error(f"Tuple length mismatch: {len(values)} is not equal to {len(other_values)}")
+            return Value.of_tuple(ctx, [a.binary_op_req(ctx, op, b) for a, b in zip(values, other_values)])
+
+        else:
+            return Value.of_tuple(ctx, [val.binary_op_req(ctx, op, other) for val in value.unpack_req(ctx)])
+
+    def binary_op_r(self, ctx: CompilationContext, other: Value, op: str, value: Value) -> Value | None:
+        if other.unpackable():
+            values = value.unpack_req(ctx)
+            other_values = other.unpack_req(ctx)
+            if len(values) != len(other_values):
+                ctx.error(f"Tuple length mismatch: {len(values)} is not equal to {len(other_values)}")
+            return Value.of_tuple(ctx, [b.binary_op_req(ctx, op, a) for a, b in zip(values, other_values)])
+
+        else:
+            return Value.of_tuple(ctx, [other.binary_op_req(ctx, op, val) for val in value.unpack_req(ctx)])
+
+    def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
+        if len(self.types) != 2:
+            return None
+
+        next_func, has_func = value.unpack_req(ctx)
+
+        if not next_func.callable_with([]):
+            return None
+        if not has_func.callable_with([]):
+            return None
+
+        return TupleType.ValueIterator(has_func, next_func)
 
 
 @dataclass(slots=True)
@@ -772,6 +837,7 @@ class FunctionType(Type):
     params: list[FunctionType.Param]
     result: Type | None
     code: Node
+    global_closure: list[dict[str, Value]]
 
     def __str__(self):
         return f"fn({', '.join(map(str, self.params))}){' -> ' + str(self.result) if self.result else ''}"
@@ -797,7 +863,8 @@ class FunctionType(Type):
             all(p.type is None or p.type.contains(t) for p, t in zip(self.params, param_types))
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
-        with ctx.scope.function_call(ctx, f"$function_{self.name}:{ctx.tmp_num()}"):
+        with ctx.scope.function_call(ctx, f"$function_{self.name}:{ctx.tmp_num()}",
+                                     ctx.scope.combine_global_closures(self.global_closure)):
             for dst, src in zip(self.params, params):
                 if dst.reference:
                     ctx.scope.declare_special(dst.name, src)
@@ -834,6 +901,7 @@ class LambdaType(Type):
     captures: list[LambdaType.Capture]
     result: Type | None
     code: Node
+    global_closure: list[dict[str, Value]]
 
     def __str__(self):
         return f"|{', '.join(map(str, self.params))}|[{', '.join(map(str, self.captures))}]\
@@ -860,7 +928,8 @@ class LambdaType(Type):
             all(p.type is None or p.type.contains(t) for p, t in zip(self.params, param_types))
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
-        with ctx.scope.function_call(ctx, f"$lambda_{self.name}:{ctx.tmp_num()}"):
+        with ctx.scope.function_call(ctx, f"$lambda_{self.name}:{ctx.tmp_num()}",
+                                     ctx.scope.combine_global_closures(self.global_closure)):
             for capture in self.captures:
                 ctx.scope.declare_special(capture.name, capture.value)
 
@@ -890,6 +959,7 @@ class StructMethodData:
     params: list[FunctionType.Param]
     result: Type | None
     code: Node
+    global_closure: list[dict[str, Value]]
 
 
 @dataclass(slots=True)
@@ -899,10 +969,11 @@ class StructMethodType(Type):
     params: list[FunctionType.Param]
     result: Type | None
     code: Node
+    global_closure: list[dict[str, Value]]
 
     @classmethod
     def create_value(cls, self_value: Value, data: StructMethodData) -> Value:
-        return Value(cls(self_value, data.name, data.params, data.result, data.code), "")
+        return Value(cls(self_value, data.name, data.params, data.result, data.code, data.global_closure), "")
 
     def __str__(self):
         return f"fn({', '.join(map(str, self.params))}){' -> ' + str(self.result) if self.result else ''}"
@@ -928,7 +999,8 @@ class StructMethodType(Type):
             all(p.type is None or p.type.contains(t) for p, t in zip(self.params, param_types))
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
-        with ctx.scope.function_call(ctx, f"$method_{self.name}:{ctx.tmp_num()}"):
+        with ctx.scope.function_call(ctx, f"$method_{self.name}:{ctx.tmp_num()}",
+                                     ctx.scope.combine_global_closures(self.global_closure)):
             ctx.scope.declare_special("self", self.self_value)
 
             for dst, src in zip(self.params, params):
@@ -1058,6 +1130,12 @@ class StructInstanceType(Type):
             strings += value.getattr_req(ctx, False, field).to_strings(ctx)
         strings.append("\"}\"")
         return strings
+
+    def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
+        iter_func = value.getattr_req(ctx, False, "@iter")
+        if not iter_func.callable_with([]):
+            ctx.error(f"Value of type '{iter_func.type}' does not have the correct function signature")
+        return iter_func.call(ctx, []).iterate(ctx)
 
 
 @dataclass(slots=True)

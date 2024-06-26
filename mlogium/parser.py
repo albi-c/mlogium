@@ -361,7 +361,7 @@ class Parser:
     def _parse_capture(self) -> LambdaCapture:
         ref = bool(self.lookahead(TokenType.OPERATOR, "&"))
         name = self.next(TokenType.ID).value
-        if self.lookahead(TokenType.OPERATOR, "="):
+        if self.lookahead(TokenType.ASSIGNMENT, "="):
             value = self.parse_value()
         else:
             value = None

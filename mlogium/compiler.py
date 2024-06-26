@@ -112,7 +112,8 @@ class Compiler(AstVisitor[Value]):
                                   [FunctionType.Param(p.name, p.reference, self.resolve_type_opt(p.type))
                                    for p in func.params],
                                   self.resolve_type_opt(func.result),
-                                  func.code), "")
+                                  func.code,
+                                  self.scope.get_global_closures()), "")
 
     def visit_function_node(self, node: FunctionNode) -> Value:
         value = self._build_function(node)
@@ -136,7 +137,8 @@ class Compiler(AstVisitor[Value]):
                                   for p in node.params],
                                  captures,
                                  self.resolve_type_opt(node.result),
-                                 node.code), "")
+                                 node.code,
+                                 self.scope.get_global_closures()), "")
         return value
 
     def visit_return_node(self, node: ReturnNode) -> Value:
@@ -181,9 +183,8 @@ class Compiler(AstVisitor[Value]):
                     [FunctionType.Param(p.name, p.reference, self.resolve_type_opt(p.type))
                      for p in method.params],
                     self.resolve_type_opt(method.result),
-                    method.code
-                )
-            )
+                    method.code,
+                    self.scope.get_global_closures()))
 
         for method in node.static_methods:
             assert method.name is not None
@@ -192,7 +193,8 @@ class Compiler(AstVisitor[Value]):
                                                                                self.resolve_type_opt(p.type))
                                                             for p in method.params],
                                                            self.resolve_type_opt(method.result),
-                                                           method.code)
+                                                           method.code,
+                                                           self.scope.get_global_closures())
 
         value = Value(StructBaseType(node.name, fields, static_fields, methods, static_methods), "")
         if node.name is not None:
@@ -228,8 +230,9 @@ class Compiler(AstVisitor[Value]):
     def visit_namespace_node(self, node: NamespaceNode) -> Value:
         name = node.name if node.name is not None else self.ctx.tmp()
         with self.scope(f"$namespace_{name}:{self.ctx.tmp_num()}"):
-            self.visit(node.code)
-            variables = self.scope.scopes[-1].variables.copy()
+            with self.scope.global_closure(self.scope.scopes[-1].variables):
+                self.visit(node.code)
+                variables = self.scope.scopes[-1].variables.copy()
         value = Value(NamespaceType(node.name, variables), "")
         if node.name is not None:
             self._var_declare_special(node.name, value)
@@ -276,7 +279,6 @@ class Compiler(AstVisitor[Value]):
 
         return Value.null()
 
-
     def visit_comprehension_node(self, node: ComprehensionNode) -> Value:
         values = self.visit(node.iterable).unpack_req(self.ctx)
         results = []
@@ -302,18 +304,10 @@ class Compiler(AstVisitor[Value]):
         return self.visit(node.value).into_req(self.ctx, self.resolve_type(node.type))
 
     def visit_binary_op_node(self, node: BinaryOpNode) -> Value:
-        left = self.visit(node.left)
-        right = self.visit(node.right)
-        if (result := left.binary_op(self.ctx, node.op, right)) is None:
-            self.error(
-                f"Operator '{node.op}' is not supported between values of types '{left.type}' and '{right.type}'")
-        return result
+        return self.visit(node.left).binary_op_req(self.ctx, node.op, self.visit(node.right))
 
     def visit_unary_op_node(self, node: UnaryOpNode) -> Value:
-        value = self.visit(node.value)
-        if (result := value.unary_op(self.ctx, node.op)) is None:
-            self.error(f"Operator '{node.op}' is not supported for value of type '{value.type}'")
-        return result
+        return self.visit(node.value).unary_op_req(self.ctx, node.op)
 
     def visit_call_node(self, node: CallNode) -> Value:
         func = self.visit(node.value)
