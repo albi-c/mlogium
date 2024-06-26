@@ -462,9 +462,11 @@ class TypeType(Type):
             elif name == "len":
                 return Value.of_number(val.unpack_count())
 
+            elif name == "serializable":
+                return Value.of_boolean(value.memcell_serializable(ctx))
+
             elif name == "size":
-                # TODO: memcell size
-                raise NotImplementedError
+                return Value.of_number(value.memcell_size(ctx))
 
             elif name == "default":
                 return Value(SpecialFunctionType(
@@ -769,6 +771,167 @@ class ControllerType(Type):
         return isinstance(other, ControllerType)
 
 
+def _check_callable_with(ctx: CompilationContext, func: Value, params: list[Type]) -> Value:
+    if not func.callable_with(ctx, params):
+        ctx.error(f"Value of type '{func.type}' is not callable with parameters of types \
+({', '.join(f'\'{t}\'' for t in params)})")
+    return func
+
+
+def _check_same_length(ctx: CompilationContext, a: list[Value], b: list[Value]) -> tuple[list[Value], list[Value]]:
+    if len(a) != len(b):
+        ctx.error(f"Tuple length mismatch: {len(a)} is not equal to {len(b)}")
+    return a, b
+
+
+def _unpackable_reduce(values: list[Value], ctx: CompilationContext, func: Value, start: Value) -> Value | None:
+    for val in values:
+        start = _check_callable_with(ctx, func, [start.type, val.type]).call(ctx, [start, val])
+    return start
+
+
+def _unpackable_getattr(ctx: CompilationContext, value: Value, name: str) -> Value | None:
+    if name == "len":
+        return Value.of_number(value.unpack_count())
+
+    elif name == "reversed":
+        values = value.unpack_req(ctx)
+        return Value(SpecialFunctionType(
+            f"{value.type}.reversed",
+            [],
+            TupleType([v.type for v in values]),
+            lambda ctx_, _: Value.of_tuple(ctx_, values[::-1])
+        ), "")
+
+    elif name == "enumerate":
+        values = value.unpack_req(ctx)
+        return Value(SpecialFunctionType(
+            f"{value.type}.enumerate",
+            [],
+            TupleType([TupleType([NumberType(), v.type]) for v in values]),
+            lambda ctx_, _: Value.of_tuple(ctx_, [
+                Value.of_tuple(ctx_, [Value.of_number(i), v]) for i, v in enumerate(values)])
+        ), "")
+
+    elif name == "take":
+        values = value.unpack_req(ctx)
+        if len(values) == 0:
+            ctx.error(f"Cannot take from an empty sequence")
+        return Value(SpecialFunctionType(
+            f"{value.type}.take",
+            [],
+            TupleType([values[0].type, TupleType([v.type for v in values[1:]])]),
+            lambda ctx_, _: Value.of_tuple(ctx_, [values[0], Value.of_tuple(ctx_, values[1:])])
+        ), "")
+
+    elif name == "map":
+        values = value.unpack_req(ctx)
+        return Value(SpecialFunctionType(
+            f"{value.type}.map",
+            [AnyType()],
+            TupleType([AnyType()] * len(values)),
+            lambda ctx_, params: Value.of_tuple(ctx_, [
+                _check_callable_with(ctx, params[0], [v.type]).call(ctx, [v]) for v in values])
+        ), "")
+
+    elif name == "unpack_map":
+        values = value.unpack_req(ctx)
+        return Value(SpecialFunctionType(
+            f"{value.type}.unpack_map",
+            [AnyType()],
+            TupleType([AnyType()] * len(values)),
+            lambda ctx_, params: Value.of_tuple(ctx_, [
+                _check_callable_with(ctx, params[0], [v_.type for v_ in v.unpack_req(ctx)]).call(
+                    ctx, v.unpack_req(ctx)) for v in values])
+        ), "")
+
+    elif name == "foreach":
+        values = value.unpack_req(ctx)
+        return Value(SpecialFunctionType(
+            f"{value.type}.foreach",
+            [AnyType()],
+            NullType(),
+            lambda ctx_, params: (
+                [_check_callable_with(ctx, params[0], [v.type]).call(ctx, [v]) for v in values],
+                Value.null())[1]
+        ), "")
+
+    elif name == "zip":
+        values = value.unpack_req(ctx)
+        return Value(SpecialFunctionType(
+            f"{value.type}.zip",
+            [AnyType()],
+            TupleType([TupleType([v.type, AnyType()]) for v in values]),
+            lambda ctx_, params: Value.of_tuple(ctx_, [Value.of_tuple(ctx_, [a, b]) for a, b in zip(
+                *_check_same_length(ctx_, values, params[0].unpack_req(ctx_)))])
+        ), "")
+
+    elif name == "reduce":
+        values = value.unpack_req(ctx)
+        return Value(SpecialFunctionType(
+            f"{value.type}.reduce",
+            [AnyType(), AnyType()],
+            AnyType(),
+            lambda ctx_, params: _unpackable_reduce(values, ctx_, *params)
+        ), "")
+
+    elif name == "all":
+        values = value.unpack_req(ctx)
+        return Value(SpecialFunctionType(
+            f"{value.type}.all",
+            [],
+            NumberType(),
+            lambda ctx_, _: _unpackable_reduce(values, ctx_, Value(SpecialFunctionType(
+                f"{value.type}.all.combine",
+                [AnyType(), AnyType()],
+                NumberType(),
+                lambda ctx_2, params: params[0].binary_op_req(ctx_2, "&&", params[1])
+            ), ""), Value.of_boolean(True))
+        ), "")
+
+    elif name == "any":
+        values = value.unpack_req(ctx)
+        return Value(SpecialFunctionType(
+            f"{value.type}.any",
+            [],
+            NumberType(),
+            lambda ctx_, _: _unpackable_reduce(values, ctx_, Value(SpecialFunctionType(
+                f"{value.type}.any.combine",
+                [AnyType(), AnyType()],
+                NumberType(),
+                lambda ctx_2, params: params[0].binary_op_req(ctx_2, "||", params[1])
+            ), ""), Value.of_boolean(False))
+        ), "")
+
+    elif name == "sum":
+        values = value.unpack_req(ctx)
+        return Value(SpecialFunctionType(
+            f"{value.type}.sum",
+            [],
+            NumberType(),
+            lambda ctx_, _: _unpackable_reduce(values, ctx_, Value(SpecialFunctionType(
+                f"{value.type}.sum.combine",
+                [AnyType(), AnyType()],
+                NumberType(),
+                lambda ctx_2, params: params[0].binary_op_req(ctx_2, "+", params[1])
+            ), ""), Value.of_number(0))
+        ), "")
+
+    elif name == "prod":
+        values = value.unpack_req(ctx)
+        return Value(SpecialFunctionType(
+            f"{value.type}.prod",
+            [],
+            NumberType(),
+            lambda ctx_, _: _unpackable_reduce(values, ctx_, Value(SpecialFunctionType(
+                f"{value.type}.prod.combine",
+                [AnyType(), AnyType()],
+                NumberType(),
+                lambda ctx_2, params: params[0].binary_op_req(ctx_2, "*", params[1])
+            ), ""), Value.of_number(1))
+        ), "")
+
+
 @dataclass(slots=True)
 class TupleType(Type):
     class ValueIterator(ValueIterator):
@@ -867,8 +1030,8 @@ class TupleType(Type):
                 if 0 <= idx < len(self.types):
                     return value.unpack_req(ctx)[idx]
 
-            if name == "len":
-                return Value.of_number(len(self.types))
+            if (val := _unpackable_getattr(ctx, value, name)) is not None:
+                return val
 
         return super(TupleType, self).getattr(ctx, value, static, name)
 
