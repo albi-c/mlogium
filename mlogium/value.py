@@ -22,6 +22,12 @@ class Value:
         return Value(NullType(), "null")
 
     @classmethod
+    def make_default(cls, ctx: CompilationContext, type_: Type) -> Value:
+        val = Value(type_, ctx.tmp(), False)
+        val.assign_default(ctx)
+        return val
+
+    @classmethod
     def of_type(cls, type_: Type) -> Value:
         return Value(TypeType(type_), "")
 
@@ -184,6 +190,24 @@ class Value:
             ctx.error(f"Value of type '{self.type}' is not iterable")
         return val
 
+    def memcell_serializable(self, ctx: CompilationContext) -> bool:
+        return self.type.memcell_serializable(ctx, self)
+
+    def memcell_size(self, ctx: CompilationContext) -> int:
+        return self.type.memcell_size(ctx, self)
+
+    def memcell_write(self, ctx: CompilationContext) -> list[str]:
+        return self.type.memcell_write(ctx, self)
+
+    def memcell_read(self, ctx: CompilationContext, values: list[str]):
+        if self.const:
+            ctx.error(f"Assignment to constant of type '{self.type}'")
+
+        self.type.memcell_read(ctx, self, values)
+
+        if self.const_on_write:
+            self.const = True
+
 
 def _stringify(val) -> str:
     return f"\"{val}\""
@@ -260,6 +284,11 @@ class Type(ABC):
         if type_.contains(self):
             return value
 
+        elif isinstance(type_, UnionType):
+            for t in type_.types:
+                if (val := value.into(ctx, t)) is not None:
+                    return val
+
     def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
         if op in ("=", ":="):
             value.assign(ctx, other)
@@ -295,6 +324,18 @@ class Type(ABC):
 
     def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
         pass
+
+    def memcell_serializable(self, ctx: CompilationContext, value: Value) -> bool:
+        return False
+
+    def memcell_size(self, ctx: CompilationContext, value: Value) -> int:
+        return 1
+
+    def memcell_write(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [value.value]
+
+    def memcell_read(self, ctx: CompilationContext, value: Value, values: list[str]):
+        ctx.emit(Instruction.set(value.value, values[0]))
 
 
 class ValueIterator(ABC):
@@ -382,6 +423,8 @@ class TypeType(Type):
 
     def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
         if not static:
+            val = Value(self.type, "null")
+
             if name == "name":
                 return Value.of_string(_stringify(str(self.type)))
 
@@ -401,6 +444,59 @@ class TypeType(Type):
                     lambda ctx_, params: Value.of_boolean(self.type.contains(params[0].type.wrapped_type(ctx_)))
                 ), "")
 
+            elif name == "callable":
+                return Value.of_boolean(val.callable(ctx))
+
+            elif name == "callable_with":
+                return Value(SpecialFunctionType(
+                    f"{str(self)}.callable_with",
+                    [AnyType()],
+                    NumberType(),
+                    lambda ctx_, params: Value.of_boolean(
+                        val.callable_with(ctx_, [p.type.wrapped_type(ctx_) for p in params[0].unpack_req(ctx_)]))
+                ), "")
+
+            elif name == "unpackable":
+                return Value.of_boolean(val.unpackable())
+
+            elif name == "len":
+                return Value.of_number(val.unpack_count())
+
+            elif name == "size":
+                # TODO: memcell size
+                raise NotImplementedError
+
+            elif name == "default":
+                return Value(SpecialFunctionType(
+                    f"{str(self)}.default",
+                    [],
+                    self.type,
+                    lambda ctx_, _: Value.make_default(ctx_, self.type)
+                ), "")
+
+            elif name == "iterable":
+                return Value.of_boolean(val.iterable(ctx))
+
+            elif name == "is_null":
+                return Value.of_boolean(NullType().contains(val.type))
+
+            elif name == "is_condition":
+                return Value.of_boolean(val.to_condition(ctx) is not None)
+
+            elif name == "from":
+                return Value(SpecialFunctionType(
+                    f"{str(self)}.from",
+                    [AnyType()],
+                    self.type,
+                    lambda ctx_, params: params[0].into_req(ctx_, self.type)
+                ), "")
+
+            elif name == "struct_base":
+                if isinstance(self.type, StructInstanceType):
+                    return Value(self.type.base, "")
+
+                ctx.error(f"Value of type '{self.type}' is not a struct instance")
+
         return super(TypeType, self).getattr(ctx, value, static, name)
 
 
@@ -412,7 +508,7 @@ class GenericTypeType(Type):
         return isinstance(other, GenericTypeType)
 
     def contains(self, other: Type) -> bool:
-        return self == other or isinstance(other, TypeType)
+        return True
 
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
         pass
@@ -534,6 +630,9 @@ class NumberType(Type):
 
         return super(NumberType, self).binary_op(ctx, value, op, other)
 
+    def memcell_serializable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
 
 class StringType(Type):
     def __str__(self):
@@ -566,7 +665,59 @@ class BlockType(Type):
         return None if len(indices) == 1 and NumberType().contains(indices[0]) else [NumberType()]
 
     def index(self, ctx: CompilationContext, value: Value, indices: list[Value]) -> Value:
-        return Value(MemoryCellReferenceType(value, indices[0]), "")
+        return Value(MemoryCellReferenceType(value, indices[0]), "", False)
+
+    @staticmethod
+    def _memcell_write_impl(ctx: CompilationContext, params: list[Value], value: Value) -> Value:
+        val = params[1]
+        if not val.memcell_serializable(ctx):
+            ctx.error(f"Value of type '{val.type}' is not serializable")
+        values = val.memcell_write(ctx)
+
+        next_index = params[0]
+        for v in values:
+            ctx.emit(Instruction.write(v, value.value, next_index.value))
+            next_index = next_index.binary_op(ctx, "+", Value.of_number(1))
+
+        return Value.null()
+
+    @staticmethod
+    def _memcell_read_impl(ctx: CompilationContext, params: list[Value], value: Value) -> Value:
+        val = Value.make_default(ctx, params[1].type.wrapped_type(ctx))
+        if not val.memcell_serializable(ctx):
+            ctx.error(f"Value of type '{val.type}' is not serializable")
+
+        values = []
+        next_index = params[0]
+        for _ in range(val.memcell_size(ctx)):
+            v = ctx.tmp()
+            ctx.emit(Instruction.read(v, value.value, next_index.value))
+            values.append(v)
+            next_index = next_index.binary_op(ctx, "+", Value.of_number(1))
+
+        val.memcell_read(ctx, values)
+
+        return val
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
+        if not static:
+            if name == "write":
+                return Value(SpecialFunctionType(
+                    "Block.write",
+                    [NumberType(), AnyType()],
+                    NullType(),
+                    lambda ctx_, params, value_=value: self._memcell_write_impl(ctx_, params, value_)
+                ), "")
+
+            elif name == "read":
+                return Value(SpecialFunctionType(
+                    "Block.read",
+                    [NumberType(), GenericTypeType()],
+                    AnyType(),
+                    lambda ctx_, params, value_=value: self._memcell_read_impl(ctx_, params, value_)
+                ), "")
+
+        return super(BlockType, self).getattr(ctx, value, static, name)
 
 
 @dataclass(slots=True)
@@ -578,7 +729,7 @@ class MemoryCellReferenceType(Type):
         return "MemCellRef"
 
     def __eq__(self, other):
-        return isinstance(other, MemoryCellReference) and self.cell == other.cell and self.index == other.index
+        return isinstance(other, MemoryCellReferenceType) and self.cell == other.cell and self.index == other.index
 
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
         return value.into_req(ctx, NumberType()).to_strings(ctx)
@@ -588,7 +739,7 @@ class MemoryCellReferenceType(Type):
             ctx.emit(Instruction.write(other.value, self.cell.value, self.index.value))
 
     def assignable_type(self) -> Type:
-        return UnionType([NumberType(), GenericMemoryCellReferenceType()])
+        return UnionType([NumberType(), self])
 
     def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
         if NumberType().contains(type_):
@@ -597,23 +748,6 @@ class MemoryCellReferenceType(Type):
             return val
 
         return super(MemoryCellReferenceType, self).into(ctx, value, type_)
-
-
-class GenericMemoryCellReferenceType(Type):
-    def __str__(self):
-        return "MemCellRef"
-
-    def __eq__(self, other):
-        return isinstance(other, GenericMemoryCellReferenceType)
-
-    def contains(self, other: Type) -> bool:
-        return self == other or isinstance(other, MemoryCellReferenceType)
-
-    def assign(self, ctx: CompilationContext, value: Value, other: Value):
-        pass
-
-    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
-        return [_stringify(str(self))]
 
 
 class UnitType(Type):
@@ -738,6 +872,22 @@ class TupleType(Type):
 
         return super(TupleType, self).getattr(ctx, value, static, name)
 
+    def memcell_serializable(self, ctx: CompilationContext, value: Value) -> bool:
+        return all(v.memcell_serializable(ctx) for v in value.unpack_req(ctx))
+
+    def memcell_size(self, ctx: CompilationContext, value: Value) -> int:
+        return sum(v.memcell_size(ctx) for v in value.unpack_req(ctx))
+
+    def memcell_write(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [s for v in value.unpack_req(ctx) for s in v.memcell_write(ctx)]
+
+    def memcell_read(self, ctx: CompilationContext, value: Value, values: list[str]):
+        i = 0
+        for v in value.unpack_req(ctx):
+            size = v.memcell_size(ctx)
+            v.memcell_read(ctx, values[i:i+size])
+            i += size
+
 
 @dataclass(slots=True)
 class UnionType(Type):
@@ -811,13 +961,29 @@ class RangeType(Type):
             self._attr(value, "end", True)
         )
 
+    def memcell_serializable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    def memcell_size(self, ctx: CompilationContext, value: Value) -> int:
+        return 2
+
+    def memcell_write(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [
+            self._attr(value, "start", True).value,
+            self._attr(value, "end", True).value
+        ]
+
+    def memcell_read(self, ctx: CompilationContext, value: Value, values: list[str]):
+        self._attr(value, "start", False).assign(ctx, Value.of_number(values[0]))
+        self._attr(value, "end", False).assign(ctx, Value.of_number(values[1]))
+
 
 def _format_function_signature(params: list[Type | None], result: Type | None) -> str:
     return f"({', '.join(str(p) if p is not None else '?' for p in params)}) -> {result if result is not None else '?'}"
 
 
 def _check_params(expected: list[Type | None], provided: list[Type]) -> bool:
-    return all(e is None or e.contains(t) for e, t in zip(expected, provided))
+    return len(expected) == len(provided) and all(e is None or e.contains(t) for e, t in zip(expected, provided))
 
 
 @dataclass(slots=True)
@@ -1334,13 +1500,17 @@ class StructInstanceType(Type):
     def __eq__(self, other):
         return isinstance(other, StructInstanceType) and self.base == other.base
 
+    def _fields(self, ctx: CompilationContext, value: Value):
+        for field, _ in self.base.fields:
+            yield value.getattr_req(ctx, False, field)
+
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
         for field, _ in self.base.fields:
             value.getattr_req(ctx, False, field).assign(ctx, other.getattr_req(ctx, False, field))
 
     def assign_default(self, ctx: CompilationContext, value: Value):
-        for field, _ in self.base.fields:
-            value.getattr_req(ctx, False, field).assign_default(ctx)
+        for field in self._fields(ctx, value):
+            field.assign_default(ctx)
 
     def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
         if static:
@@ -1444,6 +1614,31 @@ reversed binary operator '{op}' with other value of type '{other.type}'")
                 return func.call(ctx, [other])
 
         return super(StructInstanceType, self).binary_op_r(ctx, other, op, value)
+
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        if (func := value.getattr(ctx, False, "@cast")) is not None:
+            if not func.callable_with(ctx, [TypeType(type_)]):
+                ctx.error(
+                    f"Value of type '{func.type}' does not have the correct function signature to implement type casts")
+            return func.call(ctx, [Value.of_type(type_)])
+
+        return super(StructInstanceType, self).into(ctx, value, type_)
+
+    def memcell_serializable(self, ctx: CompilationContext, value: Value) -> bool:
+        return all(v.memcell_serializable(ctx) for v in self._fields(ctx, value))
+
+    def memcell_size(self, ctx: CompilationContext, value: Value) -> int:
+        return sum(v.memcell_size(ctx) for v in self._fields(ctx, value))
+
+    def memcell_write(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [s for v in self._fields(ctx, value) for s in v.memcell_write(ctx)]
+
+    def memcell_read(self, ctx: CompilationContext, value: Value, values: list[str]):
+        i = 0
+        for field in self._fields(ctx, value):
+            size = field.memcell_size(ctx)
+            field.memcell_read(ctx, values[i:i+size])
+            i += size
 
 
 @dataclass(slots=True)
@@ -1549,6 +1744,9 @@ class EnumInstanceType(Type):
 
     def bottom_scope(self) -> dict[str, Value] | None:
         return self.base.bottom_scope()
+
+    def memcell_serializable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
 
 
 class BuiltinEnumBaseType(Type):
