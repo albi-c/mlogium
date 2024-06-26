@@ -354,6 +354,26 @@ class TupleTypeSourceType(Type):
         return Value.of_type(TupleType(types))
 
 
+class BlockSourceType(Type):
+    def __str__(self):
+        return "ExternBlock"
+
+    def __eq__(self, other):
+        return isinstance(other, BlockSourceType)
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [_stringify(str(self))]
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
+        if static:
+            return Value(BlockType(), name)
+
+        return super(BlockSourceType, self).getattr(ctx, value, static, name)
+
+
 class NullType(Type):
     def __str__(self):
         return "null"
@@ -444,6 +464,17 @@ class BlockType(Type):
 
     def __eq__(self, other):
         return isinstance(other, BlockType)
+
+    def to_condition(self, ctx: CompilationContext, value: Value) -> str | None:
+        return value.value
+
+
+class UnitType(Type):
+    def __str__(self):
+        return "Unit"
+
+    def __eq__(self, other):
+        return isinstance(other, UnitType)
 
     def to_condition(self, ctx: CompilationContext, value: Value) -> str | None:
         return value.value
@@ -586,11 +617,24 @@ class SpecialFunctionType(Type):
 class IntrinsicFunctionType(Type):
     name: str
     params: list[Type]
-    function: Callable[[CompilationContext, list[Value]], None]
+    outputs: list[int]
+    function: Callable[[CompilationContext, list[str]], None]
     subcommand: str | None = None
 
+    def __post_init__(self):
+        self.input_params: list[Type] = [p for i, p in enumerate(self.params) if i not in self.outputs]
+
+        self.all_params: list[tuple[Type, bool]] = [(p, i in self.outputs) for i, p in enumerate(self.params)]
+
+        if len(self.outputs) == 0:
+            self.result: Type = NullType()
+        elif len(self.outputs) == 1:
+            self.result: Type = self.params[self.outputs[0]]
+        else:
+            self.result: Type = TupleType([p for i, p in enumerate(self.params) if i in self.outputs])
+
     def __str__(self):
-        return f"fn {self.name}{'.' + self.subcommand if self.subcommand else ''}(...)"
+        return f"Intrinsic[{self.name}]"
 
     def __eq__(self, other):
         return isinstance(other, IntrinsicFunctionType) and self.name == other.name
@@ -600,6 +644,64 @@ class IntrinsicFunctionType(Type):
 
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
         return [_stringify(str(self))]
+
+    def callable(self) -> bool:
+        return True
+
+    def call_with_suggestion(self) -> list[Type | None] | None:
+        return self.input_params
+
+    def callable_with(self, param_types: list[Type]) -> bool:
+        return len(param_types) == len(self.input_params) and all(
+            a.contains(b) for a, b in zip(self.input_params, param_types))
+
+    def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
+        params_all = []
+        output_vars = []
+        input_i = 0
+        for type_, is_output in self.all_params:
+            if is_output:
+                val = Value(type_, ctx.tmp())
+                params_all.append(val.value)
+                output_vars.append(val)
+            else:
+                params_all.append(params[input_i].value)
+                input_i += 1
+        assert input_i == len(params)
+
+        self.function(ctx, params_all)
+
+        if len(output_vars) == 0:
+            return Value.null()
+        elif len(output_vars) == 1:
+            return output_vars[0]
+        else:
+            return Value.of_tuple(ctx, output_vars)
+
+
+@dataclass
+class IntrinsicSubcommandFunctionType(Type):
+    name: str
+    subcommands: dict[str, Value]
+
+    def __str__(self):
+        return f"Intrinsic[{self.name}]"
+
+    def __eq__(self, other):
+        return isinstance(other, IntrinsicSubcommandFunctionType) and self.name == other.name
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [_stringify(str(self))]
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
+        if not static:
+            if (val := self.subcommands.get(name)) is not None:
+                return val
+
+        return super(IntrinsicSubcommandFunctionType, self).getattr(ctx, value, static, name)
 
 
 @dataclass(slots=True)

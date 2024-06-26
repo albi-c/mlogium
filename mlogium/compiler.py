@@ -262,7 +262,13 @@ class Compiler(AstVisitor[Value]):
         pass
 
     def visit_comprehension_node(self, node: ComprehensionNode) -> Value:
-        pass
+        values = self.visit(node.iterable).unpack_req(self.ctx)
+        results = []
+        for val in values:
+            with self.scope(self.ctx.tmp()):
+                self._declare_target(node.target, val)
+                results.append(self.visit(node.expr))
+        return Value.of_tuple(self.ctx, results)
 
     def visit_break_node(self, node: BreakNode) -> Value:
         if (name := self.scope.get_loop()) is None:
