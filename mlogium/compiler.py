@@ -246,9 +246,7 @@ class Compiler(AstVisitor[Value]):
         name = self.ctx.tmp()
 
         self.emit(Instruction.label(name + "_continue"))
-
         cond_value = self.visit(node.cond).to_condition_req(self.ctx)
-
         self.emit(Instruction.jump(name + "_break", "equal", cond_value, "0"))
         with self.scope.loop(name):
             self.visit(node.code)
@@ -256,10 +254,28 @@ class Compiler(AstVisitor[Value]):
             Instruction.jump_always(name + "_continue"),
             Instruction.label(name + "_break")
         )
+
         return Value.null()
 
     def visit_for_node(self, node: ForNode) -> Value:
-        pass
+        name = self.ctx.tmp()
+
+        iterator = self.visit(node.iterable).iterate_req(self.ctx)
+
+        self.emit(Instruction.label(name + "_continue"))
+        has_value = iterator.has_value(self.ctx)
+        self.emit(Instruction.jump(name + "_break", "equal", has_value.value, "0"))
+        with self.scope.loop(name):
+            next_value = iterator.next_value(self.ctx)
+            self._declare_target(node.target, next_value)
+            self.visit(node.code)
+        self.emit(
+            Instruction.jump_always(name + "_continue"),
+            Instruction.label(name + "_break")
+        )
+
+        return Value.null()
+
 
     def visit_comprehension_node(self, node: ComprehensionNode) -> Value:
         values = self.visit(node.iterable).unpack_req(self.ctx)

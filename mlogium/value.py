@@ -68,6 +68,13 @@ class Value:
         if self.const_on_write:
             self.const = True
 
+    def copy(self, ctx: CompilationContext, name: str = None) -> Value:
+        if name is None:
+            name = ctx.tmp()
+        val = Value(self.type, name, False)
+        val.assign(ctx, self)
+        return val
+
     def assignable_type(self) -> Type:
         return self.type.assignable_type()
 
@@ -103,6 +110,8 @@ class Value:
         return self.type.call_with_suggestion()
 
     def callable_with(self, param_types: list[Type]) -> bool:
+        if not self.callable():
+            return False
         return self.type.callable_with(param_types)
 
     def call(self, ctx: CompilationContext, params: list[Value]) -> Value:
@@ -145,6 +154,14 @@ class Value:
 
     def bottom_scope(self) -> dict[str, Value] | None:
         return self.type.bottom_scope()
+
+    def iterate(self, ctx: CompilationContext) -> ValueIterator | None:
+        return self.type.iterate(ctx, self)
+
+    def iterate_req(self, ctx: CompilationContext) -> ValueIterator:
+        if (val := self.iterate(ctx)) is None:
+            ctx.error(f"Value of type '{self.type}' is not iterable")
+        return val
 
 
 def _stringify(val) -> str:
@@ -254,6 +271,19 @@ class Type(ABC):
 
     def bottom_scope(self) -> dict[str, Value] | None:
         return None
+
+    def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
+        pass
+
+
+class ValueIterator(ABC):
+    @abstractmethod
+    def has_value(self, ctx: CompilationContext) -> Value:
+        raise NotImplementedError
+
+    @abstractmethod
+    def next_value(self, ctx: CompilationContext) -> Value:
+        raise NotImplementedError
 
 
 class AnyType(Type):
@@ -543,6 +573,22 @@ class UnionType(Type):
 
 
 class RangeType(Type):
+    class ValueIterator(ValueIterator):
+        index: Value
+        end: Value
+
+        def __init__(self, ctx: CompilationContext, start: Value, end: Value):
+            self.index = start.copy(ctx)
+            self.end = end
+
+        def has_value(self, ctx: CompilationContext) -> Value:
+            return self.index.binary_op(ctx, "<", self.end)
+
+        def next_value(self, ctx: CompilationContext) -> Value:
+            current = self.index.copy(ctx)
+            self.index.binary_op(ctx, "+=", Value.of_number(1))
+            return current
+
     def __str__(self):
         return f"Range"
 
@@ -570,6 +616,13 @@ class RangeType(Type):
                 return self._attr(value, name, value.const)
 
         return super(RangeType, self).getattr(ctx, value, static, name)
+
+    def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
+        return RangeType.ValueIterator(
+            ctx,
+            self._attr(value, "start", True),
+            self._attr(value, "end", True)
+        )
 
 
 def _format_function_signature(params: list[Type | None], result: Type | None) -> str:
