@@ -30,6 +30,10 @@ class Value:
         return Value(NumberType(), str(value))
 
     @classmethod
+    def of_boolean(cls, value: bool) -> Value:
+        return Value.of_number(int(value))
+
+    @classmethod
     def of_string(cls, value: str) -> Value:
         return Value(StringType(), value)
 
@@ -103,16 +107,20 @@ class Value:
             ctx.error(f"Value of type '{self.type}' is not unpackable")
         return self.unpack(ctx)
 
-    def callable(self) -> bool:
-        return self.type.callable()
+    def callable(self, ctx: CompilationContext) -> bool:
+        return self.type.callable(ctx, self)
 
-    def call_with_suggestion(self) -> list[Type | None] | None:
-        return self.type.call_with_suggestion()
+    def call_with_suggestion(self, ctx: CompilationContext) -> list[Type | None] | None:
+        return self.type.call_with_suggestion(ctx, self)
 
-    def callable_with(self, param_types: list[Type]) -> bool:
-        if not self.callable():
+    def callable_with(self, ctx: CompilationContext, param_types: list[Type]) -> bool:
+        if not self.callable(ctx):
             return False
-        return self.type.callable_with(param_types)
+
+        # To stop IDE from complaining that ctx has type 'Callable' instead of 'CompilationContext'
+        assert isinstance(ctx, CompilationContext)
+
+        return self.type.callable_with(ctx, self, param_types)
 
     def call(self, ctx: CompilationContext, params: list[Value]) -> Value:
         return self.type.call(ctx, self, params)
@@ -125,12 +133,12 @@ class Value:
             ctx.error(f"Value of type '{self.type}' has no {'static ' if static else ''} attribute '{name}'")
         return val
 
-    def indexable(self) -> bool:
-        return self.type.indexable()
+    def indexable(self, ctx: CompilationContext) -> bool:
+        return self.type.indexable(ctx, self)
 
-    # return -1 if valid, else required count
-    def validate_index_count(self, count: int) -> int:
-        return self.type.validate_index_count(count)
+    # return None if valid, else required types
+    def validate_index_types(self, ctx: CompilationContext, indices: list[Type]) -> None | list[Type]:
+        return self.type.validate_index_types(ctx, self, indices)
 
     def index(self, ctx: CompilationContext, indices: list[Value]) -> Value:
         return self.type.index(ctx, self, indices)
@@ -164,6 +172,9 @@ class Value:
 
     def bottom_scope(self) -> dict[str, Value] | None:
         return self.type.bottom_scope()
+
+    def iterable(self, ctx: CompilationContext) -> bool:
+        return self.type.iterable(ctx, self)
 
     def iterate(self, ctx: CompilationContext) -> ValueIterator | None:
         return self.type.iterate(ctx, self)
@@ -221,13 +232,13 @@ class Type(ABC):
     def unpack(self, ctx: CompilationContext, value: Value) -> list[Value]:
         raise NotImplementedError
 
-    def callable(self) -> bool:
+    def callable(self, ctx: CompilationContext, value: Value) -> bool:
         return False
 
-    def call_with_suggestion(self) -> list[Type | None] | None:
+    def call_with_suggestion(self, ctx: CompilationContext, value: Value) -> list[Type | None] | None:
         return None
 
-    def callable_with(self, param_types: list[Type]) -> bool:
+    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
         return False
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
@@ -236,11 +247,11 @@ class Type(ABC):
     def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
         return None
 
-    def indexable(self) -> bool:
+    def indexable(self, ctx: CompilationContext, value: Value) -> bool:
         return False
 
-    def validate_index_count(self, count: int) -> int:
-        return -1
+    def validate_index_types(self, ctx: CompilationContext, value: Value, indices: list[Type]) -> None | list[Type]:
+        return []
 
     def index(self, ctx: CompilationContext, value: Value, indices: list[Value]) -> Value:
         raise NotImplementedError
@@ -313,6 +324,23 @@ class AnyType(Type):
         raise NotImplementedError
 
 
+class EllipsisType(Type):
+    def __str__(self):
+        return "..."
+
+    def __eq__(self, other):
+        return isinstance(other, EllipsisType)
+
+    def contains(self, other: Type) -> bool:
+        return True
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        raise NotImplementedError
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        raise NotImplementedError
+
+
 class UnderscoreType(Type):
     def __str__(self):
         return "?"
@@ -352,6 +380,29 @@ class TypeType(Type):
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
         return [_stringify(str(self))]
 
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
+        if not static:
+            if name == "name":
+                return Value.of_string(_stringify(str(self.type)))
+
+            elif name == "equals":
+                return Value(SpecialFunctionType(
+                    f"{str(self)}.equals",
+                    [AnyType()],
+                    NumberType(),
+                    lambda ctx_, params: Value.of_boolean(self.type == params[0].type.wrapped_type(ctx_))
+                ), "")
+
+            elif name == "contains":
+                return Value(SpecialFunctionType(
+                    f"{str(self)}.contains",
+                    [AnyType()],
+                    NumberType(),
+                    lambda ctx_, params: Value.of_boolean(self.type.contains(params[0].type.wrapped_type(ctx_)))
+                ), "")
+
+        return super(TypeType, self).getattr(ctx, value, static, name)
+
 
 class GenericTypeType(Type):
     def __str__(self):
@@ -383,11 +434,11 @@ class TupleTypeSourceType(Type):
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
         return [_stringify(str(self))]
 
-    def indexable(self) -> bool:
+    def indexable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
 
-    def validate_index_count(self, count: int) -> int:
-        return -1
+    def validate_index_types(self, ctx: CompilationContext, value: Value, indices: list[Type]) -> None | list[Type]:
+        return None
 
     def index(self, ctx: CompilationContext, value: Value, indices: list[Value]) -> Value:
         types = [val.type.wrapped_type(ctx) for val in indices]
@@ -616,6 +667,21 @@ class TupleType(Type):
 
         return TupleType.ValueIterator(has_func, next_func)
 
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
+        if not static:
+            try:
+                idx = int(name)
+            except ValueError:
+                pass
+            else:
+                if 0 <= idx < len(self.types):
+                    return value.unpack_req(ctx)[idx]
+
+            if name == "len":
+                return Value.of_number(len(self.types))
+
+        return super(TupleType, self).getattr(ctx, value, static, name)
+
 
 @dataclass(slots=True)
 class UnionType(Type):
@@ -710,7 +776,7 @@ class SpecialFunctionType(Type):
 
     def __eq__(self, other):
         return isinstance(other, SpecialFunctionType) and self.name == other.name and self.params == other.params and \
-            self.result == other.result
+            self.result == other.result and self.function is other.function
 
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
         pass
@@ -718,13 +784,13 @@ class SpecialFunctionType(Type):
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
         return [_stringify(str(self))]
 
-    def callable(self) -> bool:
+    def callable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
 
-    def call_with_suggestion(self) -> list[Type | None] | None:
+    def call_with_suggestion(self, ctx: CompilationContext, value: Value) -> list[Type | None] | None:
         return self.params
 
-    def callable_with(self, param_types: list[Type]) -> bool:
+    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
         return _check_params(self.params, param_types)
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
@@ -763,13 +829,13 @@ class IntrinsicFunctionType(Type):
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
         return [_stringify(str(self))]
 
-    def callable(self) -> bool:
+    def callable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
 
-    def call_with_suggestion(self) -> list[Type | None] | None:
+    def call_with_suggestion(self, ctx: CompilationContext, value: Value) -> list[Type | None] | None:
         return self.input_params
 
-    def callable_with(self, param_types: list[Type]) -> bool:
+    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
         return len(param_types) == len(self.input_params) and all(
             a.contains(b) for a, b in zip(self.input_params, param_types))
 
@@ -852,13 +918,13 @@ class FunctionType(Type):
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
         return [_stringify(str(self))]
 
-    def callable(self) -> bool:
+    def callable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
 
-    def call_with_suggestion(self) -> list[Type | None] | None:
+    def call_with_suggestion(self, ctx: CompilationContext, value: Value) -> list[Type | None] | None:
         return [p.type for p in self.params]
 
-    def callable_with(self, param_types: list[Type]) -> bool:
+    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
         return len(self.params) == len(param_types) and \
             all(p.type is None or p.type.contains(t) for p, t in zip(self.params, param_types))
 
@@ -917,13 +983,13 @@ class LambdaType(Type):
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
         return [_stringify(str(self))]
 
-    def callable(self) -> bool:
+    def callable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
 
-    def call_with_suggestion(self) -> list[Type | None] | None:
+    def call_with_suggestion(self, ctx: CompilationContext, value: Value) -> list[Type | None] | None:
         return [p.type for p in self.params]
 
-    def callable_with(self, param_types: list[Type]) -> bool:
+    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
         return len(self.params) == len(param_types) and \
             all(p.type is None or p.type.contains(t) for p, t in zip(self.params, param_types))
 
@@ -988,13 +1054,13 @@ class StructMethodType(Type):
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
         return [_stringify(str(self))]
 
-    def callable(self) -> bool:
+    def callable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
 
-    def call_with_suggestion(self) -> list[Type | None] | None:
+    def call_with_suggestion(self, ctx: CompilationContext, value: Value) -> list[Type | None] | None:
         return [p.type for p in self.params]
 
-    def callable_with(self, param_types: list[Type]) -> bool:
+    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
         return len(self.params) == len(param_types) and \
             all(p.type is None or p.type.contains(t) for p, t in zip(self.params, param_types))
 
@@ -1025,6 +1091,33 @@ class StructMethodType(Type):
 
 @dataclass(slots=True)
 class StructBaseType(Type):
+    UNARY_OP_NAMES = {
+        "!": "@not",
+        "~": "@flip",
+        "-": "@neg"
+    }
+
+    BINARY_OP_NAMES = {
+        "+": "@add",
+        "-": "@sub",
+        "*": "@mul",
+        "/": "@div",
+        "//": "@idiv",
+        "%": "@mod",
+        "**": "@pow",
+        "&&": "@land",
+        "||": "@lor",
+        "<": "@lt",
+        "<=": "@lte",
+        ">": "@gt",
+        ">=": "@gte",
+        "<<": "@shl",
+        ">>": "@shr",
+        "|": "@or",
+        "&": "@and",
+        "^": "@xor"
+    }
+
     name: str | None
     fields: list[tuple[str, Type]]
     static_fields: dict[str, Value]
@@ -1065,16 +1158,27 @@ class StructBaseType(Type):
 
         return super(StructBaseType, self).getattr(ctx, value, static, name)
 
-    def callable(self) -> bool:
+    def callable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
 
-    def call_with_suggestion(self) -> list[Type | None] | None:
+    @staticmethod
+    def _get_call_func(ctx: CompilationContext, value: Value) -> Value:
+        return value.getattr(ctx, True, "@call")
+
+    def call_with_suggestion(self, ctx: CompilationContext, value: Value) -> list[Type | None] | None:
+        if (func := self._get_call_func(ctx, value)) is not None:
+            return func.call_with_suggestion(ctx)
         return [t for _, t in self.fields]
 
-    def callable_with(self, param_types: list[Type]) -> bool:
+    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
+        if (func := self._get_call_func(ctx, value)) is not None:
+            return func.callable_with(ctx, param_types)
         return len(self.fields) == len(param_types) and all(f[1].contains(t) for f, t in zip(self.fields, param_types))
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
+        if (func := self._get_call_func(ctx, value)) is not None:
+            return func.call(ctx, params)
+
         value = Value(self._instance_type, ctx.tmp(), False)
 
         for (field, _), param in zip(self.fields, params):
@@ -1082,10 +1186,88 @@ class StructBaseType(Type):
 
         return value
 
+    @staticmethod
+    def _get_index_func(ctx: CompilationContext, value: Value) -> Value:
+        return value.getattr_req(ctx, True, "@index")
+
+    def indexable(self, ctx: CompilationContext, value: Value) -> bool:
+        return value.getattr(ctx, True, "@index") is not None
+
+    def validate_index_types(self, ctx: CompilationContext, value: Value, indices: list[Type]) -> None | list[Type]:
+        func = self._get_index_func(ctx, value)
+        if func.callable_with(ctx, indices):
+            return None
+        else:
+            if (suggested := func.call_with_suggestion(ctx)) is not None:
+                return suggested
+            else:
+                return [EllipsisType()]
+
+    def index(self, ctx: CompilationContext, value: Value, indices: list[Value]) -> Value:
+        return self._get_index_func(ctx, value).call(ctx, indices)
+
+    def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> Value | None:
+        if (name := self.UNARY_OP_NAMES.get(op)) is not None:
+            if (func := value.getattr(ctx, True, name)) is not None:
+                if not func.callable_with(ctx, []):
+                    ctx.error(f"Value of type '{func.type}' does not have the correct function signature to implement \
+unary operator '{op}'")
+                return func.call(ctx, [])
+
+        return super(StructBaseType, self).unary_op(ctx, value, op)
+
+    def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
+        if (name := self.BINARY_OP_NAMES.get(op)) is not None:
+            if (func := value.getattr(ctx, True, name)) is not None:
+                if not func.callable_with(ctx, [other.type]):
+                    ctx.error(f"Value of type '{func.type}' does not have the correct function signature to implement \
+binary operator '{op}' with other value of type '{other.type}'")
+                return func.call(ctx, [other])
+
+        return super(StructBaseType, self).binary_op(ctx, value, op, other)
+
+    def binary_op_r(self, ctx: CompilationContext, other: Value, op: str, value: Value) -> Value | None:
+        if (name := self.BINARY_OP_NAMES.get(op)) is not None:
+            name = f"@r_{name[1:]}"
+            if (func := value.getattr(ctx, True, name)) is not None:
+                if not func.callable_with(ctx, [other.type]):
+                    ctx.error(f"Value of type '{func.type}' does not have the correct function signature to implement \
+reversed binary operator '{op}' with other value of type '{other.type}'")
+                return func.call(ctx, [other])
+
+        return super(StructBaseType, self).binary_op_r(ctx, other, op, value)
+
 
 @dataclass(slots=True)
 class StructInstanceType(Type):
     base: StructBaseType
+
+    UNARY_OP_NAMES = {
+        "!": "@not",
+        "~": "@flip",
+        "-": "@neg"
+    }
+
+    BINARY_OP_NAMES = {
+        "+": "@add",
+        "-": "@sub",
+        "*": "@mul",
+        "/": "@div",
+        "//": "@idiv",
+        "%": "@mod",
+        "**": "@pow",
+        "&&": "@land",
+        "||": "@lor",
+        "<": "@lt",
+        "<=": "@lte",
+        ">": "@gt",
+        ">=": "@gte",
+        "<<": "@shl",
+        ">>": "@shr",
+        "|": "@or",
+        "&": "@and",
+        "^": "@xor"
+    }
 
     def __post_init__(self):
         self.fields: dict[str, Type] = {field: type_ for field, type_ in self.base.fields}
@@ -1133,9 +1315,79 @@ class StructInstanceType(Type):
 
     def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
         iter_func = value.getattr_req(ctx, False, "@iter")
-        if not iter_func.callable_with([]):
+        if not iter_func.callable_with(ctx, []):
             ctx.error(f"Value of type '{iter_func.type}' does not have the correct function signature")
         return iter_func.call(ctx, []).iterate(ctx)
+
+    @staticmethod
+    def _get_call_func(ctx: CompilationContext, value: Value) -> Value:
+        return value.getattr_req(ctx, False, "@call")
+
+    def callable(self, ctx: CompilationContext, value: Value) -> bool:
+        return value.getattr(ctx, False, "@call") is not None
+
+    def call_with_suggestion(self, ctx: CompilationContext, value: Value) -> list[Type | None] | None:
+        return self._get_call_func(ctx, value).call_with_suggestion(ctx)
+
+    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
+        return self._get_call_func(ctx, value).callable_with(ctx, param_types)
+
+    def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
+        return self._get_call_func(ctx, value).call(ctx, params)
+
+    @staticmethod
+    def _get_index_func(ctx: CompilationContext, value: Value) -> Value:
+        return value.getattr_req(ctx, False, "@index")
+
+    def indexable(self, ctx: CompilationContext, value: Value) -> bool:
+        return value.getattr(ctx, False, "@index") is not None
+
+    def validate_index_types(self, ctx: CompilationContext, value: Value, indices: list[Type]) -> None | list[Type]:
+        func = self._get_index_func(ctx, value)
+        if func.callable_with(ctx, indices):
+            return None
+        else:
+            if (suggested := func.call_with_suggestion(ctx)) is not None:
+                return suggested
+            else:
+                return [EllipsisType()]
+
+    def index(self, ctx: CompilationContext, value: Value, indices: list[Value]) -> Value:
+        return self._get_index_func(ctx, value).call(ctx, indices)
+
+    def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> Value | None:
+        if (name := self.UNARY_OP_NAMES.get(op)) is not None:
+            if (func := value.getattr(ctx, False, name)) is not None:
+                if not func.callable_with(ctx, []):
+                    ctx.error(f"Value of type '{func.type}' does not have the correct function signature to implement \
+unary operator '{op}'")
+                return func.call(ctx, [])
+
+        if op == "...":
+            return Value.of_tuple(ctx, [value.getattr_req(ctx, False, field) for field, _ in self.base.fields])
+
+        return super(StructInstanceType, self).unary_op(ctx, value, op)
+
+    def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
+        if (name := self.BINARY_OP_NAMES.get(op)) is not None:
+            if (func := value.getattr(ctx, False, name)) is not None:
+                if not func.callable_with(ctx, [other.type]):
+                    ctx.error(f"Value of type '{func.type}' does not have the correct function signature to implement \
+binary operator '{op}' with other value of type '{other.type}'")
+                return func.call(ctx, [other])
+
+        return super(StructInstanceType, self).binary_op(ctx, value, op, other)
+
+    def binary_op_r(self, ctx: CompilationContext, other: Value, op: str, value: Value) -> Value | None:
+        if (name := self.BINARY_OP_NAMES.get(op)) is not None:
+            name = f"@r_{name[1:]}"
+            if (func := value.getattr(ctx, False, name)) is not None:
+                if not func.callable_with(ctx, [other.type]):
+                    ctx.error(f"Value of type '{func.type}' does not have the correct function signature to implement \
+reversed binary operator '{op}' with other value of type '{other.type}'")
+                return func.call(ctx, [other])
+
+        return super(StructInstanceType, self).binary_op_r(ctx, other, op, value)
 
 
 @dataclass(slots=True)
@@ -1204,13 +1456,13 @@ class EnumBaseType(Type):
 
         return super(EnumBaseType, self).getattr(ctx, value, static, name)
 
-    def callable(self) -> bool:
+    def callable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
 
-    def call_with_suggestion(self) -> list[Type | None] | None:
+    def call_with_suggestion(self, ctx: CompilationContext, value: Value) -> list[Type | None] | None:
         return [NumberType()]
 
-    def callable_with(self, param_types: list[Type]) -> bool:
+    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
         return len(param_types) == 1 and NumberType().contains(param_types[0])
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:

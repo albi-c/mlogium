@@ -201,12 +201,38 @@ class Compiler(AstVisitor[Value]):
             self._var_declare_special(node.name, value)
         return value
 
+    @staticmethod
+    def _const_eval_int(value: Value) -> int | None:
+        if value.value == "true":
+            return 1
+
+        elif value.value in ("false", "null"):
+            return 0
+
+        else:
+            try:
+                return int(value.value)
+            except ValueError:
+                pass
+
+        return None
+
     def visit_if_node(self, node: IfNode) -> Value:
-        cond_value = self.visit(node.cond).to_condition_req(self.ctx)
+        value = self.visit(node.cond)
 
         if node.const:
-            # TODO
-            self.error(f"Constant if is not yet supported")
+            if (val := self._const_eval_int(value)) is None:
+                self.error(f"Expression cannot be used as a constant condition")
+            with self.scope(self.ctx.tmp()):
+                if val == 0:
+                    if node.code_else:
+                        return self.visit(node.code_else)
+                    else:
+                        return Value.null()
+                else:
+                    return self.visit(node.code_if)
+
+        cond_value = value.to_condition_req(self.ctx)
 
         end_true_branch = self.ctx.tmp()
         end_false_branch = "" if node.code_else is None else self.ctx.tmp()
@@ -311,10 +337,10 @@ class Compiler(AstVisitor[Value]):
 
     def visit_call_node(self, node: CallNode) -> Value:
         func = self.visit(node.value)
-        if not func.callable():
+        if not func.callable(self.ctx):
             self.error(f"Value of type '{func.type}' is not callable")
 
-        param_types = func.call_with_suggestion()
+        param_types = func.call_with_suggestion(self.ctx)
 
         unpacked_params = []
         for param, unpack in node.params:
@@ -331,7 +357,7 @@ class Compiler(AstVisitor[Value]):
                 with self.scope.bottom("<enum>", bottom_scope):
                     unpacked_params.append(self.visit(param))
 
-        if not func.callable_with([v.type for v in unpacked_params]):
+        if not func.callable_with(self.ctx, [v.type for v in unpacked_params]):
             self.error(f"Function of type '{func.type}' is not callable with parameters of types \
 [{', '.join(str(v.type) for v in unpacked_params)}]")
 
@@ -339,11 +365,12 @@ class Compiler(AstVisitor[Value]):
 
     def visit_index_node(self, node: IndexNode) -> Value:
         value = self.visit(node.value)
-        if not value.indexable():
+        if not value.indexable(self.ctx):
             self.error(f"Value of type '{value.type}' is not indexable", node.value.pos)
-        if (valid := value.validate_index_count(len(node.indices))) != -1:
-            self.error(f"Value of type '{value.type}' requires {valid} indices, provided {len(node.indices)}")
         indices = [self.visit(i) for i in node.indices]
+        if (valid := value.validate_index_types(self.ctx, [i.type for i in indices])) is not None:
+            self.error(f"Value of type '{value.type}' requires indices of types \
+({', '.join(f'\'{t}\'' for t in valid)}), provided ({', '.join(f'\'{i.type}\'' for i in indices)})")
         return value.index(self.ctx, indices)
 
     def visit_attribute_node(self, node: AttributeNode) -> Value:

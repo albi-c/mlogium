@@ -80,6 +80,22 @@ def _construct_builtin_variables(builtins: dict[str, Value]):
     }
 
 
+def _const_eval_int(value: Value) -> int | None:
+    if value.value == "true":
+        return 1
+
+    elif value.value in ("false", "null"):
+        return 0
+
+    else:
+        try:
+            return int(value.value)
+        except ValueError:
+            pass
+
+    return None
+
+
 def _construct_special_builtin_functions(builtins: dict[str, Value]):
     _import_impl_imported: set[str] = set()
 
@@ -125,11 +141,27 @@ def _construct_special_builtin_functions(builtins: dict[str, Value]):
 
         return Value.null()
 
+    def _static_assert_impl(ctx: CompilationContext, params: list[Value]) -> Value:
+        if (cond := _const_eval_int(params[0])) is None:
+            ctx.error(f"Condition has to be a constant expression")
+
+        msg = params[1].value
+        if not (msg.startswith("\"") and msg.endswith("\"")):
+            ctx.error(f"Message has to be an immediate string value")
+        msg = msg[1:-1]
+
+        if not cond:
+            ctx.error(f"Static assertion failed: '{msg}'")
+
+        return Value.null()
+
     builtins |= {
         "typeof": Value(SpecialFunctionType("typeof", [AnyType()], GenericTypeType(),
                                             lambda _, params: Value.of_type(params[0].type)), ""),
         "#import": Value(SpecialFunctionType("import", [StringType()], AnyType(), _import_impl), ""),
-        "#use": Value(SpecialFunctionType("use", [AnyType()], NullType(), _use_impl), "")
+        "#use": Value(SpecialFunctionType("use", [AnyType()], NullType(), _use_impl), ""),
+        "#static_assert": Value(SpecialFunctionType("static_assert", [NumberType(), StringType()], NullType(),
+                                                    _static_assert_impl), "")
     }
 
 
