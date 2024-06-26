@@ -559,6 +559,62 @@ class BlockType(Type):
     def to_condition(self, ctx: CompilationContext, value: Value) -> str | None:
         return value.value
 
+    def indexable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    def validate_index_types(self, ctx: CompilationContext, value: Value, indices: list[Type]) -> None | list[Type]:
+        return None if len(indices) == 1 and NumberType().contains(indices[0]) else [NumberType()]
+
+    def index(self, ctx: CompilationContext, value: Value, indices: list[Value]) -> Value:
+        return Value(MemoryCellReferenceType(value, indices[0]), "")
+
+
+@dataclass(slots=True)
+class MemoryCellReferenceType(Type):
+    cell: Value
+    index: Value
+
+    def __str__(self):
+        return "MemCellRef"
+
+    def __eq__(self, other):
+        return isinstance(other, MemoryCellReference) and self.cell == other.cell and self.index == other.index
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return value.into_req(ctx, NumberType()).to_strings(ctx)
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        if NumberType().contains(other.type):
+            ctx.emit(Instruction.write(other.value, self.cell.value, self.index.value))
+
+    def assignable_type(self) -> Type:
+        return UnionType([NumberType(), GenericMemoryCellReferenceType()])
+
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        if NumberType().contains(type_):
+            val = Value(NumberType(), ctx.tmp())
+            ctx.emit(Instruction.read(val.value, self.cell.value, self.index.value))
+            return val
+
+        return super(MemoryCellReferenceType, self).into(ctx, value, type_)
+
+
+class GenericMemoryCellReferenceType(Type):
+    def __str__(self):
+        return "MemCellRef"
+
+    def __eq__(self, other):
+        return isinstance(other, GenericMemoryCellReferenceType)
+
+    def contains(self, other: Type) -> bool:
+        return self == other or isinstance(other, MemoryCellReferenceType)
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        pass
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [_stringify(str(self))]
+
 
 class UnitType(Type):
     def __str__(self):
