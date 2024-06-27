@@ -41,9 +41,14 @@ class Phi(InstructionInstance):
     variable: str
     output: str
     input_blocks: set[Block]
+    input_block_list: list[Block]
 
     def __init__(self, variable: str, output: str, input_blocks: set[Block]):
-        super().__init__(Instruction.noop, [0], False, {}, Phi.name, internal=True)
+        self.input_block_list = list(input_blocks)
+        super().__init__(Instruction.noop, [0], False, {}, Phi.name,
+                         output,
+                         *(f"{variable}:{block.variables[variable]}" for block in self.input_block_list),
+                         internal=True)
 
         self.variable = variable
         self.output = output
@@ -148,8 +153,6 @@ class Optimizer:
 
     @classmethod
     def optimize(cls, code: Instructions) -> Instructions:
-        cls._make_function_sets_essential(code)
-
         cls._optimize_jumps(code)
         cls._remove_noops(code)
 
@@ -182,18 +185,12 @@ class Optimizer:
         return code
 
     @classmethod
-    def _make_function_sets_essential(cls, code: Instructions):
-        for i, ins in enumerate(code):
-            if ins.name == Instruction.set.name and ins.params[0].startswith("%"):
-                code[i] = Instruction.essential_set(*ins.params)
-
-    @classmethod
     def _is_label(cls, ins: InstructionInstance):
-        return ins.name in (Instruction.label.name, Instruction.prepare_return_address.name)
+        return ins.name == Instruction.label.name
 
     @classmethod
     def _is_jump(cls, ins: InstructionInstance):
-        return ins.name in (Instruction.jump.name, Instruction.jump_addr.name)
+        return ins.name == Instruction.jump.name
 
     @classmethod
     def _make_blocks(cls, code: Instructions) -> Blocks:

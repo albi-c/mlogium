@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 from dataclasses import dataclass
 
 from .value_types import Types, BasicTypeRef, UnionTypeRef, TypeRef
@@ -198,9 +198,6 @@ class Instruction:
     ], param_process=lambda params: [params[1], params[2], "@" + params[0]])
 
     set = _make("set", [Types.ANY, Types.ANY], False, [0], internal=True)
-    essential_set = _make("$essential_set", [Types.ANY, Types.ANY], True, [],
-                          internal=True, base=LinkerInstructionInstance,
-                          translator=lambda ins: Instruction.set(*ins.params))
     op = _make("op", [Types.ANY, Types.NUM, Types.NUM, Types.NUM], False, [1], internal=True)
     lookup = _make_with_subcommands("lookup", False, [0], [
         ("block", [Types.BLOCK_TYPE, Types.NUM]),
@@ -374,17 +371,10 @@ class Instruction:
     ])
 
     label = _make("$label", [Types.ANY], True, internal=True)
-    prepare_return_address = _make("$prepare_return_address", [], True, [],
-                                   internal=True, base=LinkerInstructionInstance,
-                                   translator=lambda ins: Instruction.op("add", ABI.function_return_address(),
-                                                                         "@counter", "1"))
 
     @classmethod
     def jump_always(cls, label: str) -> InstructionInstance:
         return cls.jump(label, "always", "_", "_")
-
-    jump_addr = _make("$jump_addr", [Types.NUM], True, internal=True, base=LinkerInstructionInstance,
-                      translator=lambda ins: Instruction.set("@counter", ins.params[0]))
 
     noop = _make("noop", [], False, internal=True)
 

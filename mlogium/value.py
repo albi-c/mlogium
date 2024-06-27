@@ -1013,9 +1013,9 @@ class TupleType(Type):
 
         next_func, has_func = value.unpack_req(ctx)
 
-        if not next_func.callable_with([]):
+        if not next_func.callable_with(ctx, []):
             return None
-        if not has_func.callable_with([]):
+        if not has_func.callable_with(ctx, []):
             return None
 
         return TupleType.ValueIterator(has_func, next_func)

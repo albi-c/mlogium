@@ -131,11 +131,6 @@ namespace Gen {
     }
 
     fn buildings() {
-        let i = 0;
-        Gen::new(||[&i] {
-            let b = getlink(i);
-            i += 1;
-            b
-        }, ||[&i] i < @links)
+        Gen::range(@links).map(getlink)
     }
 }
