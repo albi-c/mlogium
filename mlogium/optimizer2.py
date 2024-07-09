@@ -77,10 +77,10 @@ class Optimizer:
         cls._make_ssa(blocks)
         cls._remove_noops(blocks)
         for _ in range(5):
-            cls._propagate_constants(blocks)
-            cls._remove_unused(blocks)
-            cls._remove_noops(blocks)
-            # TODO: join blocks
+            while cls._propagate_constants(blocks):
+                cls._remove_unused(blocks)
+                cls._remove_noops(blocks)
+                # TODO: join blocks
         cls._resolve_ssa(blocks)
         cls._remove_empty_blocks(blocks)
         code = [ins for block in blocks for ins in block if ins.name != Instruction.noop.name]
@@ -171,10 +171,10 @@ class Optimizer:
     @classmethod
     def _make_ssa(cls, blocks: Blocks):
         if len(blocks) > 0:
-            cls._make_ssa_internal(blocks[0], {})
+            cls._make_ssa_internal(blocks[0], {}, {})
 
     @classmethod
-    def _make_ssa_internal(cls, block: Block, variables: dict[str, int]):
+    def _make_ssa_internal(cls, block: Block, variables: dict[str, int], variable_numbers: dict[str, int]):
         if block.is_ssa:
             return
 
@@ -189,8 +189,7 @@ class Optimizer:
                     phi_required[common] = {a, b}
 
         for name, blocks in phi_required.items():
-            block.variables[name] = block.variables.get(name, 0) + 1
-            block.insert(0, Phi(name, f"{name}:{block.variables[name]}", blocks))
+            block.variables[name] = variable_numbers[name] = variable_numbers.get(name, 0) + 1
 
         for ins in block:
             if ins.name == Phi.name:
@@ -199,16 +198,19 @@ class Optimizer:
             for i in ins.inputs:
                 inp = ins.params[i]
                 if inp in block.variables:
-                    ins.params[i] += f":{block.variables[inp]}"
+                    ins.params[i] += f":{variable_numbers[inp]}"
             for i in ins.outputs:
                 out = ins.params[i]
-                block.variables[out] = block.variables.get(out, 0) + 1
-                ins.params[i] += f":{block.variables[out]}"
+                block.variables[out] = variable_numbers[out] = variable_numbers.get(out, 0) + 1
+                ins.params[i] += f":{variable_numbers[out]}"
 
         block.is_ssa = True
 
         for b in block.successors:
-            cls._make_ssa_internal(b, block.variables)
+            cls._make_ssa_internal(b, block.variables, variable_numbers)
+
+        for name, blocks in phi_required.items():
+            block.insert(0, Phi(name, f"{name}:{block.variables[name]}", blocks))
 
     @classmethod
     def _resolve_ssa(cls, blocks: Blocks):
@@ -219,8 +221,9 @@ class Optimizer:
             for i, ins in enumerate(block):
                 if ins.name == Phi.name:
                     assert isinstance(ins, Phi)
-                    for b in ins.input_blocks:
-                        b.add_phi.append(Instruction.set(ins.output, f"{ins.variable}:{b.variables[ins.variable]}"))
+                    for b, v in zip(ins.input_blocks, ins.params[1:]):
+                        # b.add_phi.append(Instruction.set(ins.output, f"{ins.variable}:{b.variables[ins.variable]}"))
+                        b.add_phi.append(Instruction.set(ins.output, v))
                     block[i] = Instruction.noop()
 
         for block in blocks:
@@ -236,56 +239,32 @@ class Optimizer:
             block[:] = [ins for ins in block if ins.name != Instruction.noop.name]
 
     @classmethod
-    def _propagate_constants(cls, blocks: Blocks):
-        if len(blocks) > 0:
-            for block in blocks:
-                block.constants = None
-
-            cls._propagate_constants_inner(blocks[0])
-
-    @classmethod
-    def _propagate_constants_inner(cls, block: Block):
-        if block.constants is not None:
-            return
-        block.constants = {}
-
-        for b in block.predecessors:
-            cls._propagate_constants_inner(b)
-
+    def _propagate_constants(cls, blocks: Blocks) -> bool:
         constants = {}
-        conflicts = set()
-        for b in block.predecessors:
-            for k, v in b.constants.items():
-                if k in constants:
-                    if v != constants[k]:
-                        conflicts.add(k)
-                constants[k] = v
-        for v in conflicts:
-            del constants[v]
 
-        block.constants = constants
+        for block in blocks:
+            for ins in block:
+                if ins.name == Instruction.set.name:
+                    constants[ins.params[0]] = ins.params[1]
 
-        for ins in block:
-            for i in ins.inputs:
-                inp = ins.params[i]
-                if inp in constants:
-                    ins.params[i] = constants[inp]
+        found = False
+        for block in blocks:
+            for ins in block:
+                for i in ins.inputs:
+                    inp = ins.params[i]
+                    if inp in constants:
+                        ins.params[i] = constants[inp]
+                        found = True
 
-            if ins.name == Instruction.set.name:
-                constants[ins.params[0]] = ins.params[1]
-
-        for b in block.successors:
-            cls._propagate_constants_inner(b)
+        return found
 
     @classmethod
-    def _remove_unused(cls, blocks: Blocks) -> bool:
+    def _remove_unused(cls, blocks: Blocks):
         used = set()
-
         uses = defaultdict(int)
 
         for block in blocks:
             for ins in block:
-                print(ins.params, ins.outputs, ins.inputs)
                 for i in ins.inputs:
                     used.add(ins.params[i])
                 for p in ins.params:
@@ -294,5 +273,4 @@ class Optimizer:
         for block in blocks:
             for i, ins in enumerate(block):
                 if not ins.side_effects and all(ins.params[j] not in used for j in ins.outputs):
-                    print("UU", ins, [(ins.params[j], ins.params[j] not in used, uses[ins.params[j]]) for j in ins.outputs])
                     block[i] = Instruction.noop()
