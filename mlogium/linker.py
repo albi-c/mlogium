@@ -26,18 +26,24 @@ class Linker:
 
         instructions = cls._translate_instructions(ctx, instructions)
         instructions, labels = cls._find_labels(instructions)
+        if len(instructions) > 0:
+            ins = instructions[-1]
+            if ins.name == "jump":
+                lab = labels[ins.params[0][1:]]
+                if lab >= len(instructions):
+                    lab = 0
+                if lab == 0:
+                    instructions.pop(-1)
         generated = []
         for ins in instructions:
             ln = ins.name
             for p in ins.params:
                 if p.startswith("$"):
                     lab = labels[p[1:]]
-                    if lab == len(instructions):
+                    if lab >= len(instructions):
                         lab = 0
                     ln += f" {lab}"
                 else:
                     ln += f" {p}"
             generated.append(ln)
-        if len(generated) > 0 and generated[-1] == "jump 0 always _ _":
-            generated.pop(-1)
         return "\n".join(generated)

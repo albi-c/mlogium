@@ -74,8 +74,8 @@ def _construct_builtin_variables(builtins: dict[str, Value]):
 
         "_": Value(UnderscoreType(), "_", False),
 
-        "true": Value(NumberType(), "true", True),
-        "false": Value(NumberType(), "false", True),
+        "true": Value(NumberType(), "1", True),
+        "false": Value(NumberType(), "0", True),
         "null": Value(NullType(), "null", True)
     }
 

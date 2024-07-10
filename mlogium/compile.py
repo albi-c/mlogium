@@ -1,7 +1,7 @@
 from .lexer import Lexer
 from .parser import Parser
 from .compiler import Compiler
-from .optimizer2 import Optimizer
+from .optimizer import Optimizer
 from .linker import Linker
 
 
@@ -11,6 +11,5 @@ def compile_code(code: str, filename: str) -> str:
     compiler = Compiler()
     compiler.compile(ast)
     instructions = Optimizer.optimize(compiler.ctx.get_instructions())
-    # return "\n".join(map(str, instructions))
     result = Linker.link(instructions)
     return result

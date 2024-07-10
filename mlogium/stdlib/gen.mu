@@ -83,8 +83,8 @@ fn __new_gen(&next, &has) {
 
         fn limit(&n: num) {
             let i = 0;
-            Gen::new(||[&self, &i] { i += 1; self.next() },
-                     ||[&self, &i, &n] { i < n && self.has() })
+            self::new(||[&self, &i] { i += 1; self.next() },
+                      ||[&self, &i, &n] { i < n && self.has() })
         }
 
         fn skip() {
