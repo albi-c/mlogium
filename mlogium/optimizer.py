@@ -6,6 +6,7 @@ import math
 import itertools
 
 from .instruction import Instruction, InstructionInstance
+from .structure import CounterDict
 
 
 class Block(list[InstructionInstance]):
@@ -14,7 +15,6 @@ class Block(list[InstructionInstance]):
     variables: dict[str, int]
     assignments: set[str]
     used_variables: set[str]
-    is_ssa: bool
     add_phi: list[InstructionInstance]
 
     def __init__(self):
@@ -25,7 +25,6 @@ class Block(list[InstructionInstance]):
         self.variables = {}
         self.assignments = set()
         self.used_variables = set()
-        self.is_ssa = False
         self.add_phi = []
 
     def __eq__(self, other):
@@ -46,8 +45,6 @@ class Phi(InstructionInstance):
     def __init__(self, variable: str, output: str, input_blocks: set[Block]):
         self.input_block_list = list(input_blocks)
         super().__init__(Instruction.noop, [0], False, {}, Phi.name,
-                         output,
-                         *(f"{variable}:{block.variables[variable]}" for block in self.input_block_list),
                          internal=True)
 
         self.variable = variable
@@ -59,6 +56,23 @@ class Phi(InstructionInstance):
 
     def translate_in_linker(self, _) -> list[InstructionInstance]:
         raise RuntimeError("Phi instruction must be converted")
+
+    @classmethod
+    def _find_variable_index(cls, block: Block, variable: str) -> int | None:
+        if (i := block.variables.get(variable)) is not None:
+            return i
+        if block.predecessors != 1:
+            return None
+        return cls._find_variable_index(next(iter(block.predecessors)), variable)
+
+    def finalize(self) -> bool:
+        self.params = [self.output]
+        for block in self.input_block_list:
+            if (index := self._find_variable_index(block, self.variable)) is None:
+                continue
+            self.params.append(f"{self.variable}:{index}")
+
+        return len(self.params) < 3
 
 
 type Instructions = list[InstructionInstance]
@@ -274,68 +288,72 @@ class Optimizer:
 
     @classmethod
     def _make_ssa(cls, blocks: Blocks):
-        if len(blocks) > 0:
-            cls._make_ssa_internal(blocks[0], {})
+        if len(blocks) < 1:
+            return
+
+        all_variables = set()
+        for block in blocks:
+            for ins in block:
+                for i in ins.outputs:
+                    all_variables.add(ins.params[i])
+
+        variable_numbers = CounterDict(int)
+        for block in blocks:
+            cls._make_ssa_internal(block, variable_numbers, all_variables)
+        for block in blocks:
+            cls._finalize_ssa_internal(block)
 
     @classmethod
-    def _make_ssa_internal(cls, block: Block, variable_numbers: dict[str, int]):
-        if block.is_ssa:
-            return
-        block.is_ssa = True
+    def _make_ssa_internal(cls, block: Block, variable_numbers: CounterDict[str, int],
+                           all_variables: set[str]):
 
-        block.variables = {}
+        if len(block.predecessors) > 1:
+            for name in all_variables:
+                block.insert(0, Phi(name, f"{name}:{variable_numbers.inc(name)}",
+                                    block.predecessors))
 
-    # @classmethod
-    # def _make_ssa(cls, blocks: Blocks):
-    #     if len(blocks) < 1:
-    #         return
-    #
-    #     all_variables = set()
-    #     for block in blocks:
-    #         for ins in block:
-    #             for i in ins.outputs:
-    #                 all_variables.add(ins.params[i])
-    #     cls._make_ssa_internal(blocks[0], {}, {}, list(all_variables))
+        for ins in block:
+            if isinstance(ins, Phi):
+                continue
 
-    # @classmethod
-    # def _make_ssa_internal(cls, block: Block, variables: dict[str, int], variable_numbers: dict[str, int],
-    #                        all_variables: list[str]):
-    #     if block.is_ssa:
-    #         return
-    #
-    #     block.variables = variables.copy()
-    #
-    #     phi_required: dict[str, set[Block]] = {}
-    #     for a, b in itertools.combinations(block.predecessors, 2):
-    #         for common in a.assignments & b.assignments:
-    #             if common in phi_required:
-    #                 phi_required[common] |= {a, b}
-    #             else:
-    #                 phi_required[common] = {a, b}
-    #
-    #     for name, blocks in phi_required.items():
-    #         block.variables[name] = variable_numbers[name] = variable_numbers.get(name, 0) + 1
-    #
-    #     for ins in block:
-    #         if ins.name == Phi.name:
-    #             continue
-    #
-    #         for i in ins.inputs:
-    #             inp = ins.params[i]
-    #             if inp in block.variables:
-    #                 ins.params[i] = f"{inp}:{variable_numbers[inp]}"
-    #         for o in ins.outputs:
-    #             out = ins.params[o]
-    #             block.variables[out] = variable_numbers[out] = variable_numbers.get(out, 0) + 1
-    #             ins.params[o] = f"{out}:{variable_numbers[out]}"
-    #
-    #     block.is_ssa = True
-    #
-    #     for suc in block.successors:
-    #         cls._make_ssa_internal(suc, block.variables, variable_numbers, all_variables)
-    #
-    #     for name, blocks in phi_required.items():
-    #         block.insert(0, Phi(name, f"{name}:{variable_numbers[name]}", blocks))
+            for i in ins.inputs:
+                inp = ins.params[i]
+                if inp in all_variables:
+                    ins.params[i] = f"{inp}:{variable_numbers[inp]}"
+
+            for i in ins.outputs:
+                out = ins.params[i]
+                ins.params[i] = f"{out}:{variable_numbers.inc(out)}"
+
+        block.variables = variable_numbers.copy()
+
+        for b in block.successors:
+            b.variables = block.variables | b.variables
+
+    @classmethod
+    def _finalize_ssa_internal(cls, block: Block):
+        for i, ins in enumerate(block):
+            if isinstance(ins, Phi):
+                if ins.finalize():
+                    block[i] = Instruction.noop()
+
+    @classmethod
+    def _resolve_ssa(cls, blocks: Blocks):
+        for block in blocks:
+            for i, ins in enumerate(block):
+                if isinstance(ins, Phi):
+                    for b, v in zip(ins.input_blocks, ins.params[1:]):
+                        b.add_phi.append(Instruction.set(ins.output, v))
+                    block[i] = Instruction.noop()
+
+        for block in blocks:
+            if len(block) > 0 and cls._is_jump(block[-1]):
+                block[:] = block[:-1] + block.add_phi + [block[-1]]
+
+            else:
+                block[:] = block + block.add_phi
+
+            block.add_phi = []
 
     @classmethod
     def _propagate_constants(cls, blocks: Blocks) -> bool:
@@ -459,25 +477,6 @@ class Optimizer:
                         operations[operands] = ins.params[1]
 
         return found
-
-    @classmethod
-    def _resolve_ssa(cls, blocks: Blocks):
-        for block in blocks:
-            for i, ins in enumerate(block):
-                if ins.name == Phi.name:
-                    assert isinstance(ins, Phi)
-                    for b, v in zip(ins.input_blocks, ins.params[1:]):
-                        b.add_phi.append(Instruction.set(ins.output, v))
-                    block[i] = Instruction.noop()
-
-        for block in blocks:
-            if len(block) > 0 and cls._is_jump(block[-1]):
-                block[:] = block[:-1] + block.add_phi + [block[-1]]
-
-            else:
-                block[:] = block + block.add_phi
-
-            block.add_phi = []
 
     @classmethod
     def _remove_noops(cls, code: Instructions):
