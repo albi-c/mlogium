@@ -1,10 +1,10 @@
-fn __new_gen(&next, &has) {
-    struct Generator {
+fn __new_stream(&next, &has) {
+    struct Stream_ {
         let next: typeof(next);
         let has: typeof(has);
 
         static fn new(&next, &has) {
-            Gen::new(next, has)
+            Stream::new(next, has)
         }
 
         fn @iter() {
@@ -106,14 +106,14 @@ fn __new_gen(&next, &has) {
     }(next, has)
 }
 
-namespace Gen {
+namespace Stream {
     fn new(&next, &has) {
-        __new_gen(next, has)
+        __new_stream(next, has)
     }
 
     fn range(&n: num) {
         let i = 0;
-        Gen::new(||[&i] {
+        Stream::new(||[&i] {
             let x = i;
             i += 1;
             x
@@ -121,16 +121,16 @@ namespace Gen {
     }
 
     fn generate(&f) {
-        Gen::new(||[&f, i = -1] { i += 1; f(i) },
-                 || true)
+        Stream::new(||[&f, i = -1] { i += 1; f(i) },
+                    || true)
     }
 
     fn count() {
-        Gen::new(||[i = -1] { i += 1; i },
-                 || true)
+        Stream::new(||[i = -1] { i += 1; i },
+                    || true)
     }
 
     fn buildings() {
-        Gen::range(@links).map(getlink)
+        Stream::range(@links).map(getlink)
     }
 }
