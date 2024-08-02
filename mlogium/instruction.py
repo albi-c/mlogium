@@ -231,7 +231,7 @@ class Instruction:
         def __init__(self, output_values: list[str], input_values: list[list[str]], index: str):
             super().__init__(Instruction.noop, [i for i in range(len(output_values))],
                              False, {}, Instruction.TableRead.name,
-                             *output_values, *(val for option in input_values for val in option),
+                             *output_values, *(val for option in input_values for val in option), index,
                              internal=True)
 
             self.output_values = output_values
@@ -252,11 +252,8 @@ class Instruction:
             name = f"*__$table_read_{ctx.tmp_num()}"
 
             length_of_one = len(self.output_values)
-            if length_of_one > 1:
-                index = name + "_index"
-                instructions.append(Instruction.op("mul", index, self.index, "2"))
-            else:
-                index = self.index
+            index = name + "_index"
+            instructions.append(Instruction.op("mul", index, self.params[-1], length_of_one + 1))
             instructions.append(Instruction.op("add", "@counter", "@counter", index))
 
             end_label = name + "_end"
@@ -285,7 +282,7 @@ class Instruction:
             super().__init__(Instruction.noop, [i + len(input_values) for i in range(sum(map(len, output_values)))],
                              False, {}, Instruction.TableWrite.name,
                              *input_values, *(val for option in output_values for val in option),
-                             *(val for option in output_values for val in option),
+                             *(val for option in output_values for val in option), index,
                              internal=True)
 
             self.output_values = output_values
@@ -312,11 +309,8 @@ class Instruction:
                                 self.params[self.initial_values_index:]):
                 instructions.append(Instruction.set(dst, src))
 
-            if length_of_one > 1:
-                index = name + "_index"
-                instructions.append(Instruction.op("mul", index, self.index, "2"))
-            else:
-                index = self.index
+            index = name + "_index"
+            instructions.append(Instruction.op("mul", index, self.params[-1], length_of_one + 1))
             instructions.append(Instruction.op("add", "@counter", "@counter", index))
 
             end_label = name + "_end"

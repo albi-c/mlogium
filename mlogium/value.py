@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from abc import abstractmethod, ABC
 from typing import Callable
@@ -57,26 +58,28 @@ class Value:
         val.getattr_req(ctx, False, "end").assign(ctx, end)
         return val
 
+    @contextlib.contextmanager
+    def do_assignment(self, ctx: CompilationContext):
+        if self.const:
+            ctx.error(f"Assignment to constant of type '{self.type}'")
+
+        try:
+            yield
+
+        finally:
+            if self.const_on_write:
+                self.const = True
+
     def assign(self, ctx: CompilationContext, other: Value):
         if NullType().contains(other.type):
             return self.assign_default(ctx)
 
-        if self.const:
-            ctx.error(f"Assignment to constant of type '{self.type}'")
-
-        self.type.assign(ctx, self, other.into_req(ctx, self.assignable_type()))
-
-        if self.const_on_write:
-            self.const = True
+        with self.do_assignment(ctx):
+            self.type.assign(ctx, self, other.into_req(ctx, self.assignable_type()))
 
     def assign_default(self, ctx: CompilationContext):
-        if self.const:
-            ctx.error(f"Assignment to constant of type '{self.type}'")
-
-        self.type.assign_default(ctx, self)
-
-        if self.const_on_write:
-            self.const = True
+        with self.do_assignment(ctx):
+            self.type.assign_default(ctx, self)
 
     def copy(self, ctx: CompilationContext, name: str = None) -> Value:
         if name is None:
@@ -200,13 +203,17 @@ class Value:
         return self.type.memcell_write(ctx, self)
 
     def memcell_read(self, ctx: CompilationContext, values: list[str]):
-        if self.const:
-            ctx.error(f"Assignment to constant of type '{self.type}'")
+        with self.do_assignment(ctx):
+            self.type.memcell_read(ctx, self, values)
 
-        self.type.memcell_read(ctx, self, values)
+    def table_copyable(self, ctx: CompilationContext) -> bool:
+        return self.type.table_copyable(ctx, self)
 
-        if self.const_on_write:
-            self.const = True
+    def table_size(self, ctx: CompilationContext) -> int:
+        return self.type.table_size(ctx, self)
+
+    def table_variables(self, ctx: CompilationContext) -> list[str]:
+        return self.type.table_variables(ctx, self)
 
 
 def _stringify(val) -> str:
@@ -336,6 +343,15 @@ class Type(ABC):
 
     def memcell_read(self, ctx: CompilationContext, value: Value, values: list[str]):
         ctx.emit(Instruction.set(value.value, values[0]))
+
+    def table_copyable(self, ctx: CompilationContext, value: Value) -> bool:
+        return value.memcell_serializable(ctx)
+
+    def table_size(self, ctx: CompilationContext, value: Value) -> int:
+        return value.memcell_size(ctx)
+
+    def table_variables(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return value.memcell_write(ctx)
 
 
 class ValueIterator(ABC):
@@ -649,6 +665,9 @@ class StringType(Type):
     def to_condition(self, ctx: CompilationContext, value: Value) -> str | None:
         return value.value
 
+    def table_copyable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
 
 class BlockType(Type):
     def __str__(self):
@@ -721,6 +740,9 @@ class BlockType(Type):
 
         return super(BlockType, self).getattr(ctx, value, static, name)
 
+    def table_copyable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
 
 @dataclass(slots=True)
 class MemoryCellReferenceType(Type):
@@ -744,7 +766,7 @@ class MemoryCellReferenceType(Type):
         return UnionType([NumberType(), self])
 
     def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
-        if NumberType().contains(type_):
+        if type_.contains(NumberType()):
             val = Value(NumberType(), ctx.tmp())
             ctx.emit(Instruction.read(val.value, self.cell.value, self.index.value))
             return val
@@ -762,6 +784,9 @@ class UnitType(Type):
     def to_condition(self, ctx: CompilationContext, value: Value) -> str | None:
         return value.value
 
+    def table_copyable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
 
 class ControllerType(Type):
     def __str__(self):
@@ -769,6 +794,9 @@ class ControllerType(Type):
 
     def __eq__(self, other):
         return isinstance(other, ControllerType)
+
+    def table_copyable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
 
 
 def _check_callable_with(ctx: CompilationContext, func: Value, params: list[Type]) -> Value:
@@ -1050,6 +1078,78 @@ class TupleType(Type):
             size = v.memcell_size(ctx)
             v.memcell_read(ctx, values[i:i+size])
             i += size
+
+    def table_copyable(self, ctx: CompilationContext, value: Value) -> bool:
+        return all(v.table_copyable(ctx) for v in value.unpack_req(ctx))
+
+    def table_size(self, ctx: CompilationContext, value: Value) -> int:
+        return sum(v.table_size(ctx) for v in value.unpack_req(ctx))
+
+    def table_variables(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [s for v in value.unpack_req(ctx) for s in v.table_variables(ctx)]
+
+    def indexable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    def validate_index_types(self, ctx: CompilationContext, value: Value, indices: list[Type]) -> None | list[Type]:
+        return None if len(indices) == 1 and NumberType().contains(indices[0]) else [NumberType()]
+
+    def index(self, ctx: CompilationContext, value: Value, indices: list[Value]) -> Value:
+        if len(self.types) == 0:
+            ctx.error("Cannot index empty tuple")
+
+        if any(t != self.types[0] for t in self.types[1:]):
+            ctx.error(f"Cannot index tuples with different types")
+
+        values = value.unpack_req(ctx)
+        if not values[0].table_copyable(ctx):
+            ctx.error(f"Indexing is not available for tuples of '{values[0].type}'")
+
+        return Value(TupleIndexReferenceType(values[0].type, indices[0], values), "null", False)
+
+
+class TupleIndexReferenceType(Type):
+    type: Type
+    index: Value
+    values: list[Value]
+
+    def __init__(self, type_: Type, index: Value, values: list[Value]):
+        self.type = type_
+        self.index = index
+        self.values = values
+
+    def __str__(self):
+        return "TupleIndexRef"
+
+    def __eq__(self, other):
+        return isinstance(other, TupleIndexReferenceType) and self.type == other.type and self.index == other.index and self.values == other.values
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return value.into_req(ctx, self.type).to_strings(ctx)
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        if self != other.type:
+            with value.do_assignment(ctx):
+                ctx.emit(Instruction.TableWrite(
+                    [val.table_variables(ctx) for val in self.values],
+                    other.table_variables(ctx),
+                    self.index.value
+                ))
+
+    def assignable_type(self) -> Type:
+        return UnionType([self.type, self])
+
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        if type_.contains(self.type):
+            val = Value(self.type, ctx.tmp(), False)
+            ctx.emit(Instruction.TableRead(
+                val.table_variables(ctx),
+                [val.table_variables(ctx) for val in self.values],
+                self.index.value
+            ))
+            return val
+
+        return super(TupleIndexReferenceType, self).into(ctx, value, type_)
 
 
 @dataclass(slots=True)
@@ -1803,6 +1903,15 @@ reversed binary operator '{op}' with other value of type '{other.type}'")
             field.memcell_read(ctx, values[i:i+size])
             i += size
 
+    def table_copyable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    def table_size(self, ctx: CompilationContext, value: Value) -> int:
+        return sum(v.memcell_size(ctx) for v in self._fields(ctx, value))
+
+    def table_variables(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [s for v in self._fields(ctx, value) for s in v.table_variables(ctx)]
+
 
 @dataclass(slots=True)
 class NamespaceType(Type):
@@ -1957,6 +2066,9 @@ class BuiltinEnumBaseType(Type):
     def bottom_scope(self) -> dict[str, Value] | None:
         return self.bottom_values
 
+    def table_copyable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
 
 @dataclass(slots=True)
 class BuiltinEnumInstanceType(Type):
@@ -1970,7 +2082,7 @@ class BuiltinEnumInstanceType(Type):
 
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
         if not self.base.copyable:
-            ctx.error(f"Enum of type '{self.base.name}' is not copyable")
+            ctx.error(f"Enum of type '{self.base.name}' is not copyable (must be passed by reference)")
 
         super(BuiltinEnumInstanceType, self).assign(ctx, value, other)
 

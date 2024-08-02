@@ -189,7 +189,7 @@ class Optimizer:
         cls._optimize_jumps(code)
         cls._remove_noops(code)
 
-        while cls._optimize_set_op(code) or cls._precalculate_op_jump(code):
+        while cls._optimize_set_op(code) or cls._precalculate_op_jump(code) or cls._optimize_jump_tables(code):
             pass
         cls._remove_noops(code)
 
@@ -740,3 +740,64 @@ class Optimizer:
                         pass
 
         return found
+
+    @classmethod
+    def _optimize_jump_tables(cls, code: Instructions) -> bool:
+        found = True
+        found_any = False
+        while found:
+            found = False
+
+            for i, ins in enumerate(code):
+                if isinstance(ins, Instruction.TableRead):
+                    try:
+                        index = int(ins.params[-1])
+                    except ValueError:
+                        pass
+                    else:
+                        if index < len(ins.input_values):
+                            length = len(ins.output_values)
+                            print(list(map(str, [
+                                Instruction.set(a, b)
+                                for a, b in zip(ins.params[:length],
+                                                ins.params[(index + 1) * length:(index + 2) * length])
+                            ])))
+                            code[i:i + 1] = [
+                                Instruction.set(a, b)
+                                for a, b in zip(ins.params[:length],
+                                                ins.params[(index + 1) * length:(index + 2) * length])
+                            ]
+
+                            found = True
+                            break
+
+                elif isinstance(ins, Instruction.TableWrite):
+                    try:
+                        index = int(ins.params[-1])
+                    except ValueError:
+                        pass
+                    else:
+                        if index < len(ins.output_values):
+                            length = len(ins.input_values)
+                            generated = []
+                            for j in range(len(ins.output_values)):
+                                if j == index:
+                                    generated += [
+                                        Instruction.set(a, b)
+                                        for a, b in zip(ins.params[(j + 1) * length:(j + 2) * length],
+                                                        ins.params[:length])
+                                    ]
+                                else:
+                                    generated += [
+                                        Instruction.set(a, b)
+                                        for a, b in zip(ins.params[(j + 1) * length:(j + 2) * length],
+                                                        ins.params[(j + 1) * 2 * length:(j + 2) * 2 * length])
+                                    ]
+                            code[i:i + 1] = generated
+
+                            found = True
+                            break
+
+            found_any = found_any or found
+
+        return found_any

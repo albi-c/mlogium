@@ -5,8 +5,7 @@ class LinkingContext:
         self._tmp_index = 0
 
     def tmp(self) -> str:
-        self._tmp_index += 1
-        return f"__tmp{self._tmp_index}"
+        return f"__tmp{self.tmp_num()}"
 
     def tmp_num(self) -> int:
         self._tmp_index += 1
