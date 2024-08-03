@@ -389,7 +389,14 @@ class Compiler(AstVisitor[Value]):
         return self._var_get(node.name)
 
     def visit_tuple_value_node(self, node: TupleValueNode) -> Value:
-        return Value.of_tuple(self.ctx, [self.visit(n) for n in node.values])
+        values = []
+        for n, unpack in node.values:
+            val = self.visit(n)
+            if unpack:
+                values += val.unpack_req(self.ctx)
+            else:
+                values.append(val)
+        return Value.of_tuple(self.ctx, values)
 
     def visit_range_value_node(self, node: RangeValueNode) -> Value:
         return Value.of_range(self.ctx, self.visit(node.start), self.visit(node.end))

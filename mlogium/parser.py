@@ -367,6 +367,11 @@ class Parser:
             value = None
         return LambdaCapture(name, ref, value)
 
+    def _parse_tuple_value(self) -> tuple[Node, bool]:
+        value = self.parse_value()
+        unpack = bool(self.lookahead(TokenType.ELLIPSIS))
+        return value, unpack
+
     def parse_atom(self) -> Node:
         tok = self.next()
 
@@ -466,8 +471,12 @@ class Parser:
             if self.lookahead(TokenType.RPAREN):
                 return TupleValueNode(tok.pos, [])
             val = self.parse_value()
+            unpack = bool(self.lookahead(TokenType.ELLIPSIS))
             if self.lookahead(TokenType.COMMA):
-                return TupleValueNode(tok.pos, [val] + self._parse_comma_separated(self.parse_value, None))
+                return TupleValueNode(tok.pos, [(val, unpack)] + self._parse_comma_separated(
+                    self._parse_tuple_value, None))
+            elif unpack:
+                return TupleValueNode(tok.pos, [(val, unpack)])
             elif self.lookahead(TokenType.KW_FOR):
                 target = self._parse_assignment_target(False)
                 self.next(TokenType.KW_IN)

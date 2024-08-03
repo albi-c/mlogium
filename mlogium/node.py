@@ -527,10 +527,10 @@ class VariableValueNode(Node):
 
 @dataclass
 class TupleValueNode(Node):
-    values: list[Node]
+    values: list[tuple[Node, bool]]
 
     def __str__(self):
-        return f"({', '.join(map(str, self.values))})"
+        return f"({', '.join(str(v) + ('...' if u else '') for v, u in self.values)})"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_tuple_value_node(self)

@@ -102,17 +102,17 @@ class Value:
             ctx.error(f"Value of type '{self.type}' cannot be used as a condition")
         return val
 
-    def unpackable(self) -> bool:
-        return self.unpack_count() >= 0
+    def unpackable(self, ctx: CompilationContext) -> bool:
+        return self.type.unpackable(ctx, self)
 
-    def unpack_count(self) -> int:
-        return self.type.unpack_count()
+    def unpack_count(self, ctx: CompilationContext) -> int | None:
+        return self.type.unpack_count(ctx, self)
 
     def unpack(self, ctx: CompilationContext) -> list[Value]:
         return self.type.unpack(ctx, self)
 
     def unpack_req(self, ctx: CompilationContext) -> list[Value]:
-        if not self.unpackable():
+        if not self.unpackable(ctx):
             ctx.error(f"Value of type '{self.type}' is not unpackable")
         return self.unpack(ctx)
 
@@ -257,8 +257,11 @@ class Type(ABC):
     def to_condition(self, ctx: CompilationContext, value: Value) -> str | None:
         return None
 
-    def unpack_count(self) -> int:
-        return -1
+    def unpackable(self, ctx: CompilationContext, value: Value) -> bool:
+        return self.unpack_count(ctx, value) is not None
+
+    def unpack_count(self, ctx: CompilationContext, value: Value) -> int | None:
+        return None
 
     def unpack(self, ctx: CompilationContext, value: Value) -> list[Value]:
         raise NotImplementedError
@@ -473,10 +476,10 @@ class TypeType(Type):
                 ), "")
 
             elif name == "unpackable":
-                return Value.of_boolean(val.unpackable())
+                return Value.of_boolean(val.unpackable(ctx))
 
-            elif name == "len":
-                return Value.of_number(val.unpack_count())
+            elif name == "len" and (count := val.unpack_count(ctx)) is not None:
+                return Value.of_number(count)
 
             elif name == "serializable":
                 return Value.of_boolean(value.memcell_serializable(ctx))
@@ -819,8 +822,8 @@ def _unpackable_reduce(values: list[Value], ctx: CompilationContext, func: Value
 
 
 def _unpackable_getattr(ctx: CompilationContext, value: Value, name: str) -> Value | None:
-    if name == "len":
-        return Value.of_number(value.unpack_count())
+    if name == "len" and (count := value.unpack_count(ctx)) is not None:
+        return Value.of_number(count)
 
     elif name == "reversed":
         values = value.unpack_req(ctx)
@@ -1001,7 +1004,7 @@ class TupleType(Type):
         strings.append("\")\"")
         return strings
 
-    def unpack_count(self) -> int:
+    def unpack_count(self, ctx: CompilationContext, value: Value) -> int:
         return len(self.types)
 
     def unpack(self, ctx: CompilationContext, value: Value) -> list[Value]:
@@ -1014,7 +1017,7 @@ class TupleType(Type):
         if op == "++":
             return Value.of_tuple(ctx, value.unpack_req(ctx) + other.unpack_req(ctx))
 
-        if other.unpackable():
+        if other.unpackable(ctx):
             values = value.unpack_req(ctx)
             other_values = other.unpack_req(ctx)
             if len(values) != len(other_values):
@@ -1025,7 +1028,7 @@ class TupleType(Type):
             return Value.of_tuple(ctx, [val.binary_op_req(ctx, op, other) for val in value.unpack_req(ctx)])
 
     def binary_op_r(self, ctx: CompilationContext, other: Value, op: str, value: Value) -> Value | None:
-        if other.unpackable():
+        if other.unpackable(ctx):
             values = value.unpack_req(ctx)
             other_values = other.unpack_req(ctx)
             if len(values) != len(other_values):
@@ -1911,6 +1914,19 @@ reversed binary operator '{op}' with other value of type '{other.type}'")
 
     def table_variables(self, ctx: CompilationContext, value: Value) -> list[str]:
         return [s for v in self._fields(ctx, value) for s in v.table_variables(ctx)]
+
+    def unpackable(self, ctx: CompilationContext, value: Value) -> bool:
+        return value.getattr(ctx, False, "@unpack") is not None
+
+    def unpack_count(self, ctx: CompilationContext, value: Value) -> int | None:
+        return None
+
+    def unpack(self, ctx: CompilationContext, value: Value) -> list[Value]:
+        func = value.getattr_req(ctx, False, "@unpack")
+        if not func.callable_with(ctx, []):
+            ctx.error(
+                f"Value of type '{func.type}' does not have the correct function signature to implement unpacking")
+        return func.call(ctx, []).unpack_req(ctx)
 
 
 @dataclass(slots=True)
