@@ -153,17 +153,32 @@ class Compiler(AstVisitor[Value]):
     def visit_struct_node(self, node: StructNode) -> Value:
         name = node.name if node.name is not None else self.ctx.tmp()
 
-        parent = self.resolve_type_opt(node.parent)
-        if parent is not None:
-            # TODO
-            self.error(f"Struct inheritance is not yet supported")
+        field_names = set()
 
         fields = []
         static_fields = {}
         methods = {}
         static_methods = {}
 
+        parent = self.resolve_type_opt(node.parent)
+        if parent is not None:
+            if isinstance(parent, StructInstanceType):
+                parent = parent.base
+
+                fields = parent.fields.copy()
+                static_fields = parent.static_fields.copy()
+                methods = parent.methods.copy()
+                static_methods = parent.static_methods.copy()
+
+                field_names = set(field[0] for field in fields)
+            else:
+                self.error(f"Structs can only inherit from other structs, not '{parent}'")
+
         for field in node.fields:
+            if field.name in field_names:
+                self.error(f"Duplicate struct field: '{field.name}'")
+            field_names.add(field.name)
+
             assert not field.const
             assert field.type is not None
             fields.append((field.name, self.resolve_type(field.type)))
@@ -176,6 +191,7 @@ class Compiler(AstVisitor[Value]):
 
         for const, method in node.methods:
             assert method.name is not None
+
             methods[method.name] = (
                 const,
                 StructMethodData(
@@ -188,6 +204,7 @@ class Compiler(AstVisitor[Value]):
 
         for method in node.static_methods:
             assert method.name is not None
+
             static_methods[method.name] = StructMethodData(method.name,
                                                            [FunctionType.Param(p.name, p.reference,
                                                                                self.resolve_type_opt(p.type))
