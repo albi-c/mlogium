@@ -7,6 +7,7 @@ from .instruction import Instruction, InstructionInstance
 from .error import CompilerError
 from .scope import ScopeStack
 from .builtins import construct_builtins
+from .comptime_interpreter import ComptimeInterpreter
 
 
 class Compiler(AstVisitor[Value]):
@@ -29,12 +30,14 @@ class Compiler(AstVisitor[Value]):
 
     scope: ScopeStack
     ctx: CompilationContext
+    interpreter: ComptimeInterpreter
 
     def __init__(self):
         super().__init__()
 
         self.scope = ScopeStack()
         self.ctx = Compiler.CompilationContext(self)
+        self.interpreter = ComptimeInterpreter()
 
         self.scope.push("<builtins>", construct_builtins())
         self.scope.push("<main>")
@@ -117,6 +120,12 @@ class Compiler(AstVisitor[Value]):
 
     def visit_function_node(self, node: FunctionNode) -> Value:
         value = self._build_function(node)
+        if node.name is not None:
+            self._var_declare_special(node.name, value)
+        return value
+
+    def visit_comptime_function_node(self, node: ComptimeFunctionNode) -> Value:
+        value = self.interpreter.interpret(node).to_runtime(self.ctx)
         if node.name is not None:
             self._var_declare_special(node.name, value)
         return value

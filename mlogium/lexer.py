@@ -43,7 +43,8 @@ class Lexer:
         "enum": TokenType.KW_ENUM,
         "static": TokenType.KW_STATIC,
         "as": TokenType.KW_AS,
-        "namespace": TokenType.KW_NAMESPACE
+        "namespace": TokenType.KW_NAMESPACE,
+        "comptime": TokenType.KW_COMPTIME
     }
 
     def _reset(self, code: str, filename: str, start_pos: tuple[int, int, list[str] | None] = (0, 0, None)):

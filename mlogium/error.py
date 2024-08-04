@@ -51,3 +51,9 @@ class CompilerError(PositionedException):
     @staticmethod
     def custom(pos: Position, msg: str):
         raise CompilerError(msg, pos)
+
+
+class InterpreterError(PositionedException):
+    @staticmethod
+    def custom(pos: Position, msg: str):
+        raise CompilerError(msg, pos)

@@ -23,6 +23,7 @@ class TokenType(enum.Flag):
     KW_STATIC = enum.auto()
     KW_AS = enum.auto()
     KW_NAMESPACE = enum.auto()
+    KW_COMPTIME = enum.auto()
 
     STRING = enum.auto()
     INTEGER = enum.auto()
