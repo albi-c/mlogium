@@ -37,7 +37,7 @@ class Compiler(AstVisitor[Value]):
 
         self.scope = ScopeStack()
         self.ctx = Compiler.CompilationContext(self)
-        self.interpreter = ComptimeInterpreter()
+        self.interpreter = ComptimeInterpreter(self.ctx.tmp_num)
 
         self.scope.push("<builtins>", construct_builtins())
         self.scope.push("<main>")
@@ -62,6 +62,8 @@ class Compiler(AstVisitor[Value]):
 
     def _var_get(self, name: str) -> Value:
         if (var := self.scope.get(name)) is None:
+            if (var := self.interpreter.scope.get(name)) is not None:
+                return var.to_runtime(self.ctx)
             self.error(f"Value not found: '{name}'")
         return var
 
@@ -110,6 +112,9 @@ class Compiler(AstVisitor[Value]):
     def visit_declaration_node(self, node: DeclarationNode) -> Value:
         return self._declare_target(node.target, self.visit(node.value))
 
+    def visit_comptime_node(self, node: ComptimeNode) -> Value:
+        return self.interpreter.interpret(node).to_runtime(self.ctx)
+
     def _build_function(self, func: FunctionDeclaration) -> Value:
         return Value(FunctionType(func.name if func.name is not None else self.ctx.tmp(),
                                   [FunctionType.Param(p.name, p.reference, self.resolve_type_opt(p.type))
@@ -120,12 +125,6 @@ class Compiler(AstVisitor[Value]):
 
     def visit_function_node(self, node: FunctionNode) -> Value:
         value = self._build_function(node)
-        if node.name is not None:
-            self._var_declare_special(node.name, value)
-        return value
-
-    def visit_comptime_function_node(self, node: ComptimeFunctionNode) -> Value:
-        value = self.interpreter.interpret(node).to_runtime(self.ctx)
         if node.name is not None:
             self._var_declare_special(node.name, value)
         return value

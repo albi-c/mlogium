@@ -392,9 +392,8 @@ class Parser:
             return FunctionNode(tok.pos, func.name, func.params, func.result, func.code)
 
         elif tok.type == TokenType.KW_COMPTIME:
-            self.next(TokenType.KW_FN)
-            func = self._parse_function_declaration(False)
-            return ComptimeFunctionNode(tok.pos, func.name, func.params, func.result, func.code)
+            value = self.parse_value()
+            return ComptimeNode(tok.pos + value.pos, value)
 
         elif tok.type == TokenType.KW_STRUCT:
             if name_tok := self.lookahead(TokenType.ID):

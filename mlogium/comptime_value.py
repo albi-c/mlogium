@@ -7,9 +7,25 @@ from .value import *
 
 
 class ComptimeInterpreterContext(ABC):
+    scope: 'ComptimeScopeStack'
+
+    def __init__(self, scope: 'ComptimeScopeStack'):
+        self.scope = scope
+
     @abstractmethod
     def error(self, msg: str):
         raise NotImplementedError
+
+    @abstractmethod
+    def interpret(self, node: Node) -> CValue:
+        raise NotImplementedError
+
+    @abstractmethod
+    def tmp_num(self) -> int:
+        raise NotImplementedError
+
+    def tmp(self) -> str:
+        return f"__tmp_{self.tmp_num()}"
 
 
 class CValue(ABC):
@@ -37,10 +53,15 @@ class CValue(ABC):
 
     @classmethod
     def of_tuple(cls, values: list[CValue]) -> CValue:
-        pass
+        return TupleCValue(values)
 
     @abstractmethod
     def __str__(self):
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def type(self) -> CType:
         raise NotImplementedError
 
     @abstractmethod
@@ -57,6 +78,27 @@ class CValue(ABC):
         if not self.unpackable():
             ctx.error(f"Value '{self}' is not unpackable")
         return self.unpack()
+
+    def callable(self) -> bool:
+        return False
+
+    def callable_with(self, types: list[CType]) -> list[CType | None] | None:
+        return None if self.callable() else []
+
+    def call(self, ctx: ComptimeInterpreterContext, values: list[CValue]) -> CValue:
+        raise NotImplementedError
+
+
+@dataclass(slots=True)
+class OpaqueType(Type):
+    def __str__(self):
+        return "[comptime]"
+
+    def __eq__(self, other):
+        return False
+
+    def contains(self, other: Type) -> bool:
+        return False
 
 
 @dataclass(slots=True, eq=True)
@@ -83,7 +125,7 @@ class NullCType(CType):
 
 
 @dataclass(slots=True, eq=True)
-class NumCType(CType):
+class NumberCType(CType):
     def __str__(self):
         return "num"
 
@@ -92,7 +134,7 @@ class NumCType(CType):
 
 
 @dataclass(slots=True, eq=True)
-class StrCType(CType):
+class StringCType(CType):
     def __str__(self):
         return "str"
 
@@ -127,9 +169,27 @@ class UnionCType(CType):
         return any(t.contains(other) for t in self.types)
 
 
+@dataclass(slots=True, eq=True)
+class FunctionCType(CType):
+    params: list[CType | None]
+    result: CType | None
+    code_hash: int
+
+    def __str__(self):
+        return f"comptime fn {self.name}({', '.join(str(p) if p is not None else '?' for p in params)}) \
+-> {result if result is not None else '?'}"
+
+    def to_runtime(self) -> Type:
+        return OpaqueType()
+
+
 class NullCValue(CValue):
     def __str__(self):
         return "null"
+
+    @property
+    def type(self) -> CType:
+        return NullCType()
 
     def to_runtime(self, ctx: CompilationContext) -> Value:
         return Value.null()
@@ -142,6 +202,10 @@ class IntCValue(CValue):
     def __str__(self):
         return str(self.value)
 
+    @property
+    def type(self) -> CType:
+        return NumberCType()
+
     def to_runtime(self, ctx: CompilationContext) -> Value:
         return Value.of_number(self.value)
 
@@ -152,6 +216,10 @@ class FloatCValue(CValue):
 
     def __str__(self):
         return str(self.value)
+
+    @property
+    def type(self) -> CType:
+        return NumberCType()
 
     def to_runtime(self, ctx: CompilationContext) -> Value:
         return Value.of_number(self.value)
@@ -164,6 +232,10 @@ class StringCValue(CValue):
     def __str__(self):
         return f"\"{self.value}\""
 
+    @property
+    def type(self) -> CType:
+        return StringCType()
+
     def to_runtime(self, ctx: CompilationContext) -> Value:
         return Value.of_string(self.value)
 
@@ -174,6 +246,10 @@ class TupleCValue(CValue):
 
     def __str__(self):
         return f"({', '.join(map(str, self.values))})"
+
+    @property
+    def type(self) -> CType:
+        return TupleCType([v.type for v in self.values])
 
     def to_runtime(self, ctx: CompilationContext) -> Value:
         return Value.of_tuple(ctx, [v.to_runtime(ctx) for v in self.values])
@@ -207,3 +283,19 @@ class FunctionCValue(CValue):
             self.result if self.result is not None else None,
             lambda ctx_, _: self.function([]).to_runtime(ctx_)
         ), "", True)
+
+    @property
+    def type(self) -> CType:
+        return FunctionCType(self.params, self.result, id(self.function))
+
+    def callable(self) -> bool:
+        return True
+
+    def callable_with(self, types: list[CType]) -> list[CType | None] | None:
+        return None if len(types) == len(self.params) and all(
+            p is None or p.contains(t) for p, t in zip(self.params, types)) else self.params
+
+    def call(self, ctx: ComptimeInterpreterContext, values: list[CValue]) -> CValue:
+        # TODO: add params to scope
+        with ctx.scope(ctx.tmp()):
+            return self.function(values)

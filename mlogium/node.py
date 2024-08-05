@@ -86,11 +86,11 @@ class AstVisitor[T](ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def visit_function_node(self, node: FunctionNode) -> T:
+    def visit_comptime_node(self, node: ComptimeNode) -> T:
         raise NotImplementedError
 
     @abstractmethod
-    def visit_comptime_function_node(self, node: ComptimeFunctionNode) -> T:
+    def visit_function_node(self, node: FunctionNode) -> T:
         raise NotImplementedError
 
     @abstractmethod
@@ -236,6 +236,17 @@ class DeclarationNode(Node):
 
 
 @dataclass
+class ComptimeNode(Node):
+    value: Node
+
+    def __str__(self):
+        return f"comptime {self.value}"
+
+    def accept[T](self, visitor: AstVisitor[T]) -> T:
+        return visitor.visit_comptime_node(self)
+
+
+@dataclass
 class FunctionParam:
     name: str
     reference: bool
@@ -263,15 +274,6 @@ class FunctionNode(FunctionDeclaration, Node):
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_function_node(self)
-
-
-@dataclass
-class ComptimeFunctionNode(FunctionDeclaration, Node):
-    def __str__(self):
-        return super().__str__()
-
-    def accept[T](self, visitor: AstVisitor[T]) -> T:
-        return visitor.visit_comptime_function_node(self)
 
 
 @dataclass

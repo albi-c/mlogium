@@ -9,21 +9,31 @@ from .comptime_scope import ComptimeScopeStack
 class ComptimeInterpreter(AstVisitor[CValue]):
     class Context(ComptimeInterpreterContext):
         interpreter: ComptimeInterpreter
+        tmp_num_provider: Callable[[], int]
 
-        def __init__(self, interpreter: ComptimeInterpreter):
+        def __init__(self, interpreter: ComptimeInterpreter, tmp_num_provider: Callable[[], int]):
+            super().__init__(interpreter.scope)
+
             self.interpreter = interpreter
+            self.tmp_num_provider = tmp_num_provider
 
         def error(self, msg: str):
             self.interpreter.error(msg)
 
-    ctx: ComptimeInterpreterContext
-    scope: ComptimeScopeStack
+        def interpret(self, node: Node) -> CValue:
+            return self.interpreter.visit(node)
 
-    def __init__(self):
+        def tmp_num(self) -> int:
+            return self.tmp_num_provider()
+
+    scope: ComptimeScopeStack
+    ctx: ComptimeInterpreterContext
+
+    def __init__(self, tmp_num_provider: Callable[[], int]):
         super().__init__()
 
-        self.ctx = ComptimeInterpreter.Context(self)
         self.scope = ComptimeScopeStack()
+        self.ctx = ComptimeInterpreter.Context(self, tmp_num_provider)
 
         # TODO: builtins
         self.scope.push("<builtins>", {})
@@ -41,9 +51,28 @@ class ComptimeInterpreter(AstVisitor[CValue]):
             self.error(f"Variable not found: '{name}'")
         return var
 
-    def _var_declare(self, name: str, value: CValue) -> CValue:
+    def _var_declare(self, name: str, value: CValue, type_: CType = None, const: bool = False) -> CValue:
+        # TODO: constants, type checking
         if not self.scope.declare(name, value):
             self.error(f"Variable already defined: '{name}'")
+        return value
+
+    def _declare_target(self, target: AssignmentTarget, value: CValue) -> CValue:
+        if isinstance(target, SingleAssignmentTarget):
+            self._var_declare(target.name, value, target.type, target.const)
+
+        elif isinstance(target, UnpackAssignmentTarget):
+            values = value.unpack_req(self.ctx)
+            if len(values) != len(target.values):
+                self.error(
+                    f"Value of type '{value.type}' unpacks into {len(values)} values, expected {len(target.values)}")
+            for i, (dst, src) in enumerate(zip(target.values, values)):
+                type_ = target.types[i] if target.types is not None else None
+                self._var_declare(dst, src, type_, target.const)
+
+        else:
+            raise TypeError(f"Invalid assignment target: {target}")
+
         return value
 
     def _create_function(self, func: FunctionDeclaration) -> CValue:
@@ -61,12 +90,12 @@ class ComptimeInterpreter(AstVisitor[CValue]):
         return CValue.null()
 
     def visit_declaration_node(self, node: DeclarationNode) -> CValue:
-        pass
+        return self._declare_target(node.target, self.visit(node.value))
+
+    def visit_comptime_node(self, node: ComptimeNode) -> CValue:
+        return self.visit(node.value)
 
     def visit_function_node(self, node: FunctionNode) -> CValue:
-        pass
-
-    def visit_comptime_function_node(self, node: ComptimeFunctionNode) -> CValue:
         value = self._create_function(node)
         if node.name is not None:
             self._var_declare(node.name, value)
@@ -115,7 +144,22 @@ class ComptimeInterpreter(AstVisitor[CValue]):
         pass
 
     def visit_call_node(self, node: CallNode) -> CValue:
-        pass
+        func = self.visit(node.value)
+        if not func.callable():
+            self.error(f"Value of type '{func.type}' is not callable")
+
+        params = []
+        for p, u in node.params:
+            if u:
+                params += self.visit(p).unpack_req(self.ctx)
+            else:
+                params.append(self.visit(p))
+
+        if (exp := func.callable_with([p.type for p in params])) is not None:
+            self.error(f"Cannot call function with parameters of types ({', '.join(f'\'{p.type}\'' for p in params)}), \
+expected ({', '.join(f'\'{t}\'' for t in exp)})")
+
+        return func.call(self.ctx, params)
 
     def visit_index_node(self, node: IndexNode) -> CValue:
         pass
@@ -134,13 +178,15 @@ class ComptimeInterpreter(AstVisitor[CValue]):
         return CValue.null()
 
     def visit_variable_value_node(self, node: VariableValueNode) -> CValue:
-        pass
+        return self._var_get(node.name)
 
     def visit_tuple_value_node(self, node: TupleValueNode) -> CValue:
         values = []
         for n, u in node.values:
             if u:
                 values += self.visit(n).unpack_req(self.ctx)
+            else:
+                values.append(self.visit(n))
         return CValue.of_tuple(values)
 
     def visit_range_value_node(self, node: RangeValueNode) -> CValue:
