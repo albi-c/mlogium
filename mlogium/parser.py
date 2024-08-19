@@ -331,14 +331,20 @@ class Parser:
     def _parse_function_param(self) -> FunctionParam:
         ref = bool(self.lookahead(TokenType.OPERATOR, "&"))
         name = self.next(TokenType.ID).value
+        variadic = self.lookahead(TokenType.ELLIPSIS)
+        if variadic and ref:
+            ParserError.custom(variadic.pos, "Variadic parameters cannot be references")
         if self.lookahead(TokenType.COLON):
             type_ = self.parse_type()
         else:
             type_ = None
-        return FunctionParam(name, ref, type_)
+        return FunctionParam(name, ref, type_, bool(variadic), variadic.pos if variadic is not None else None)
 
     def _parse_function_signature(self) -> tuple[list[FunctionParam], Node | None]:
         params = self._parse_comma_separated(self._parse_function_param)
+        for i, p in enumerate(params):
+            if p.variadic and i != len(params) - 1:
+                ParserError.custom(p.debug_variadic_pos, "Variadic function parameter must be last")
         if self.lookahead(TokenType.ARROW):
             type_ = self.parse_type()
         else:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from abc import abstractmethod, ABC
 
 from .value import *
 
@@ -164,7 +163,7 @@ class UnionCType(CType):
         return UnionType([t.to_runtime() for t in self.types])
 
     def contains(self, other: CType) -> bool:
-        if isinstance(other, CType.Union):
+        if isinstance(other, UnionCType):
             return any(self.contains(t) for t in other.types)
         return any(t.contains(other) for t in self.types)
 
@@ -176,8 +175,8 @@ class FunctionCType(CType):
     code_hash: int
 
     def __str__(self):
-        return f"comptime fn {self.name}({', '.join(str(p) if p is not None else '?' for p in params)}) \
--> {result if result is not None else '?'}"
+        return f"comptime fn({', '.join(str(p) if p is not None else '?' for p in self.params)}) \
+-> {self.result if self.result is not None else '?'}"
 
     def to_runtime(self) -> Type:
         return OpaqueType()
@@ -269,8 +268,8 @@ class FunctionCValue(CValue):
     function: Callable[[list[CValue]], CValue]
 
     def __str__(self):
-        return f"comptime fn {self.name}({', '.join(str(p) if p is not None else '?' for p in params)}) \
--> {result if result is not None else '?'}"
+        return f"comptime fn {self.name}({', '.join(str(p) if p is not None else '?' for p in self.params)}) \
+-> {self.result if self.result is not None else '?'}"
 
     def to_runtime(self, ctx: CompilationContext) -> Value:
         # TODO: accept parameters from runtime context

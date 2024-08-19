@@ -94,7 +94,7 @@ class Optimizer:
             (("0",), ("0",), None),
         )),
         (("sub",), (
-            (("0",), ("0",), None),
+            (tuple(), ("0",), None),
             (tuple(), tuple(), "0")
         )),
         (("mul",), (

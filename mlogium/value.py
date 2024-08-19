@@ -1383,9 +1383,45 @@ class FunctionType(Type):
         name: str
         reference: bool
         type: Type | None
+        variadic: bool
 
         def __str__(self):
-            return f"{'&' if self.reference else ''}{self.name}{': ' + str(self.type) if self.type else ''}"
+            return f"{'&' if self.reference else ''}{self.name}{'...' if self.variadic else ''}\
+{': ' + str(self.type) if self.type else ''}"
+
+    @staticmethod
+    def check_callable_with(params: list[FunctionType.Param], param_types: list[Type]) -> bool:
+        if len(params) == 0:
+            return len(param_types) == 0
+
+        elif params[-1].variadic:
+            return len(params) <= len(param_types) and \
+                all(p.type is None or p.type.contains(t) for p, t in zip(
+                    params[:-1], param_types[:len(params)-1])) and \
+                all(params[-1].type is None or params[-1].type.contains(t) for t in param_types[len(params)-1:])
+
+        else:
+            return len(params) == len(param_types) and \
+                all(p.type is None or p.type.contains(t) for p, t in zip(params, param_types))
+
+    @staticmethod
+    def declare_param(ctx: CompilationContext, i: int, dst: FunctionType.Param, srcs: list[Value]):
+        if dst.variadic:
+            if dst.reference:
+                ctx.error(f"Variadic parameters cannot be references")
+            else:
+                ctx.scope.declare_special(dst.name, Value.of_tuple(ctx, srcs[i:]))
+        else:
+            if dst.reference:
+                ctx.scope.declare_special(dst.name, srcs[i])
+            else:
+                ctx.scope.declare(
+                    dst.name, dst.type if dst.type is not None else srcs[i].type, False).assign(ctx, srcs[i])
+
+    @classmethod
+    def declare_params(cls, ctx: CompilationContext, dsts: list[FunctionType.Param], srcs: list[Value]):
+        for i, dst in enumerate(dsts):
+            cls.declare_param(ctx, i, dst, srcs)
 
     name: str
     params: list[FunctionType.Param]
@@ -1413,17 +1449,12 @@ class FunctionType(Type):
         return [p.type for p in self.params]
 
     def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
-        return len(self.params) == len(param_types) and \
-            all(p.type is None or p.type.contains(t) for p, t in zip(self.params, param_types))
+        return FunctionType.check_callable_with(self.params, param_types)
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
         with ctx.scope.function_call(ctx, f"$function_{self.name}:{ctx.tmp_num()}",
                                      ctx.scope.combine_global_closures(self.global_closure)):
-            for dst, src in zip(self.params, params):
-                if dst.reference:
-                    ctx.scope.declare_special(dst.name, src)
-                else:
-                    ctx.scope.declare(dst.name, dst.type if dst.type is not None else src.type, False).assign(ctx, src)
+            FunctionType.declare_params(ctx, self.params, params)
 
             result = ctx.generate_node(self.code)
 
@@ -1478,8 +1509,7 @@ class LambdaType(Type):
         return [p.type for p in self.params]
 
     def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
-        return len(self.params) == len(param_types) and \
-            all(p.type is None or p.type.contains(t) for p, t in zip(self.params, param_types))
+        return FunctionType.check_callable_with(self.params, param_types)
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
         with ctx.scope.function_call(ctx, f"$lambda_{self.name}:{ctx.tmp_num()}",
@@ -1487,11 +1517,7 @@ class LambdaType(Type):
             for capture in self.captures:
                 ctx.scope.declare_special(capture.name, capture.value)
 
-            for dst, src in zip(self.params, params):
-                if dst.reference:
-                    ctx.scope.declare_special(dst.name, src)
-                else:
-                    ctx.scope.declare(dst.name, dst.type if dst.type is not None else src.type, False).assign(ctx, src)
+            FunctionType.declare_params(ctx, self.params, params)
 
             result = ctx.generate_node(self.code)
 
@@ -1549,19 +1575,14 @@ class StructMethodType(Type):
         return [p.type for p in self.params]
 
     def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
-        return len(self.params) == len(param_types) and \
-            all(p.type is None or p.type.contains(t) for p, t in zip(self.params, param_types))
+        return FunctionType.check_callable_with(self.params, param_types)
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
         with ctx.scope.function_call(ctx, f"$method_{self.name}:{ctx.tmp_num()}",
                                      ctx.scope.combine_global_closures(self.global_closure)):
             ctx.scope.declare_special("self", self.self_value)
 
-            for dst, src in zip(self.params, params):
-                if dst.reference:
-                    ctx.scope.declare_special(dst.name, src)
-                else:
-                    ctx.scope.declare(dst.name, dst.type if dst.type is not None else src.type, False).assign(ctx, src)
+            FunctionType.declare_params(ctx, self.params, params)
 
             result = ctx.generate_node(self.code)
 
@@ -1611,9 +1632,13 @@ class StructBaseType(Type):
     static_fields: dict[str, Value]
     methods: dict[str, tuple[bool, StructMethodData]]
     static_methods: dict[str, StructMethodData]
+    _instance_type: StructInstanceType = None
 
     def __post_init__(self):
-        self._instance_type: StructInstanceType = StructInstanceType(self)
+        self.reload_instance_type()
+
+    def reload_instance_type(self):
+        self._instance_type = StructInstanceType(self)
 
     def __str__(self):
         return f"Struct[{self.name if self.name else '?'}]"
