@@ -4,7 +4,7 @@ import os
 import pyperclip
 
 from . import __version__
-from .compile import compile_code
+from .compile import compile_code, compile_asm_code
 from .error import PositionedException
 
 
@@ -12,6 +12,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="High level mindustry logic language", prog="mlogium")
 
     parser.add_argument("file", type=str, help="input file [@clip for clipboard]")
+
+    parser.add_argument("-a", "--assembly", help="compile as mlogium assembly", action="store_true")
 
     parser.add_argument("-o:f", "--output-file", help="write output to a file")
     parser.add_argument("-o:s", "--output-stdout", help="write output to stdout", action="store_true")
@@ -59,7 +61,10 @@ def main() -> int:
         filename = args.file
 
     try:
-        result = compile_code(code, filename).strip()
+        if args.assembly:
+            result = compile_asm_code(code, filename).strip()
+        else:
+            result = compile_code(code, filename).strip()
     except PositionedException as e:
         print(e.msg)
         e.pos.print()

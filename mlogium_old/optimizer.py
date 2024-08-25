@@ -184,16 +184,16 @@ class Optimizer:
     @classmethod
     def _make_function_sets_essential(cls, code: Instructions):
         for i, ins in enumerate(code):
-            if ins.name == Instruction.set.name and ins.params[0].startswith("%"):
+            if ins.name == Instruction.set.target and ins.params[0].startswith("%"):
                 code[i] = Instruction.essential_set(*ins.params)
 
     @classmethod
     def _is_label(cls, ins: InstructionInstance):
-        return ins.name in (Instruction.label.name, Instruction.prepare_return_address.name)
+        return ins.name in (Instruction.label.target, Instruction.prepare_return_address.target)
 
     @classmethod
     def _is_jump(cls, ins: InstructionInstance):
-        return ins.name in (Instruction.jump.name, Instruction.jump_addr.name)
+        return ins.name in (Instruction.jump.target, Instruction.jump_addr.target)
 
     @classmethod
     def _make_blocks(cls, code: Instructions) -> Blocks:
@@ -215,7 +215,7 @@ class Optimizer:
             return
 
         labels = {"$" + lab.params[0]: i for i, block in enumerate(blocks)
-                  for lab in block if lab.name == Instruction.label.name}
+                  for lab in block if lab.name == Instruction.label.target}
 
         labels_in_variables = {lab for block in blocks for ins in block for lab in ins.params if lab.startswith("$")}
 
@@ -245,7 +245,7 @@ class Optimizer:
         used.add(i)
 
         for ins in blocks[i]:
-            if ins.name == Instruction.jump.name:
+            if ins.name == Instruction.jump.target:
                 if ins.params[1] == "always":
                     cls._eval_block_jumps_internal(blocks, labels, labels[ins.params[0]], used, i)
                     return
@@ -267,9 +267,9 @@ class Optimizer:
     @classmethod
     def _optimize_block_jumps(cls, blocks: Blocks):
         labels = {"$" + lab.params[0]: i for i, block in enumerate(blocks)
-                  for lab in block if lab.name == Instruction.label.name}
+                  for lab in block if lab.name == Instruction.label.target}
         for i, block in enumerate(blocks):
-            if len(block) > 0 and block[-1].name == Instruction.jump.name and labels[block[-1].params[0]] == i + 1:
+            if len(block) > 0 and block[-1].name == Instruction.jump.target and labels[block[-1].params[0]] == i + 1:
                 block.pop(-1)
 
     @classmethod
@@ -326,7 +326,7 @@ class Optimizer:
 
         for block in blocks:
             for ins in block:
-                if ins.name == Instruction.set.name:
+                if ins.name == Instruction.set.target:
                     constants[ins.params[0]] = ins.params[1]
 
         found = False
@@ -344,7 +344,7 @@ class Optimizer:
         found = False
         for block in blocks:
             for i, ins in enumerate(block):
-                if ins.name == Instruction.op.name:
+                if ins.name == Instruction.op.target:
                     result = None
                     for instructions, patterns in Optimizer.OP_CONSTANTS:
                         if ins.params[0] not in instructions:
@@ -398,7 +398,7 @@ class Optimizer:
                         block[i] = Instruction.set(ins.params[1], result)
                         found = True
 
-                elif ins.name == Instruction.jump.name:
+                elif ins.name == Instruction.jump.target:
                     if ins.params[1] in Optimizer.JUMP_PRECALC:
                         try:
                             func = Optimizer.JUMP_PRECALC[ins.params[1]]
@@ -430,7 +430,7 @@ class Optimizer:
         for block in blocks:
             operations: dict[tuple[str, str, str], str] = {}
             for i, ins in enumerate(block):
-                if ins.name == Instruction.op.name:
+                if ins.name == Instruction.op.target:
                     if ins.params[0] == "rand":
                         continue
 
@@ -462,7 +462,7 @@ class Optimizer:
 
     @classmethod
     def _remove_noops(cls, code: Instructions):
-        code[:] = [ins for ins in code if ins.name != Instruction.noop.name]
+        code[:] = [ins for ins in code if ins.name != Instruction.noop.target]
 
     @classmethod
     def _is_impossible_jump(cls, ins: InstructionInstance) -> bool:
@@ -496,15 +496,15 @@ class Optimizer:
     @classmethod
     def _optimize_jumps(cls, code: Instructions):
         used_labels = {label[1:] for ins in code for label in ins.params if label.startswith("$")}
-        code[:] = [ins for ins in code if ins.name != Instruction.label.name or ins.params[0] in used_labels]
+        code[:] = [ins for ins in code if ins.name != Instruction.label.target or ins.params[0] in used_labels]
 
-        labels = {"$" + ins.params[0]: i for i, ins in enumerate(code) if ins.name == Instruction.label.name}
-        code[:] = [ins if ins.name != Instruction.jump.name or labels[ins.params[0]] != i else Instruction.noop()
+        labels = {"$" + ins.params[0]: i for i, ins in enumerate(code) if ins.name == Instruction.label.target}
+        code[:] = [ins if ins.name != Instruction.jump.target or labels[ins.params[0]] != i else Instruction.noop()
                    for i, ins in enumerate(code)]
 
-        code[:] = [ins if ins.name != Instruction.jump.name or not cls._is_impossible_jump(ins)
+        code[:] = [ins if ins.name != Instruction.jump.target or not cls._is_impossible_jump(ins)
                    else Instruction.noop() for i, ins in enumerate(code)]
-        code[:] = [ins if ins.name != Instruction.jump.name or not cls._does_always_jump(ins)
+        code[:] = [ins if ins.name != Instruction.jump.target or not cls._does_always_jump(ins)
                    else Instruction.jump_always(ins.params[0][1:]) for i, ins in enumerate(code)]
 
     @classmethod
@@ -563,12 +563,12 @@ class Optimizer:
 
         found = False
         for i, ins in enumerate(code):
-            if ins.name == Instruction.set.name:
+            if ins.name == Instruction.set.target:
                 if uses[ins.params[0]] == 1 or ins.params[0] == ins.params[1]:
                     code[i] = Instruction.noop()
                     return True
 
-            if ins.name == Instruction.jump.name and ins.params[1] == "equal" and ins.params[3] == "0":
+            if ins.name == Instruction.jump.target and ins.params[1] == "equal" and ins.params[3] == "0":
                 tmp = ins.params[2]
                 first = first_uses[tmp]
                 if (inputs[tmp] == 1 and outputs[tmp] == 1 and i != first[0]
@@ -579,12 +579,12 @@ class Optimizer:
                     return True
 
             if (all(uses[ins.params[j]] == 1 for j in ins.outputs) and not ins.side_effects
-                    and ins.name != Instruction.noop.name):
+                    and ins.name != Instruction.noop.target):
                 code[i] = Instruction.noop()
                 return True
 
             if (all(inputs[ins.params[j]] == 0 for j in ins.outputs) and not ins.side_effects
-                    and ins.name != Instruction.noop.name):
+                    and ins.name != Instruction.noop.target):
                 code[i] = Instruction.noop()
                 return True
 
@@ -592,7 +592,7 @@ class Optimizer:
                 param = ins.params[j]
                 first = first_uses[param]
                 first_ins = code[first[0]]
-                if outputs[param] == 1 and first_ins.name == Instruction.set.name and first_ins.params[0] == param:
+                if outputs[param] == 1 and first_ins.name == Instruction.set.target and first_ins.params[0] == param:
                     ins.params[j] = first_ins.params[1]
                     found = True
 
@@ -617,7 +617,7 @@ class Optimizer:
 
         prints: list[tuple[int, str]] = []
         for i, ins in enumerate(code):
-            if ins.name == Instruction.print.name:
+            if ins.name == Instruction.print.target:
                 val = None
                 try:
                     _ = float(ins.params[0])
@@ -642,7 +642,7 @@ class Optimizer:
     def _precalculate_op_jump(cls, code: Instructions) -> bool:
         found = False
         for i, ins in enumerate(code):
-            if ins.name == Instruction.op.name:
+            if ins.name == Instruction.op.target:
                 result = None
                 for instructions, patterns in Optimizer.OP_CONSTANTS:
                     if ins.params[0] not in instructions:
@@ -697,7 +697,7 @@ class Optimizer:
                     code[i] = Instruction.set(ins.params[1], result)
                     found = True
 
-            elif ins.name == Instruction.jump.name:
+            elif ins.name == Instruction.jump.target:
                 if ins.params[1] in Optimizer.JUMP_PRECALC:
                     try:
                         func = Optimizer.JUMP_PRECALC[ins.params[1]]

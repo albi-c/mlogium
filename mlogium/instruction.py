@@ -197,6 +197,8 @@ class Instruction:
         (name, ([type_, UnionTypeRef([Types.BLOCK, Types.UNIT])], False, [0])) for name, type_ in enums.ENUM_SENSABLE.items()
     ], param_process=lambda params: [params[1], params[2], "@" + params[0]])
 
+    sensor_asm = _make("sensor", [Types.ANY, Types.ANY, Types.ANY], False, [0])
+
     set = _make("set", [Types.ANY, Types.ANY], False, [0], internal=True)
     op = _make("op", [Types.ANY, Types.NUM, Types.NUM, Types.NUM], False, [1], internal=True)
     lookup = _make_with_subcommands("lookup", False, [0], [

@@ -39,7 +39,7 @@ def builtin_intrinsic(func: Callable, params_: list[Type], outputs_: set[int] = 
     outputs_ = outputs_ if outputs_ is not None else set()
     if name_ is None:
         ins = func(["_"] * len(params_))
-        name_ = ins.name
+        name_ = ins.target
     return Value(
         IntrinsicFunctionType(
             name_,
