@@ -251,9 +251,13 @@ class FunctionParam:
     name: str
     reference: bool
     type: Node | None
+    variadic: bool
+
+    debug_variadic_pos: Position | None
 
     def __str__(self):
-        return f"{'&' if self.reference else ''}{self.name}{': ' + str(self.type) if self.type is not None else ''}"
+        return f"{'&' if self.reference else ''}{self.name}{'...' if self.variadic else ''}\
+{': ' + str(self.type) if self.type is not None else ''}"
 
 
 @dataclass

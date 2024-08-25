@@ -117,7 +117,7 @@ class Compiler(AstVisitor[Value]):
 
     def _build_function(self, func: FunctionDeclaration) -> Value:
         return Value(FunctionType(func.name if func.name is not None else self.ctx.tmp(),
-                                  [FunctionType.Param(p.name, p.reference, self.resolve_type_opt(p.type))
+                                  [FunctionType.Param(p.name, p.reference, self.resolve_type_opt(p.type), p.variadic)
                                    for p in func.params],
                                   self.resolve_type_opt(func.result),
                                   func.code,
@@ -141,7 +141,7 @@ class Compiler(AstVisitor[Value]):
                 copied.assign(self.ctx, val)
                 captures.append(LambdaType.Capture(capture.name, copied, capture.name))
         value = Value(LambdaType(f"$lambda_{self.ctx.tmp_num()}",
-                                 [FunctionType.Param(p.name, p.reference, self.resolve_type_opt(p.type))
+                                 [FunctionType.Param(p.name, p.reference, self.resolve_type_opt(p.type), p.variadic)
                                   for p in node.params],
                                  captures,
                                  self.resolve_type_opt(node.result),
@@ -160,6 +160,11 @@ class Compiler(AstVisitor[Value]):
 
     def visit_struct_node(self, node: StructNode) -> Value:
         name = node.name if node.name is not None else self.ctx.tmp()
+        base_type = StructBaseType(node.name, [], {}, {}, {})
+        value = Value(base_type, "")
+        if node.name is not None:
+            self._var_declare_special(node.name, value)
+        self._var_declare_special("Self", value)
 
         field_names = set()
 
@@ -204,7 +209,7 @@ class Compiler(AstVisitor[Value]):
                 const,
                 StructMethodData(
                     method.name,
-                    [FunctionType.Param(p.name, p.reference, self.resolve_type_opt(p.type))
+                    [FunctionType.Param(p.name, p.reference, self.resolve_type_opt(p.type), p.variadic)
                      for p in method.params],
                     self.resolve_type_opt(method.result),
                     method.code,
@@ -215,15 +220,19 @@ class Compiler(AstVisitor[Value]):
 
             static_methods[method.name] = StructMethodData(method.name,
                                                            [FunctionType.Param(p.name, p.reference,
-                                                                               self.resolve_type_opt(p.type))
+                                                                               self.resolve_type_opt(p.type),
+                                                                               p.variadic)
                                                             for p in method.params],
                                                            self.resolve_type_opt(method.result),
                                                            method.code,
                                                            self.scope.get_global_closures())
 
-        value = Value(StructBaseType(node.name, fields, static_fields, methods, static_methods), "")
-        if node.name is not None:
-            self._var_declare_special(node.name, value)
+        base_type.fields = fields
+        base_type.static_fields = static_fields
+        base_type.methods = methods
+        base_type.static_methods = static_methods
+        base_type.reload_instance_type()
+
         return value
 
     @staticmethod
