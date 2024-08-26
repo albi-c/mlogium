@@ -1,9 +1,16 @@
-    i = 0
-loop_start:
-    -> loop_end (i >= @links)
+#def loop(counter, until, body) {
+    counter = 0
+$0:
+    -> $1 (counter >= until)
+    body
+    counter += 1
+    -> $0
+$1:
+}
+
+#loop(i, @links, {
     building = getlink(-, i)
     print(building)
     print("\n")
-    -> loop_start
-loop_end:
-    printflush(message1)
+})
+printflush(message1)

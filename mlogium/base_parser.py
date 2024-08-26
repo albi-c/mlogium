@@ -51,6 +51,7 @@ class BaseParser[T](ABC):
     def lookahead(self, type_: TokenType = None, value: str | tuple[str, ...] = None,
                   n: int = 1, take_if_matches: bool = True) -> Token | None:
         assert n >= 1
+        assert n == 1 or not take_if_matches or (type_ is None and value is None)
 
         if not self.has(n):
             return None
@@ -60,7 +61,6 @@ class BaseParser[T](ABC):
             return None
 
         if take_if_matches and (type_ is not None or value is not None):
-            assert n == 1
             self.i += 1
 
         return tok

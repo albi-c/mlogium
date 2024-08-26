@@ -103,6 +103,12 @@ class RootAsmNode(AsmNode):
 
 
 @dataclass
+class BlockAsmNode(RootAsmNode):
+    def __str__(self):
+        return f"{{\n{'\n'.join(map(str, self.nodes))}\n}}"
+
+
+@dataclass
 class JumpAsmNode(AsmNode):
     @dataclass
     class Condition:

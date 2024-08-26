@@ -34,6 +34,7 @@ class AsmCompiler(AsmAstVisitor[None]):
         "*": "mul",
         "/": "div",
         "//": "idiv",
+        "/.": "idiv",
         "%": "mod",
         "**": "pow",
         "&&": "land",

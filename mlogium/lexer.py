@@ -301,6 +301,10 @@ class Lexer:
             if self.lookahead(val):
                 val += val
 
+        if val == "/":
+            if self.lookahead("."):
+                val += "."
+
         # <=, >=
         if val in ("<", ">"):
             if self.lookahead("="):

@@ -55,14 +55,11 @@ class TokenType(enum.Flag):
     RBRACK = enum.auto()
 
 
-@dataclass(repr=False)
+@dataclass(slots=True)
 class Token:
     type: TokenType
     value: str
     pos: Position
-
-    def __repr__(self):
-        return f"Token({self.type}, \"{self.value}\", {self.pos})"
 
     def __str__(self):
         return f"[{self.type}, \"{self.value}\"]"

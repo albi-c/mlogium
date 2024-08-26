@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 
-@dataclass
+@dataclass(slots=True)
 class Position:
     line: int
     start: int
@@ -31,6 +31,9 @@ class Position:
 
     def __iadd__(self, _):
         return NotImplemented
+
+    def copy(self):
+        return Position(self.line, self.start, self.end, self.code, self.file)
 
 
 def cast[T](value, type_: type[T]) -> T:
