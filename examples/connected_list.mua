@@ -1,7 +1,7 @@
     i = 0
 loop_start:
     -> loop_end (i >= @links)
-    getlink(building, i)
+    building = getlink(-, i)
     print(building)
     print("\n")
     -> loop_start

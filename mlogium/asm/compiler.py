@@ -2,7 +2,7 @@ from .node import *
 from ..error import CompilerError
 from ..util import Position
 from ..instruction import Instruction, InstructionInstance
-from typing import Callable
+from typing import Callable, Iterable
 
 
 class RawInstruction(InstructionInstance):
@@ -64,6 +64,9 @@ class AsmCompiler(AsmAstVisitor[None]):
     def emit(self, *instructions: InstructionInstance):
         self.instructions += instructions
 
+    def error(self, msg: str):
+        CompilerError.custom(self.current_pos, msg)
+
     def compile(self, ast: AsmNode):
         self.visit(ast)
 
@@ -108,10 +111,30 @@ class AsmCompiler(AsmAstVisitor[None]):
     def visit_index_write_node(self, node: IndexWriteAsmNode):
         self.emit(Instruction.write(node.value, node.target, node.index))
 
+    @staticmethod
+    def _remove_param_references(params: Iterable[str]) -> list[str]:
+        return [p[1:] if p.startswith("&") else p for p in params]
+
     def visit_call_node(self, node: CallAsmNode):
-        # TODO: use result
-        self.emit(RawInstruction(node.function, *node.params))
+        if node.result is None:
+            if "-" in node.params:
+                self.error("Cannot use blank reference with unused function output")
+            self.emit(RawInstruction(node.function, *self._remove_param_references(node.params)))
+        else:
+            if node.params.count("-") != 1:
+                self.error("Exactly one blank reference must be present if using function output")
+            self.emit(RawInstruction(node.function, *self._remove_param_references(
+                node.result if p == "-" else p for p in node.params)))
 
     def visit_unpack_call_node(self, node: UnpackCallAsmNode):
-        # TODO: use result
-        self.emit(RawInstruction(node.function, *node.params))
+        if node.params.count("-") != len(node.results):
+            self.error("Blank reference count must be equal to number of function outputs")
+        params = []
+        blank_index = 0
+        for p in node.params:
+            if p == "-":
+                params.append(node.results[blank_index])
+                blank_index += 1
+            else:
+                params.append(p)
+        self.emit(RawInstruction(node.function, *self._remove_param_references(params)))

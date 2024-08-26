@@ -58,16 +58,41 @@ class AsmParser(BaseParser[AsmNode]):
         else:
             return RootAsmNode(self._current_pos(), statements)
 
+    def _parse_call_param(self) -> str:
+        if tok := self.lookahead(TokenType.OPERATOR, "-"):
+            return tok.value
+        elif self.lookahead(TokenType.OPERATOR, "&"):
+            output = self.next(TokenType.ID)
+            return f"&{output.value}"
+        return self.parse_primitive_value().value
+
+    def _parse_label_with_offset(self) -> tuple[str, Position]:
+        if tok := self.lookahead(TokenType.DOT):
+            return "+0", tok.pos
+        elif value := self.lookahead(TokenType.INTEGER):
+            return value.value, value.pos
+        elif op := self.lookahead(TokenType.OPERATOR, ("+", "-")):
+            offset = self.next(TokenType.INTEGER)
+            return f"{op.value}{offset.value}", offset.pos
+        elif value := self.next(TokenType.ID):
+            if op := self.lookahead(TokenType.OPERATOR, ("+", "-")):
+                offset = self.next(TokenType.INTEGER)
+                return f"{value.value}{op.value}{offset.value}", offset.pos
+            else:
+                return value.value, value.pos
+        else:
+            ParserError.unexpected_token(tok, str(TokenType.INTEGER | TokenType.OPERATOR))
+
     def parse_statement(self) -> AsmNode:
         if tok := self.lookahead(TokenType.ARROW):
-            name = self.next(TokenType.ID)
+            dest, dest_pos = self._parse_label_with_offset()
             if self.lookahead(TokenType.LPAREN):
                 left = self.next(TokenType.ID).value
                 op = self.next(TokenType.OPERATOR, ("<", "<=", ">", ">=", "==", "!=", "===")).value
                 right = self.next(TokenType.ID).value
                 close = self.next(TokenType.RPAREN)
-                return JumpAsmNode(tok.pos + close.pos, name.value, JumpAsmNode.Condition(left, op, right))
-            return JumpAsmNode(tok.pos + name.pos, name.value, None)
+                return JumpAsmNode(tok.pos + close.pos, dest, JumpAsmNode.Condition(left, op, right))
+            return JumpAsmNode(tok.pos + dest_pos, dest, None)
 
         elif tok := self.lookahead(TokenType.ID):
             if colon := self.lookahead(TokenType.COLON):
@@ -91,7 +116,7 @@ class AsmParser(BaseParser[AsmNode]):
 
                     elif self.lookahead(TokenType.LPAREN, n=2, take_if_matches=False):
                         self.skip(2)
-                        params, rparen = self._parse_comma_separated(self.parse_primitive_value_str, None)
+                        params, rparen = self._parse_comma_separated(self._parse_call_param, None)
                         return CallAsmNode(tok.pos + rparen.pos, tok.value, value.value, params)
 
                     elif self.lookahead(TokenType.LBRACK, n=2, take_if_matches=False):
@@ -118,7 +143,7 @@ class AsmParser(BaseParser[AsmNode]):
                 return PropertyWriteAsmNode(tok.pos + value.pos, tok.value, prop.value, value.value)
 
             elif self.lookahead(TokenType.LPAREN):
-                params, rparen = self._parse_comma_separated(self.parse_primitive_value_str, None)
+                params, rparen = self._parse_comma_separated(self._parse_call_param, None)
                 return CallAsmNode(tok.pos + rparen.pos, None, tok.value, params)
 
             elif self.lookahead(TokenType.LBRACK):
@@ -132,14 +157,11 @@ class AsmParser(BaseParser[AsmNode]):
             results, _ = self._parse_comma_separated(lambda: self.next(TokenType.ID).value, None, TokenType.RBRACK)
             self.next(TokenType.ASSIGNMENT, "=")
             value = self.next(TokenType.ID)
-            params, rparen = self._parse_comma_separated(self.parse_primitive_value_str)
+            params, rparen = self._parse_comma_separated(self._parse_call_param)
             return UnpackCallAsmNode(tok.pos + rparen.pos, results, value.value, params)
 
         else:
             ParserError.unexpected_token(self.next())
-
-    def parse_primitive_value_str(self) -> str:
-        return self.parse_primitive_value().value
 
     def parse_primitive_value(self) -> Token:
         if neg := self.lookahead(TokenType.OPERATOR, "-"):
@@ -147,4 +169,7 @@ class AsmParser(BaseParser[AsmNode]):
             return Token(value.type, f"-{value.value}", neg.pos + value.pos)
         elif tok := self.lookahead(TokenType.STRING):
             return Token(tok.type, f"\"{tok.value}\"", tok.pos)
+        elif tok := self.lookahead(TokenType.DOLLAR):
+            dest, dest_pos = self._parse_label_with_offset()
+            return Token(tok.type, f"${dest}", tok.pos + dest_pos)
         return self.next(TokenType.ID | TokenType.INTEGER | TokenType.FLOAT)

@@ -5,7 +5,7 @@ import pyperclip
 
 from . import __version__
 from .compile import compile_code, compile_asm_code
-from .error import PositionedException
+from .error import PositionedException, NonPositionedException
 
 
 def main() -> int:
@@ -71,6 +71,11 @@ def main() -> int:
         if args.print_exceptions:
             raise e
         return 1
+    except NonPositionedException as e:
+        print(e.msg)
+        if args.print_exceptions:
+            raise e
+        return 1
 
     if output_method == "file":
         with open(output_file, "w+") as f:
@@ -97,3 +102,5 @@ def main() -> int:
 
     if verbose:
         print(f"Output: {len(result)} characters, {len(result.splitlines())} lines")
+
+    return 0

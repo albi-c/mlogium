@@ -2,6 +2,23 @@ from .util import Position
 from .tokens import Token
 
 
+class NonPositionedException(Exception):
+    msg: str
+
+    def __init__(self, msg: str):
+        super().__init__(msg)
+
+        self.msg = msg
+
+    @staticmethod
+    def custom(msg: str):
+        raise NonPositionedException(msg)
+
+
+class LinkerError(NonPositionedException):
+    pass
+
+
 class PositionedException(Exception):
     msg: str
     pos: Position
