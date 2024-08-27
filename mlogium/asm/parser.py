@@ -67,7 +67,9 @@ class AsmParser(BaseParser[AsmNode]):
             return RootAsmNode(self._current_pos(), statements)
 
     def _parse_call_param(self) -> str:
-        if tok := self.lookahead(TokenType.OPERATOR, "-"):
+        if ((tok := self.lookahead(TokenType.OPERATOR, "-", take_if_matches=False))
+                and self.lookahead(TokenType.COMMA | TokenType.RPAREN, n=2, take_if_matches=False)):
+            self.skip()
             return tok.value
         elif self.lookahead(TokenType.OPERATOR, "&"):
             output = self.next(TokenType.ID)
@@ -200,7 +202,7 @@ class AsmParser(BaseParser[AsmNode]):
 
     def parse_primitive_value(self) -> Token:
         if neg := self.lookahead(TokenType.OPERATOR, "-"):
-            value = self.next(TokenType.ID | TokenType.FLOAT)
+            value = self.next(TokenType.INTEGER | TokenType.FLOAT)
             return Token(value.type, f"-{value.value}", neg.pos + value.pos)
         elif tok := self.lookahead(TokenType.STRING):
             return Token(tok.type, f"\"{tok.value}\"", tok.pos)
