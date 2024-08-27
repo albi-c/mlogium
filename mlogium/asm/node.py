@@ -23,6 +23,10 @@ class AsmAstVisitor[T](ABC):
         return value
 
     @abstractmethod
+    def visit_blank_node(self, node: BlankAsmNode) -> T:
+        raise NotImplementedError
+
+    @abstractmethod
     def visit_root_node(self, node: RootAsmNode) -> T:
         raise NotImplementedError
 
@@ -89,6 +93,15 @@ class AsmNode(ABC):
 
     def __bool__(self):
         return True
+
+
+@dataclass
+class BlankAsmNode(AsmNode):
+    def __str__(self):
+        return ""
+
+    def accept[T](self, visitor: AsmAstVisitor[T]) -> T:
+        return visitor.visit_blank_node(self)
 
 
 @dataclass

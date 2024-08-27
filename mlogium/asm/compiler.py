@@ -71,6 +71,9 @@ class AsmCompiler(AsmAstVisitor[None]):
     def compile(self, ast: AsmNode):
         self.visit(ast)
 
+    def visit_blank_node(self, node: BlankAsmNode):
+        pass
+
     def visit_root_node(self, node: RootAsmNode):
         for n in node.nodes:
             self.visit(n)

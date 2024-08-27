@@ -2,20 +2,21 @@ from ..tokens import Token, TokenType
 from ..base_parser import BaseParser
 from ..lexer import Lexer
 from ..error import ParserError
+from ..macro import MacroRegistry
 from .node import *
 from typing import Callable
 import copy
 
 
 class AsmParser(BaseParser[AsmNode]):
-    macros: dict[str, tuple[list[str], list[Token]]]
+    macro_reg: MacroRegistry
 
     TMP_INDEX: int = 0
 
-    def __init__(self, tokens: list[Token], macros: dict[str, tuple[list[str], list[Token]]] = None):
+    def __init__(self, tokens: list[Token], macro_reg: MacroRegistry = None):
         super().__init__(self.modify_tokens(tokens))
 
-        self.macros = macros if macros is not None else {}
+        self.macro_reg = macro_reg if macro_reg is not None else MacroRegistry()
 
     @staticmethod
     def modify_tokens(tokens: list[Token]) -> list[Token]:
@@ -90,20 +91,6 @@ class AsmParser(BaseParser[AsmNode]):
         else:
             ParserError.unexpected_token(tok, str(TokenType.INTEGER | TokenType.OPERATOR))
 
-    def _parse_until(self, type_: TokenType, take_end: bool, append_end: bool = False) -> list[Token]:
-        tokens = []
-        while True:
-            if end := self.lookahead(type_, take_if_matches=take_end):
-                if append_end:
-                    tokens.append(end)
-                return tokens
-            tokens.append(self.next())
-
-    def _parse_macro_param(self) -> list[Token]:
-        if self.lookahead(TokenType.LBRACE, take_if_matches=False):
-            return self._parse_until(TokenType.RBRACE, True, True)
-        return self._parse_until(TokenType.COMMA | TokenType.RPAREN, False)
-
     def parse_statement(self) -> AsmNode | None:
         if tok := self.lookahead(TokenType.LBRACE):
             nodes = []
@@ -119,56 +106,16 @@ class AsmParser(BaseParser[AsmNode]):
                 macro_name = self.next(TokenType.ID)
                 if macro_name.value in ("def", "undef"):
                     ParserError.custom(macro_name.pos, f"Reserved macro name: '{macro_name.value}'")
-                if macro_name.value in self.macros:
-                    ParserError.custom(macro_name.pos, f"Macro redefinition: '{macro_name.value}'")
-                if self.lookahead(TokenType.LPAREN):
-                    params, _ = self._parse_comma_separated(lambda: self.next(TokenType.ID).value, None)
-                else:
-                    params = []
-                tokens = self._parse_until(TokenType.RBRACE, True, True)
-                self.macros[macro_name.value] = params, tokens
+                self.macro_reg.create(self, macro_name)
+                return BlankAsmNode(name.pos + macro_name.pos)
             elif name.value == "undef":
                 macro_name = self.next(TokenType.ID)
-                if macro_name.value in self.macros:
-                    del self.macros[macro_name.value]
-                else:
-                    ParserError.custom(macro_name.pos, f"Macro not found: '{macro_name.value}'")
+                self.macro_reg.delete(macro_name)
+                return BlankAsmNode(name.pos + macro_name.pos)
             else:
-                if (macro := self.macros.get(name.value)) is not None:
-                    params: list[str] = macro[0]
-                    tokens: list[Token] = macro[1]
-                    if self.lookahead(TokenType.LPAREN):
-                        replacements, _ = self._parse_comma_separated(self._parse_macro_param, None)
-                    else:
-                        replacements = []
-                    if len(params) != len(replacements):
-                        ParserError.custom(
-                            name.pos,
-                            f"Macro parameter count mismatch: got {len(replacements)}, expected {len(params)}")
-                    replacement_map = dict(zip(params, replacements))
-                    processed_tokens = []
-                    temp_variables = {}
-                    i = 0
-                    while i < len(tokens):
-                        tok = tokens[i]
-                        if (replacement := replacement_map.get(tok.value)) is not None:
-                            processed_tokens += replacement
-                        elif tok.value == "$":
-                            i += 1
-                            if i >= len(tokens):
-                                ParserError.custom(tok.pos, "Temporary macro value missing index")
-                            index = tokens[i].value
-                            if (val := temp_variables.get(index)) is not None:
-                                processed_tokens.append(val)
-                            else:
-                                val = Token(TokenType.ID, f"__asm_tmp_{AsmParser.TMP_INDEX}", tok.pos)
-                                temp_variables[index] = val
-                                processed_tokens.append(val)
-                                AsmParser.TMP_INDEX += 1
-                        else:
-                            processed_tokens.append(tok)
-                        i += 1
-                    return AsmParser(processed_tokens, self.macros).parse_statement()
+                if self.macro_reg.has(name.value):
+                    return self.macro_reg.invoke(self, name,
+                                                 lambda tokens_: AsmParser(tokens_, self.macro_reg).parse_statement())
                 else:
                     ParserError.custom(name.pos, f"Macro not found: '{name.value}'")
 
