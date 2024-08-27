@@ -189,6 +189,10 @@ class AstVisitor[T](ABC):
     def visit_tuple_type_node(self, node: TupleTypeNode) -> T:
         raise NotImplementedError
 
+    @abstractmethod
+    def visit_null_value_node(self, node: NullValueNode) -> T:
+        raise NotImplementedError
+
 
 @dataclass
 class Node(ABC):
@@ -576,3 +580,12 @@ class TupleTypeNode(Node):
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_tuple_type_node(self)
+
+
+@dataclass
+class NullValueNode(Node):
+    def __str__(self):
+        return "null"
+
+    def accept[T](self, visitor: AstVisitor[T]) -> T:
+        return visitor.visit_null_value_node(self)

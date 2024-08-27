@@ -194,3 +194,6 @@ expected ({', '.join(f'\'{t}\'' for t in exp)})")
 
     def visit_tuple_type_node(self, node: TupleTypeNode) -> CValue:
         pass
+
+    def visit_null_value_node(self, node: NullValueNode) -> CValue:
+        return CValue.null()

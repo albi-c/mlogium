@@ -7,6 +7,15 @@ from typing import Callable
 
 
 class Parser(BaseParser[Node]):
+    macros: dict[str, tuple[list[str], list[Token]]]
+
+    TMP_INDEX: int = 0
+
+    def __init__(self, tokens: list[Token], macros: dict[str, tuple[list[str], list[Token]]] = None):
+        super().__init__(tokens)
+
+        self.macros = macros if macros is not None else {}
+
     def parse(self) -> Node:
         return self.parse_block(False, False)
 
@@ -319,6 +328,20 @@ class Parser(BaseParser[Node]):
         unpack = bool(self.lookahead(TokenType.ELLIPSIS))
         return value, unpack
 
+    def _parse_until(self, type_: TokenType, take_end: bool, append_end: bool = False) -> list[Token]:
+        tokens = []
+        while True:
+            if end := self.lookahead(type_, take_if_matches=take_end):
+                if append_end:
+                    tokens.append(end)
+                return tokens
+            tokens.append(self.next())
+
+    def _parse_macro_param(self) -> list[Token]:
+        if self.lookahead(TokenType.LBRACE, take_if_matches=False):
+            return self._parse_until(TokenType.RBRACE, True, True)
+        return self._parse_until(TokenType.COMMA | TokenType.RPAREN, False)
+
     def parse_atom(self) -> Node:
         tok = self.next()
 
@@ -491,7 +514,67 @@ class Parser(BaseParser[Node]):
 
             return LambdaNode(tok.pos + code.pos, [], captures, ret, code)
 
-        elif tok.type in TokenType.DOUBLE_COLON | TokenType.HASH:
+        elif tok.type == TokenType.HASH:
+            name = self.next(TokenType.ID)
+            if name.value == "def":
+                macro_name = self.next(TokenType.ID)
+                if macro_name.value in ("def", "undef", "import", "use", "static_assert"):
+                    ParserError.custom(macro_name.pos, f"Reserved macro name: '{macro_name.value}'")
+                elif macro_name.value in self.macros:
+                    ParserError.custom(macro_name.pos, f"Macro redefinition: '{macro_name.value}'")
+                if self.lookahead(TokenType.LPAREN):
+                    params = self._parse_comma_separated(lambda: self.next(TokenType.ID).value, None)
+                else:
+                    params = []
+                tokens = self._parse_until(TokenType.RBRACE, True, True)
+                self.macros[macro_name.value] = (params, tokens)
+                return NullValueNode(tok.pos + macro_name.pos)
+            elif name.value == "undef":
+                macro_name = self.next(TokenType.ID)
+                if macro_name.value in self.macros:
+                    del self.macros[macro_name.value]
+                else:
+                    ParserError.custom(macro_name.pos, f"Macro not found: '{macro_name.value}'")
+                return NullValueNode(tok.pos + macro_name.pos)
+            elif (macro := self.macros.get(name.value)) is not None:
+                mac_params: list[str] = macro[0]
+                mac_tokens: list[Token] = macro[1]
+                if self.lookahead(TokenType.LPAREN):
+                    replacements = self._parse_comma_separated(self._parse_macro_param, None)
+                else:
+                    replacements = []
+                if len(mac_params) != len(replacements):
+                    ParserError.custom(
+                        name.pos,
+                        f"Macro parameter count mismatch: got {len(replacements)}, expected {len(mac_params)}")
+                replacement_map = dict(zip(mac_params, replacements))
+                processed_tokens = []
+                temp_variables = {}
+                i = 0
+                while i < len(mac_tokens):
+                    tok = mac_tokens[i]
+                    if (replacement := replacement_map.get(tok.value)) is not None:
+                        processed_tokens += replacement
+                    elif tok.value == "$":
+                        i += 1
+                        if i >= len(mac_tokens):
+                            ParserError.custom(tok.pos, "Temporary macro value missing index")
+                        index = mac_tokens[i].value
+                        if (val := temp_variables.get(index)) is not None:
+                            processed_tokens.append(val)
+                        else:
+                            val = Token(TokenType.ID, f"__mac_tmp_{Parser.TMP_INDEX}", tok.pos)
+                            temp_variables[index] = val
+                            processed_tokens.append(val)
+                            Parser.TMP_INDEX += 1
+                    else:
+                        processed_tokens.append(tok)
+                    i += 1
+                return Parser(processed_tokens, self.macros).parse_statement()
+
+            return VariableValueNode(tok.pos + name.pos, tok.value + name.value)
+
+        elif tok.type == TokenType.DOUBLE_COLON:
             name = self.next(TokenType.ID)
             return VariableValueNode(tok.pos + name.pos, tok.value + name.value)
 

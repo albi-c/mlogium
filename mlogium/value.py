@@ -518,6 +518,12 @@ class TypeType(Type):
 
                 ctx.error(f"Value of type '{self.type}' is not a struct instance")
 
+            elif name == "enum_base":
+                if isinstance(self.type, EnumInstanceType):
+                    return Value(self.type.base, "")
+
+                ctx.error(f"Value of type '{self.type}' is not an enum instance")
+
         return super(TypeType, self).getattr(ctx, value, static, name)
 
 

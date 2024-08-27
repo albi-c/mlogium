@@ -437,3 +437,6 @@ class Compiler(AstVisitor[Value]):
 
     def visit_tuple_type_node(self, node: TupleTypeNode) -> Value:
         return Value.of_type(TupleType([self.resolve_type(t) for t in node.types]))
+
+    def visit_null_value_node(self, node: NullValueNode) -> Value:
+        return Value.null()
