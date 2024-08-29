@@ -43,6 +43,7 @@ class TokenType(enum.Flag):
     DOUBLE_DOT = enum.auto()
     COMMA = enum.auto()
     HASH = enum.auto()
+    DOUBLE_HASH = enum.auto()
     ELLIPSIS = enum.auto()
     QUESTION = enum.auto()
     DOLLAR = enum.auto()

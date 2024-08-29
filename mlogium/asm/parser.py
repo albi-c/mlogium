@@ -209,4 +209,12 @@ class AsmParser(BaseParser[AsmNode]):
         elif tok := self.lookahead(TokenType.DOLLAR):
             dest, dest_pos = self._parse_label_with_offset()
             return Token(tok.type, f"${dest}", tok.pos + dest_pos)
+        elif self.lookahead(TokenType.HASH):
+            name = self.next(TokenType.ID)
+            if self.macro_reg.has(name.value):
+                return self.macro_reg.invoke(self, name,
+                                             lambda tokens_: AsmParser(tokens_, self.macro_reg).parse_primitive_value(),
+                                             True)
+            else:
+                ParserError.custom(name.pos, f"Macro not found: '{name.value}'")
         return self.next(TokenType.ID | TokenType.INTEGER | TokenType.FLOAT)

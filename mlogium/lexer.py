@@ -47,6 +47,8 @@ class Lexer:
         "comptime": TokenType.KW_COMPTIME
     }
 
+    KEYWORD_TOKEN_TYPES: set[TokenType] = set(KEYWORDS.values())
+
     def _reset(self, code: str, filename: str, start_pos: tuple[int, int, list[str] | None] = (0, 0, None)):
         self.i = -1
         self.line = 0
@@ -206,7 +208,7 @@ class Lexer:
                 (";", TokenType.SEMICOLON),
                 (":", TokenType.COLON, TokenType.DOUBLE_COLON),
                 (",", TokenType.COMMA),
-                ("#", TokenType.HASH),
+                ("#", TokenType.HASH, TokenType.DOUBLE_HASH),
                 ("(", TokenType.LPAREN),
                 (")", TokenType.RPAREN),
                 ("{", TokenType.LBRACE),

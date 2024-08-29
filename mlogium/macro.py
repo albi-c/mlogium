@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .lexer import Lexer
 from .tokens import Token, TokenType
 from .base_parser import BaseParser
 from .error import ParserError
@@ -9,6 +10,14 @@ from typing import Callable
 
 class MacroRegistry:
     macros: dict[str, tuple[list[str], list[Token]]]
+
+    TOKEN_JOIN: dict[tuple[TokenType, TokenType], TokenType] = {
+        (TokenType.ID, TokenType.ID): TokenType.ID,
+        (TokenType.ID, TokenType.INTEGER): TokenType.ID,
+        (TokenType.INTEGER, TokenType.INTEGER): TokenType.INTEGER,
+        (TokenType.FLOAT, TokenType.INTEGER): TokenType.FLOAT,
+        (TokenType.INTEGER, TokenType.FLOAT): TokenType.FLOAT
+    }
 
     TMP_INDEX: int = 0
 
@@ -78,9 +87,44 @@ class MacroRegistry:
     def has(self, name: str):
         return name in self.macros
 
+    @staticmethod
+    def _convert_token_type(type_: TokenType) -> TokenType:
+        if type_ in Lexer.KEYWORD_TOKEN_TYPES:
+            return TokenType.ID
+        return type_
+
+    @classmethod
+    def _postprocess_tokens(cls, tokens: list[Token]) -> list[Token]:
+        result = []
+        i = 0
+        while i < len(tokens):
+            tok = tokens[i]
+            if tok.type == TokenType.DOUBLE_HASH:
+                if len(result) == 0:
+                    ParserError.custom(tok.pos, "No token on left side of join")
+                a = result.pop(-1)
+                i += 1
+                if i >= len(tokens):
+                    ParserError.custom(tok.pos, "No token on right side of join")
+                b = tokens[i]
+                if (result_type := MacroRegistry.TOKEN_JOIN.get((
+                        cls._convert_token_type(a.type), cls._convert_token_type(b.type)))) is not None:
+                    joined = a.value + b.value
+                    if (kw := Lexer.KEYWORDS.get(joined)) is not None:
+                        result_type = kw
+                    result.append(Token(result_type, joined, a.pos + b.pos))
+                else:
+                    ParserError.custom(tok.pos, f"Cannot join tokens of types {a.type} and {b.type}")
+            else:
+                result.append(tok)
+            i += 1
+        return result
+
     @classmethod
     def _invoke[T](cls, self: BaseParser, name: Token, params: list[str], tokens: list[Token],
-                   parse_func: Callable[[list[Token]], T]) -> T:
+                   parse_func: Callable[[list[Token]], T], remove_brackets: bool) -> T:
+        if remove_brackets:
+            tokens = tokens[1:-1]
         if self.lookahead(TokenType.LPAREN):
             replacements = cls._parse_comma_separated(self, lambda: cls._parse_macro_param(self), None)
         else:
@@ -112,8 +156,9 @@ class MacroRegistry:
             else:
                 processed_tokens.append(tok)
             i += 1
-        return parse_func(processed_tokens)
+        return parse_func(cls._postprocess_tokens(processed_tokens))
 
-    def invoke[T](self, parser: BaseParser, name: Token, parse_func: Callable[[list[Token]], T]) -> T:
+    def invoke[T](self, parser: BaseParser, name: Token, parse_func: Callable[[list[Token]], T],
+                  remove_brackets: bool = False) -> T:
         params, tokens = self.macros[name.value]
-        return self._invoke(parser, name, params, tokens, parse_func)
+        return self._invoke(parser, name, params, tokens, parse_func, remove_brackets)
