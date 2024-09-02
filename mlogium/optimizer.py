@@ -757,11 +757,6 @@ class Optimizer:
                     else:
                         if index < len(ins.input_values):
                             length = len(ins.output_values)
-                            print(list(map(str, [
-                                Instruction.set(a, b)
-                                for a, b in zip(ins.params[:length],
-                                                ins.params[(index + 1) * length:(index + 2) * length])
-                            ])))
                             code[i:i + 1] = [
                                 Instruction.set(a, b)
                                 for a, b in zip(ins.params[:length],

@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 from dataclasses import dataclass
 from abc import abstractmethod, ABC
+from tokenize import String
 from typing import Callable
 
 from .compilation_context import CompilationContext
@@ -512,17 +513,11 @@ class TypeType(Type):
                     lambda ctx_, params: params[0].into_req(ctx_, self.type)
                 ), "")
 
-            elif name == "struct_base":
-                if isinstance(self.type, StructInstanceType):
+            elif name == "base":
+                if isinstance(self.type, StructInstanceType | EnumInstanceType):
                     return Value(self.type.base, "")
 
-                ctx.error(f"Value of type '{self.type}' is not a struct instance")
-
-            elif name == "enum_base":
-                if isinstance(self.type, EnumInstanceType):
-                    return Value(self.type.base, "")
-
-                ctx.error(f"Value of type '{self.type}' is not an enum instance")
+                ctx.error(f"Value of type '{self.type}' is not a struct or enum instance")
 
         return super(TypeType, self).getattr(ctx, value, static, name)
 
@@ -2003,6 +1998,8 @@ class EnumBaseType(Type):
             "::" + name: val
             for name, val in self.values.items()
         }
+        self.ordered_values = list(self.values_.items())
+        self.ordered_values.sort(key=lambda x: x[1])
 
     def __str__(self):
         return f"Enum[{self.name if self.name else '?'}]"
@@ -2069,6 +2066,28 @@ class EnumInstanceType(Type):
 
     def memcell_serializable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
+
+    def _name_impl(self, ctx: CompilationContext, value: Value) -> Value:
+        result = ctx.tmp()
+        ctx.emit(Instruction.TableRead([result], [
+            [f"\"{name}\""] for name, _ in self.base.ordered_values
+        ], value.value))
+        return Value(StringType(), result, False)
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
+        if not static:
+            if name == "base":
+                return Value(self.base, "")
+
+            elif name == "name":
+                return Value(SpecialFunctionType(
+                    f"{self.base.name}.name",
+                    [],
+                    StringType(),
+                    lambda ctx_, params: self._name_impl(ctx_, value)
+                ), "")
+
+        return super(self, EnumInstanceType).getattr(ctx, value, static, name)
 
 
 class BuiltinEnumBaseType(Type):
