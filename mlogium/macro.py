@@ -62,10 +62,27 @@ class MacroRegistry:
                 return tokens
             tokens.append(self.next())
 
+    @staticmethod
+    def _parse_until_counted(self: BaseParser, open_: TokenType, close: TokenType,
+                             take_end: bool, append_end: bool, level: int = 0) -> list[Token]:
+        tokens = []
+        while True:
+            if self.lookahead(open_, take_if_matches=False):
+                level += 1
+            elif end := self.lookahead(close, take_if_matches=False):
+                level -= 1
+                if level == 0:
+                    if append_end:
+                        tokens.append(end)
+                    if take_end:
+                        self.next()
+                    return tokens
+            tokens.append(self.next())
+
     @classmethod
     def _parse_macro_param(cls, self: BaseParser) -> list[Token]:
         if self.lookahead(TokenType.LBRACE, take_if_matches=False):
-            return cls._parse_until(self, TokenType.RBRACE, True, True)
+            return cls._parse_until_counted(self, TokenType.LBRACE, TokenType.RBRACE, True, True)
         return cls._parse_until(self, TokenType.COMMA | TokenType.RPAREN, False)
 
     def create(self, parser: BaseParser, name: Token):
@@ -75,7 +92,7 @@ class MacroRegistry:
             params = self._parse_comma_separated(parser, lambda: parser.next(TokenType.ID).value, None)
         else:
             params = []
-        tokens = self._parse_until(parser, TokenType.RBRACE, True, True)
+        tokens = self._parse_until_counted(parser, TokenType.LBRACE, TokenType.RBRACE, True, True)
         self.macros[name.value] = (params, tokens)
 
     def delete(self, name: Token):

@@ -140,7 +140,7 @@ class Value:
 
     def getattr_req(self, ctx: CompilationContext, static: bool, name: str) -> Value | None:
         if (val := self.getattr(ctx, static, name)) is None:
-            ctx.error(f"Value of type '{self.type}' has no {'static ' if static else ''} attribute '{name}'")
+            ctx.error(f"Value of type '{self.type}' has no {'static ' if static else ''}attribute '{name}'")
         return val
 
     def indexable(self, ctx: CompilationContext) -> bool:

@@ -164,74 +164,77 @@ class Compiler(AstVisitor[Value]):
         value = Value(base_type, "")
         if node.name is not None:
             self._var_declare_special(node.name, value)
-        self._var_declare_special("Self", value)
+        with self.scope(self.ctx.tmp()):
+            self._var_declare_special("Self", value)
 
-        field_names = set()
+            field_names = set()
 
-        fields = []
-        static_fields = {}
-        methods = {}
-        static_methods = {}
+            fields = []
+            static_fields = {}
+            methods = {}
+            static_methods = {}
 
-        parent = self.resolve_type_opt(node.parent)
-        if parent is not None:
-            if isinstance(parent, StructInstanceType):
-                parent = parent.base
+            parent = self.resolve_type_opt(node.parent)
+            if parent is not None:
+                if isinstance(parent, StructInstanceType):
+                    parent = parent.base
 
-                fields = parent.fields.copy()
-                static_fields = parent.static_fields.copy()
-                methods = parent.methods.copy()
-                static_methods = parent.static_methods.copy()
+                    fields = parent.fields.copy()
+                    static_fields = parent.static_fields.copy()
+                    methods = parent.methods.copy()
+                    static_methods = parent.static_methods.copy()
 
-                field_names = set(field[0] for field in fields)
-            else:
-                self.error(f"Structs can only inherit from other structs, not '{parent}'")
+                    field_names = set(field[0] for field in fields)
+                else:
+                    self.error(f"Structs can only inherit from other structs, not '{parent}'")
 
-        for field in node.fields:
-            if field.name in field_names:
-                self.error(f"Duplicate struct field: '{field.name}'")
-            field_names.add(field.name)
+            for field in node.fields:
+                if field.name in field_names:
+                    self.error(f"Duplicate struct field: '{field.name}'")
+                field_names.add(field.name)
 
-            assert not field.const
-            assert field.type is not None
-            fields.append((field.name, self.resolve_type(field.type)))
+                assert not field.const
+                assert field.type is not None
+                fields.append((field.name, self.resolve_type(field.type)))
 
-        for target, value_ in node.static_fields:
-            value = self.visit(value_)
-            val = Value(value.type, ABI.static_attribute(name, target.name), False, const_on_write=target.const)
-            val.assign(self.ctx, value)
-            static_fields[target.name] = val
+            for target, value_ in node.static_fields:
+                value = self.visit(value_)
+                val = Value(value.type, ABI.static_attribute(name, target.name), False, const_on_write=target.const)
+                val.assign(self.ctx, value)
+                static_fields[target.name] = val
 
-        for const, method in node.methods:
-            assert method.name is not None
+            base_type.fields = fields
+            base_type.static_fields = static_fields
+            base_type.reload_instance_type()
 
-            methods[method.name] = (
-                const,
-                StructMethodData(
-                    method.name,
-                    [FunctionType.Param(p.name, p.reference, self.resolve_type_opt(p.type), p.variadic)
-                     for p in method.params],
-                    self.resolve_type_opt(method.result),
-                    method.code,
-                    self.scope.get_global_closures()))
+            for const, method in node.methods:
+                assert method.name is not None
 
-        for method in node.static_methods:
-            assert method.name is not None
+                methods[method.name] = (
+                    const,
+                    StructMethodData(
+                        method.name,
+                        [FunctionType.Param(p.name, p.reference, self.resolve_type_opt(p.type), p.variadic)
+                         for p in method.params],
+                        self.resolve_type_opt(method.result),
+                        method.code,
+                        self.scope.get_global_closures()))
 
-            static_methods[method.name] = StructMethodData(method.name,
-                                                           [FunctionType.Param(p.name, p.reference,
-                                                                               self.resolve_type_opt(p.type),
-                                                                               p.variadic)
-                                                            for p in method.params],
-                                                           self.resolve_type_opt(method.result),
-                                                           method.code,
-                                                           self.scope.get_global_closures())
+            for method in node.static_methods:
+                assert method.name is not None
 
-        base_type.fields = fields
-        base_type.static_fields = static_fields
-        base_type.methods = methods
-        base_type.static_methods = static_methods
-        base_type.reload_instance_type()
+                static_methods[method.name] = StructMethodData(method.name,
+                                                               [FunctionType.Param(p.name, p.reference,
+                                                                                   self.resolve_type_opt(p.type),
+                                                                                   p.variadic)
+                                                                for p in method.params],
+                                                               self.resolve_type_opt(method.result),
+                                                               method.code,
+                                                               self.scope.get_global_closures())
+
+            base_type.methods = methods
+            base_type.static_methods = static_methods
+            base_type.reload_instance_type()
 
         return value
 
