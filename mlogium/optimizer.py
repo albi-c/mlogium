@@ -755,12 +755,12 @@ class Optimizer:
                     except ValueError:
                         pass
                     else:
-                        if index < len(ins.input_values):
-                            length = len(ins.output_values)
-                            code[i:i + 1] = [
+                        inputs = ins.get_input_values()
+                        if index < len(inputs):
+                            outputs = ins.get_output_values()
+                            code[i:i+1] = [
                                 Instruction.set(a, b)
-                                for a, b in zip(ins.params[:length],
-                                                ins.params[(index + 1) * length:(index + 2) * length])
+                                for a, b in zip(outputs, inputs[index])
                             ]
 
                             found = True
@@ -772,22 +772,15 @@ class Optimizer:
                     except ValueError:
                         pass
                     else:
-                        if index < len(ins.output_values):
-                            length = len(ins.input_values)
+                        if index < ins.num_output_values:
                             generated = []
-                            for j in range(len(ins.output_values)):
-                                if j == index:
-                                    generated += [
-                                        Instruction.set(a, b)
-                                        for a, b in zip(ins.params[(j + 1) * length:(j + 2) * length],
-                                                        ins.params[:length])
-                                    ]
-                                else:
-                                    generated += [
-                                        Instruction.set(a, b)
-                                        for a, b in zip(ins.params[(j + 1) * length:(j + 2) * length],
-                                                        ins.params[(j + 1) * 2 * length:(j + 2) * 2 * length])
-                                    ]
+                            for j in range(ins.num_output_values):
+                                generated += [
+                                    Instruction.set(a, b)
+                                    for a, b in zip(ins.get_output_values()[j],
+                                                    ins.get_input_values()
+                                                    if j == index else ins.get_initial_values()[j])
+                                ]
                             code[i:i + 1] = generated
 
                             found = True

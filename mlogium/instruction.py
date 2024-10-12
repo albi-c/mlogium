@@ -226,9 +226,8 @@ class Instruction:
     class TableRead(InstructionInstance):
         name = "$table_read"
 
-        output_values: list[str]
-        input_values: list[list[str]]
-        index: str
+        num_output_values: int
+        num_input_values: int
 
         def __init__(self, output_values: list[str], input_values: list[list[str]], index: str):
             super().__init__(Instruction.noop, [i for i in range(len(output_values))],
@@ -236,31 +235,36 @@ class Instruction:
                              *output_values, *(val for option in input_values for val in option), index,
                              internal=True)
 
-            self.output_values = output_values
-            self.input_values = input_values
-            self.index = index
+            self.num_output_values = len(output_values)
+            self.num_input_values = len(input_values)
 
-            length_of_one = len(self.output_values)
-            assert all(len(lst) == length_of_one for lst in input_values)
+            assert all(len(lst) == self.num_output_values for lst in input_values)
+
+        def get_output_values(self) -> list[str]:
+            return self.params[:self.num_output_values]
+
+        def get_input_values(self) -> list[list[str]]:
+            flat = self.params[self.num_output_values:(self.num_input_values+1)*self.num_output_values]
+            return [flat[i:i+self.num_output_values] for i in range(0, len(flat), self.num_output_values)]
 
         def __str__(self):
-            return f"$table_read {self.output_values} = [{self.index}] : {self.input_values}"
+            return f"$table_read {self.get_output_values()} = [{self.params[-1]}] : {self.get_input_values()}"
 
         def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
-            if len(self.input_values) == 0 or len(self.output_values) == 0:
+            if self.num_input_values == 0 or self.num_output_values == 0:
                 return []
             instructions = []
 
             name = f"*__$table_read_{ctx.tmp_num()}"
 
-            length_of_one = len(self.output_values)
+            length_of_one = self.num_output_values
             index = name + "_index"
             instructions.append(Instruction.op("mul", index, self.params[-1], length_of_one + 1))
             instructions.append(Instruction.op("add", "@counter", "@counter", index))
 
             end_label = name + "_end"
 
-            for i in range(1, len(self.input_values) + 1):
+            for i in range(1, self.num_input_values + 1):
                 for dst, src in zip(self.outputs, range(length_of_one)):
                     instructions.append(Instruction.set(self.params[dst], self.params[i * length_of_one + src]))
                 instructions.append(Instruction.jump_always(end_label))
@@ -275,9 +279,8 @@ class Instruction:
     class TableWrite(InstructionInstance):
         name = "$table_write"
 
-        output_values: list[list[str]]
-        input_values: list[str]
-        index: str
+        num_input_values: int
+        num_output_values: int
         initial_values_index: int
 
         def __init__(self, output_values: list[list[str]], input_values: list[str], index: str):
@@ -287,25 +290,38 @@ class Instruction:
                              *(val for option in output_values for val in option), index,
                              internal=True)
 
-            self.output_values = output_values
-            self.input_values = input_values
-            self.index = index
+            self.num_input_values = len(input_values)
+            self.num_output_values = len(output_values)
             self.initial_values_index = max(self.outputs) + 1
 
-            length_of_one = len(self.input_values)
-            assert all(len(lst) == length_of_one for lst in output_values)
+            assert all(len(lst) == self.num_input_values for lst in output_values)
+
+        def _value_chunks(self, flat: list[str]) -> list[list[str]]:
+            return [flat[i:i + self.num_input_values] for i in range(0, len(flat), self.num_input_values)]
+
+        def get_output_values(self) -> list[list[str]]:
+            return self._value_chunks(
+                self.params[self.num_input_values:(self.num_output_values + 1) * self.num_input_values])
+
+        def get_input_values(self) -> list[str]:
+            return self.params[:self.num_input_values]
+
+        def get_initial_values(self) -> list[list[str]]:
+            return self._value_chunks(
+                self.params[self.initial_values_index
+                            :self.initial_values_index+self.num_input_values*self.num_output_values])
 
         def __str__(self):
-            return f"$table_write [{self.index}] : {self.output_values} = {self.input_values}"
+            return f"$table_write [{self.params[-1]}] : {self.get_output_values()} = {self.get_input_values()} ({self.get_initial_values()})"
 
         def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
-            if len(self.input_values) == 0 or len(self.output_values) == 0:
+            if self.num_input_values == 0 or self.num_output_values == 0:
                 return []
             instructions = []
 
             name = f"*__$table_write_{ctx.tmp_num()}"
 
-            length_of_one = len(self.input_values)
+            length_of_one = self.num_input_values
 
             for dst, src in zip(self.params[length_of_one:self.initial_values_index],
                                 self.params[self.initial_values_index:]):
@@ -317,7 +333,7 @@ class Instruction:
 
             end_label = name + "_end"
 
-            for i in range(1, len(self.output_values) + 1):
+            for i in range(1, self.num_output_values + 1):
                 for dst, src in zip(range(length_of_one), self.inputs):
                     instructions.append(Instruction.set(self.params[i * length_of_one + dst], self.params[src]))
                 instructions.append(Instruction.jump_always(end_label))

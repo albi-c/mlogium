@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 from dataclasses import dataclass
 from abc import abstractmethod, ABC
-from tokenize import String
 from typing import Callable
 
 from .compilation_context import CompilationContext
@@ -483,10 +482,10 @@ class TypeType(Type):
                 return Value.of_number(count)
 
             elif name == "serializable":
-                return Value.of_boolean(value.memcell_serializable(ctx))
+                return Value.of_boolean(val.memcell_serializable(ctx))
 
             elif name == "size":
-                return Value.of_number(value.memcell_size(ctx))
+                return Value.of_number(val.memcell_size(ctx))
 
             elif name == "default":
                 return Value(SpecialFunctionType(
@@ -561,6 +560,27 @@ class TupleTypeSourceType(Type):
     def index(self, ctx: CompilationContext, value: Value, indices: list[Value]) -> Value:
         types = [val.type.wrapped_type(ctx) for val in indices]
         return Value.of_type(TupleType(types))
+
+    def callable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
+        return len(param_types) == 2 and GenericTypeType().contains(param_types[0]) \
+            and NumberType().contains(param_types[1])
+
+    def call_with_suggestion(self, ctx: CompilationContext, value: Value) -> list[Type | None] | None:
+        return [GenericTypeType(), NumberType()]
+
+    def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
+        count = 0
+        try:
+            count = int(params[1].value)
+        except ValueError:
+            ctx.error(f"Count is not a compile time known integer")
+        if count < 0:
+            ctx.error(f"Count cannot be negative")
+
+        return Value.of_type(TupleType([params[0].type.wrapped_type(ctx)] * count))
 
 
 class BlockSourceType(Type):

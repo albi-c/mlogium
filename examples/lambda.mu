@@ -15,7 +15,7 @@ print(doubled_1(3));
 print(doubled_2(3));
 
 fn transform(&f, &s) {
-    typeof(s).struct_base(f(...s)...)
+    typeof(s).base(f(...s)...)
 }
 
 struct A {

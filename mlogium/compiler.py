@@ -198,9 +198,13 @@ class Compiler(AstVisitor[Value]):
                 fields.append((field.name, self.resolve_type(field.type)))
 
             for target, value_ in node.static_fields:
-                value = self.visit(value_)
-                val = Value(value.type, ABI.static_attribute(name, target.name), False, const_on_write=target.const)
-                val.assign(self.ctx, value)
+                static_value = self.visit(value_)
+                if target.const:
+                    val = Value(static_value.type, static_value.value, True)
+                else:
+                    val = Value(static_value.type, ABI.static_attribute(
+                        ABI.namespaced_name(self.ctx.tmp(), name), target.name), False, const_on_write=target.const)
+                    val.assign(self.ctx, static_value)
                 static_fields[target.name] = val
 
             base_type.fields = fields
