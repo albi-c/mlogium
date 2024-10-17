@@ -72,6 +72,8 @@ class Phi(InstructionInstance):
                 continue
             self.params.append(f"{self.variable}:{index}")
 
+        self.inputs = list(range(1, len(self.params)))
+
         return len(self.params) < 3
 
 
@@ -192,6 +194,8 @@ class Optimizer:
         while cls._optimize_set_op(code) or cls._precalculate_op_jump(code) or cls._optimize_jump_tables(code):
             pass
         cls._remove_noops(code)
+        while cls._merge_op_set(code):
+            pass
 
         while cls._join_instructions(code):
             cls._remove_noops(code)
@@ -615,6 +619,33 @@ class Optimizer:
                     found = True
 
         return found
+
+    @staticmethod
+    def _merge_op_set(code: Instructions) -> bool:
+        inputs = defaultdict(int)
+        outputs = defaultdict(int)
+        first_writes = {}
+
+        for i, ins in enumerate(code):
+            for j in ins.inputs:
+                inputs[ins.params[j]] += 1
+
+            for j in ins.outputs:
+                out = ins.params[j]
+                outputs[out] += 1
+                first_writes[out] = i
+
+        for i, ins in enumerate(code):
+            if i >= 1 and ins.name == Instruction.set.name:
+                prev = code[i - 1]
+                if len(prev.outputs) == 1:
+                    out = prev.params[prev.outputs[0]]
+                    if ins.params[1] == out and inputs[out] == 1:
+                        prev.params[prev.outputs[0]] = ins.params[0]
+                        code.pop(i)
+                        return True
+
+        return False
 
     @classmethod
     def _join_instructions_flush(cls, code: Instructions, prints: list[tuple[int, str]]) -> bool:
