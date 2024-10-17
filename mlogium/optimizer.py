@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Callable
 import math
-import itertools
 
 from .instruction import Instruction, InstructionInstance
 from .structure import CounterDict
@@ -110,8 +109,9 @@ class Optimizer:
         )),
         (("shr", "shl"), (
             (tuple(), ("0",), None),
+            (("0",), tuple(), "0")
         )),
-        (("and", "land", "or"), (
+        (("and", "land"), (
             (("0",), ("0",), "0"),
             (tuple(), tuple(), None)
         ))

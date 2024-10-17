@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+from typing import Callable
 from .instruction import InstructionInstance, Instruction
 from .structure import CounterDict
 
@@ -77,6 +79,92 @@ type Blocks = list[Block]
 
 
 class Optimizer:
+    PRECALC: dict[str, Callable[[int | float, int | float | None], int | float]] = {
+        "add": lambda a, b: a + b,
+        "sub": lambda a, b: a - b,
+        "mul": lambda a, b: a * b,
+        "div": lambda a, b: a / b,
+        "idiv": lambda a, b: a // b,
+        "mod": lambda a, b: a % b,
+        "pow": lambda a, b: a ** b,
+        "not": lambda a, _: not a,
+        "land": lambda a, b: a and b,
+        "lessThan": lambda a, b: a < b,
+        "lessThanEq": lambda a, b: a <= b,
+        "greaterThan": lambda a, b: a > b,
+        "greaterThanEq": lambda a, b: a >= b,
+        "strictEqual": lambda a, b: a == b,
+        "equal": lambda a, b: a == b,
+        "notEqual": lambda a, b: a != b,
+        "shl": lambda a, b: a << b,
+        "shr": lambda a, b: a >> b,
+        "or": lambda a, b: a | b,
+        "and": lambda a, b: a & b,
+        "xor": lambda a, b: a ^ b,
+        "flip": lambda a, _: ~a,
+        "max": lambda a, b: max(a, b),
+        "min": lambda a, b: min(a, b),
+        "abs": lambda a, _: abs(a),
+        "log": lambda a, _: math.log(a),
+        "log10": lambda a, _: math.log10(a),
+        "floor": lambda a, _: math.floor(a),
+        "ceil": lambda a, _: math.ceil(a),
+        "sqrt": lambda a, _: math.sqrt(a),
+        "angle": lambda a, b: math.atan2(b, a) * 180 / math.pi,
+        "length": lambda a, b: math.sqrt(a * a + b * b),
+        "sin": lambda a, _: math.sin(math.radians(a)),
+        "cos": lambda a, _: math.cos(math.radians(a)),
+        "tan": lambda a, _: math.tan(math.radians(a)),
+        "asin": lambda a, _: math.degrees(math.asin(a)),
+        "acos": lambda a, _: math.degrees(math.acos(a)),
+        "atan": lambda a, _: math.degrees(math.atan(a))
+    }
+
+    JUMP_PRECALC: dict[str, Callable[[int | float, int | float], bool]] = {
+        "equal": lambda a, b: a == b,
+        "notEqual": lambda a, b: a != b,
+        "greaterThan": lambda a, b: a > b,
+        "lessThan": lambda a, b: a < b,
+        "greaterThanEq": lambda a, b: a >= b,
+        "lessThanEq": lambda a, b: a <= b
+    }
+
+    OP_CONSTANTS: list[tuple[tuple[str, ...], tuple[tuple[tuple[str, ...], tuple[str, ...], str | None], ...]]] = [
+        (("add", "or", "xor"), (
+            (("0",), ("0",), None),
+        )),
+        (("sub",), (
+            (tuple(), ("0",), None),
+            (tuple(), tuple(), "0")
+        )),
+        (("mul",), (
+            (("0",), ("0",), "0"),
+            (("1",), ("1",), None)
+        )),
+        (("div", "idiv"), (
+            (tuple(), tuple(), "1"),
+            (tuple(), ("1",), None),
+            (("0",), tuple(), "0")
+        )),
+        (("shr", "shl"), (
+            (tuple(), ("0",), None),
+            (("0",), tuple(), "0")
+        )),
+        (("and", "land"), (
+            (("0",), ("0",), "0"),
+            (tuple(), tuple(), None)
+        ))
+    ]
+
+    JUMP_TRANSLATION: dict[str, str] = {
+        "equal": "notEqual",
+        "notEqual": "equal",
+        "greaterThan": "lessThanEq",
+        "lessThan": "greaterThanEq",
+        "greaterThanEq": "lessThan",
+        "lessThanEq": "greaterThan"
+    }
+
     @classmethod
     def optimize(cls, code: Instructions) -> Instructions:
         cls._optimize_jumps(code)
@@ -89,7 +177,11 @@ class Optimizer:
         cls._make_ssa(blocks)
         cls._remove_noops_blocks(blocks)
 
-        while cls._propagate_constants(blocks) or cls._remove_unused(blocks):
+        while (cls._propagate_constants(blocks)
+               or cls._remove_unused(blocks)
+               or cls._optimize_op_jump(blocks)
+               or cls._eliminate_common_subexpressions(blocks)
+               or cls._optimize_jump_with_op(blocks)):
             cls._remove_noops_blocks(blocks)
 
         cls._resolve_ssa(blocks)
@@ -100,6 +192,131 @@ class Optimizer:
             cls._remove_noops(code)
 
         return code
+
+    @classmethod
+    def _optimize_jump_with_op(cls, blocks: Blocks) -> bool:
+        found = False
+        for block in blocks:
+            for i, ins in enumerate(block):
+                if i < 1:
+                    continue
+
+                prev = block[i - 1]
+                if ins.name == Instruction.jump.name and prev.name == Instruction.op.name and \
+                        ins.params[1] == "equal" and ins.params[3] == "0" and ins.params[2] == prev.params[1] and \
+                        (translated := cls.JUMP_TRANSLATION.get(prev.params[0])) is not None:
+                    ins.params[1] = translated
+                    ins.params[2], ins.params[3] = prev.params[2], prev.params[3]
+                    found = True
+
+        return found
+
+    @classmethod
+    def _eliminate_common_subexpressions(cls, blocks: Blocks) -> bool:
+        operations: dict[tuple[str, str, str], str] = {}
+
+        found = False
+        for block in blocks:
+            for i, ins in enumerate(block):
+                if ins.name == Instruction.op.name:
+                    if ins.params[0] == "rand":
+                        continue
+
+                    operands = (ins.params[0], ins.params[2], ins.params[3])
+                    if operands in operations:
+                        block[i] = Instruction.set(ins.params[1], operations[operands])
+                        found = True
+                    else:
+                        operations[operands] = ins.params[1]
+
+        return found
+
+    @classmethod
+    def _optimize_op_jump(cls, blocks: Blocks) -> bool:
+        found = False
+        for block in blocks:
+            for i, ins in enumerate(block):
+                if ins.name == Instruction.op.name:
+                    result = None
+
+                    if ins.params[0] in cls.PRECALC:
+                        try:
+                            func = Optimizer.PRECALC[ins.params[0]]
+
+                            a = float(ins.params[2])
+                            if a.is_integer():
+                                a = int(a)
+                            if ins.params[3] == "_":
+                                b = None
+                            else:
+                                b = float(ins.params[3])
+                                if b.is_integer():
+                                    b = int(b)
+
+                            result = float(func(a, b))
+                            if result.is_integer():
+                                result = int(result)
+                            result = str(result)
+
+                        except (ArithmeticError, ValueError, TypeError):
+                            pass
+
+                    if result is None:
+                        for instructions, patterns in cls.OP_CONSTANTS:
+                            if ins.params[0] not in instructions:
+                                continue
+
+                            for a, b, r in patterns:
+                                if r is None:
+                                    if ins.params[2] in a:
+                                        result = ins.params[3]
+                                        break
+                                    elif ins.params[3] in b:
+                                        result = ins.params[2]
+                                        break
+
+                                else:
+                                    if len(a) == 0 and len(b) == 0:
+                                        if ins.params[2] == ins.params[3]:
+                                            result = r
+                                            break
+
+                                    else:
+                                        if ins.params[2] in a or ins.params[3] in b:
+                                            result = r
+                                            break
+
+                            break
+
+                    if result is not None:
+                        block[i] = Instruction.set(ins.params[1], result)
+                        found = True
+
+                elif ins.name == Instruction.jump.name:
+                    if ins.params[1] in Optimizer.JUMP_PRECALC:
+                        try:
+                            func = Optimizer.JUMP_PRECALC[ins.params[1]]
+
+                            a = float(ins.params[2])
+                            if a.is_integer():
+                                a = int(a)
+                            if ins.params[3] == "_":
+                                b = None
+                            else:
+                                b = float(ins.params[3])
+                                if b.is_integer():
+                                    b = int(b)
+
+                            if func(a, b):
+                                block[i] = Instruction.jump_always(ins.params[0][1:])
+                            else:
+                                block[i] = Instruction.noop()
+                            found = True
+
+                        except (ArithmeticError, ValueError, TypeError):
+                            pass
+
+        return found
 
     @classmethod
     def _remove_unused_no_blocks(cls, code: Instructions) -> bool:
