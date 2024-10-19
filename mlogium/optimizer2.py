@@ -483,7 +483,11 @@ class Optimizer:
                     if (graph := graphs.get(ins.params[i])) is not None:
                         options = cls._value_copy_graph_find_constants(graph, [])
                         if len(options) == 1:
-                            ins.params[i] = next(iter(options))
+                            prev = ins.params[i]
+                            new = next(iter(options))
+                            ins.params[i] = new
+                            if prev != new:
+                                found = True
 
         return found
 
