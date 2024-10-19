@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from re import search
 from typing import Callable
 from .instruction import InstructionInstance, Instruction
 from .structure import CounterDict
@@ -76,6 +77,8 @@ class Phi(InstructionInstance):
 
 type Instructions = list[InstructionInstance]
 type Blocks = list[Block]
+
+type ValueCopyGraph = list[ValueCopyGraph | str]
 
 
 class Optimizer:
@@ -181,8 +184,12 @@ class Optimizer:
                or cls._remove_unused(blocks)
                or cls._optimize_op_jump(blocks)
                or cls._eliminate_common_subexpressions(blocks)
-               or cls._optimize_jump_with_op(blocks)):
+               or cls._optimize_jump_with_op(blocks)
+               or cls._propagate_constants_rec(blocks)):
             cls._remove_noops_blocks(blocks)
+
+        cls._optimize_unused_instructions(blocks)
+        cls._remove_noops_blocks(blocks)
 
         cls._resolve_ssa(blocks)
         code = [ins for block in blocks for ins in block]
@@ -192,6 +199,40 @@ class Optimizer:
             cls._remove_noops(code)
 
         return code
+
+    @classmethod
+    def _find_all_dependencies(cls, dependencies: set[str], value: str, graph: dict[str, set[str]]):
+        if value in dependencies:
+            return
+        dependencies.add(value)
+
+        for dep in graph.get(value, set()):
+            cls._find_all_dependencies(dependencies, dep, graph)
+
+    @classmethod
+    def _optimize_unused_instructions(cls, blocks: Blocks):
+        graph = {}
+        for block in blocks:
+            for ins in block:
+                inputs = set(ins.params[i] for i in ins.inputs)
+                for i in ins.outputs:
+                    if ins.params[i] not in graph:
+                        graph[ins.params[i]] = set()
+                    graph[ins.params[i]] |= inputs
+
+        dependencies = set()
+
+        for block in blocks:
+            for ins in block:
+                if ins.side_effects:
+                    for i in ins.inputs:
+                        cls._find_all_dependencies(dependencies, ins.params[i], graph)
+
+        for block in blocks:
+            for i, ins in enumerate(block):
+                if ins.name == Instruction.set.name or ins.name == Phi.name:
+                    if ins.params[0] not in dependencies:
+                        block[i] = Instruction.noop()
 
     @classmethod
     def _optimize_jump_with_op(cls, blocks: Blocks) -> bool:
@@ -350,6 +391,8 @@ class Optimizer:
         for block in blocks:
             for ins in block:
                 if ins.name == Instruction.set.name:
+                    if ins.params[1] in constants:
+                        ins.params[1] = constants[ins.params[1]]
                     constants[ins.params[0]] = ins.params[1]
 
         found = False
@@ -360,6 +403,87 @@ class Optimizer:
                     if (constant := constants.get(inp)) is not None:
                         ins.params[i] = constant
                         found = True
+
+        return found
+
+    @staticmethod
+    def _list_unique_merge[T](a: list[T], b: list[T]) -> list[T]:
+        return a + [x for x in b if x not in a]
+
+    @classmethod
+    def _build_value_copy_graph(cls, value: str, assignments: dict[str, InstructionInstance],
+                                graphs: dict[str, ValueCopyGraph | None]) -> ValueCopyGraph | None:
+        sentinel = object()
+        if (graph := graphs.get(value, sentinel)) is not sentinel:
+            return graph
+
+        if (ins := assignments.get(value)) is not None:
+            if ins.name == Instruction.set.name:
+                graph = []
+                graphs[value] = graph
+                g = cls._build_value_copy_graph(ins.params[1], assignments, graphs)
+                if g is None:
+                    graphs[value] = None
+                    return None
+                graph = cls._list_unique_merge(graph, g)
+                return graph
+
+            elif ins.name == Phi.name:
+                graph = []
+                graphs[value] = graph
+                for inp in ins.params[1:]:
+                    g = cls._build_value_copy_graph(inp, assignments, graphs)
+                    graphs[inp] = g
+                    if g is None:
+                        graphs[value] = None
+                        return None
+                    graph += g
+                return graph
+
+            else:
+                return None
+
+        if not value.endswith("\"") and ":" in value:
+            return []
+        return [value]
+
+    @classmethod
+    def _value_copy_graph_find_constants(cls, graph: ValueCopyGraph | None, seen: list[ValueCopyGraph]) -> set[str]:
+        if graph is None:
+            return set()
+        if any(g is graph for g in seen):
+            return set()
+        seen.append(graph)
+        result = set()
+        for elem in graph:
+            if isinstance(elem, str):
+                result.add(elem)
+            else:
+                result |= cls._value_copy_graph_find_constants(elem, seen)
+        return result
+
+    @classmethod
+    def _propagate_constants_rec(cls, blocks: Blocks) -> bool:
+        assignments = {}
+        for block in blocks:
+            for ins in block:
+                for i in ins.outputs:
+                    assignments[ins.params[i]] = ins
+
+        graphs = {}
+        for block in blocks:
+            for ins in block:
+                for i in ins.inputs:
+                    cls._build_value_copy_graph(ins.params[i], assignments, graphs)
+
+        found = False
+        for block in blocks:
+            for ins in block:
+                for i in ins.inputs:
+                    if (graph := graphs.get(ins.params[i])) is not None:
+                        options = cls._value_copy_graph_find_constants(graph, [])
+                        if len(options) == 1:
+                            ins.params[i] = next(iter(options))
 
         return found
 
