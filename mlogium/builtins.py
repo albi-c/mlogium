@@ -150,13 +150,32 @@ def _construct_special_builtin_functions(builtins: dict[str, Value]):
 
         return Value.null()
 
+    def _has_attr_impl(ctx: CompilationContext, params: list[Value]) -> Value:
+        name = params[1].value
+        if not (name.startswith("\"") and name.endswith("\"")):
+            ctx.error(f"Name has to be an immediate string value")
+        name = name[1:-1]
+
+        return Value.of_boolean(params[0].getattr(ctx, False, name) is not None)
+
+    def _has_static_attr_impl(ctx: CompilationContext, params: list[Value]) -> Value:
+        name = params[1].value
+        if not (name.startswith("\"") and name.endswith("\"")):
+            ctx.error(f"Name has to be an immediate string value")
+        name = name[1:-1]
+
+        return Value.of_boolean(params[0].getattr(ctx, True, name) is not None)
+
     builtins |= {
         "typeof": Value(SpecialFunctionType("typeof", [AnyType()], GenericTypeType(),
                                             lambda _, params: Value.of_type(params[0].type)), ""),
         "#import": Value(SpecialFunctionType("import", [StringType()], AnyType(), _import_impl), ""),
         "#use": Value(SpecialFunctionType("use", [AnyType()], NullType(), _use_impl), ""),
         "#static_assert": Value(SpecialFunctionType("static_assert", [NumberType(), StringType()], NullType(),
-                                                    _static_assert_impl), "")
+                                                    _static_assert_impl), ""),
+        "#has_attr": Value(SpecialFunctionType("has_attr", [AnyType(), StringType()], NumberType(), _has_attr_impl), ""),
+        "#has_static_attr": Value(SpecialFunctionType("has_static_attr", [AnyType(), StringType()], NumberType(),
+                                                      _has_static_attr_impl), ""),
     }
 
 

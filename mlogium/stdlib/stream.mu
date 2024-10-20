@@ -121,15 +121,21 @@ namespace Stream {
         }
     }
 
-    fn range(&n: num) {
-        Stream::range2(0, n)
+    fn range(n...: num) {
+        if const #has_attr(n, "3") {
+            #static_assert(false, "Stream::range expects 1 to 3 parameters, got >3")
+        } else if const #has_attr(n, "2") {
+            Stream::_range_create(n.0, n.1, n.2)
+        } else if const #has_attr(n, "1") {
+            Stream::_range_create(n.0, n.1, 1)
+        } else if const #has_attr(n, "0") {
+            Stream::_range_create(0, n.0, 1)
+        } else {
+            #static_assert(false, "Stream::range expects 1 to 3 parameters, got 0")
+        }
     }
 
-    fn range2(&start: num, &end: num) {
-        Stream::range3(start, end, 1)
-    }
-
-    fn range3(&start: num, &end: num, &step) {
+    fn _range_create(&start: num, &end: num, &step) {
         let i = start;
         Stream::new(||[&i, &step] {
             let x = i;
