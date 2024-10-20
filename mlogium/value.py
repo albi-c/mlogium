@@ -1787,6 +1787,15 @@ class StructBaseType(Type):
 
         return super(StructBaseType, self).getattr(ctx, value, static, name)
 
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        if (func := value.getattr(ctx, True, "@cast")) is not None:
+            if not func.callable_with(ctx, [TypeType(type_)]):
+                ctx.error(
+                    f"Value of type '{func.type}' does not have the correct function signature to implement type casts")
+            return func.call(ctx, [Value.of_type(type_)])
+
+        return super(StructBaseType, self).into(ctx, value, type_)
+
     def callable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
 
@@ -2094,6 +2103,15 @@ class NamespaceType(Type):
                 return val
 
         return super(NamespaceType, self).getattr(ctx, value, static, name)
+
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        if (func := value.getattr(ctx, True, "@cast")) is not None:
+            if not func.callable_with(ctx, [TypeType(type_)]):
+                ctx.error(
+                    f"Value of type '{func.type}' does not have the correct function signature to implement type casts")
+            return func.call(ctx, [Value.of_type(type_)])
+
+        return super(NamespaceType, self).into(ctx, value, type_)
 
     def callable(self, ctx: CompilationContext, value: Value) -> bool:
         return True

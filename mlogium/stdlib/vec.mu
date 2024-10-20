@@ -7,7 +7,7 @@ fn Vec(&T, &N: num) {
         static const T = T;
         static const _data_tuple_type = Tuple(T, N);
 
-        static fn new() -> Self {
+        static fn new() {
             self(self::_data_tuple_type.default(), 0)
         }
 
@@ -19,7 +19,7 @@ fn Vec(&T, &N: num) {
             self._index
         }
 
-        const fn copy() -> Self {
+        const fn copy() {
             typeof(self).base(self.data, self._index)
         }
 

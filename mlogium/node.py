@@ -71,10 +71,12 @@ class AstVisitor[T](ABC):
 
     def visit(self, node: Node) -> T:
         prev_node = self.current_node
+        prev_pos = self.current_pos
         self.current_node = node
         self.current_pos = node.pos
         value = node.accept(self)
         self.current_node = prev_node
+        self.current_pos = prev_pos
         return value
 
     @abstractmethod

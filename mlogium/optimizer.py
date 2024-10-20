@@ -172,37 +172,40 @@ class Optimizer:
 
     @classmethod
     def optimize(cls, code: Instructions) -> Instructions:
-        cls._optimize_jumps(code)
-        cls._remove_noops(code)
-
-        while cls._precalculate_op_jump(code):
-            pass
-        cls._remove_noops(code)
-
-        blocks = cls._make_blocks(code)
-        cls._eval_block_jumps(blocks)
-        cls._find_assignments(blocks)
-        cls._optimize_block_jumps(blocks)
-        cls._make_ssa(blocks)
-        while (cls._propagate_constants(blocks) or cls._precalculate_op_jump_blocks(blocks)
-               or cls._eliminate_common_subexpressions(blocks)):
-            pass
-        cls._optimize_unused_instructions(blocks)
-        cls._resolve_ssa(blocks)
-        code = [ins for block in blocks for ins in block]
-
-        cls._remove_noops(code)
-        cls._optimize_jumps(code)
-        cls._remove_noops(code)
-
-        while cls._optimize_set_op(code) or cls._precalculate_op_jump(code) or cls._optimize_jump_tables(code):
-            pass
-        cls._remove_noops(code)
-        while cls._merge_op_set(code):
-            pass
-
-        while cls._join_instructions(code):
+        for i in range(2):
+            cls._optimize_jumps(code)
             cls._remove_noops(code)
+
+            while cls._precalculate_op_jump(code):
+                pass
+            cls._remove_noops(code)
+
+            blocks = cls._make_blocks(code)
+            cls._eval_block_jumps(blocks)
+            if i == 0:
+                cls._find_assignments(blocks)
+            cls._optimize_block_jumps(blocks)
+            if i == 0:
+                cls._make_ssa(blocks)
+                while (cls._propagate_constants(blocks) or cls._precalculate_op_jump_blocks(blocks)
+                       or cls._eliminate_common_subexpressions(blocks)):
+                    pass
+                cls._optimize_unused_instructions(blocks)
+                cls._resolve_ssa(blocks)
+            code = [ins for block in blocks for ins in block]
+
+            cls._remove_noops(code)
+            cls._optimize_jumps(code)
+            cls._remove_noops(code)
+
+            while cls._optimize_set_op(code) or cls._precalculate_op_jump(code) or cls._optimize_jump_tables(code):
+                pass
+            cls._remove_noops(code)
+            while cls._merge_op_set(code):
+                pass
+
+            while cls._join_instructions(code):
+                cls._remove_noops(code)
 
         return code
 
@@ -783,7 +786,11 @@ class Optimizer:
         if len(prints) > 1:
             buffer = "".join(p for _, p in prints)
 
-            code[prints[0][0]].params[0] = f"\"{buffer}\""
+            if len(buffer) > 0:
+                code[prints[0][0]].params[0] = f"\"{buffer}\""
+            else:
+                code[prints[0][0]] = Instruction.noop()
+
             for i, _ in prints[1:]:
                 code[i] = Instruction.noop()
 
@@ -798,6 +805,11 @@ class Optimizer:
         prints: list[tuple[int, str]] = []
         for i, ins in enumerate(code):
             if ins.name == Instruction.print.name:
+                if ins.params[0] == "\"\"" or len(ins.params[0]) == 0:
+                    code[i] = Instruction.noop()
+                    found = True
+                    continue
+
                 val = None
                 try:
                     _ = float(ins.params[0])

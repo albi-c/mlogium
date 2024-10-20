@@ -66,13 +66,17 @@ class Linker:
         generated = []
         for i, ins in enumerate(instructions):
             ln = ins.name
-            for p in ins.params:
+            for j, p in enumerate(ins.params):
                 if p.startswith("$"):
                     lab = cls._resolve_label_with_offset(labels, p[1:], i)
                     if lab >= len(instructions):
                         lab = 0
+                    if lab == 0 and j == 0 and ins.name == "jump" and i == len(instructions) - 1:
+                        ln = ""
+                        break
                     ln += f" {lab}"
                 else:
                     ln += f" {p}"
-            generated.append(ln)
+            if len(ln) > 0:
+                generated.append(ln)
         return "\n".join(generated)
