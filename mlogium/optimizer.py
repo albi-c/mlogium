@@ -54,7 +54,8 @@ class Phi(InstructionInstance):
         return f"phi {self.output} = {self.variable} [{", ".join(map(str, self.input_blocks))}]"
 
     def translate_in_linker(self, _) -> list[InstructionInstance]:
-        raise RuntimeError("Phi instruction must be converted")
+        return [self]
+        # raise RuntimeError("Phi instruction must be converted")
 
     @classmethod
     def _find_variable_index(cls, block: Block, variable: str) -> int | None:
@@ -365,13 +366,20 @@ class Optimizer:
     @classmethod
     def _propagate_constants(cls, blocks: Blocks) -> bool:
         constants: dict[str, str] = {}
+        found = False
 
         for block in blocks:
-            for ins in block:
+            for i, ins in enumerate(block):
                 if ins.name == Instruction.set.name:
                     constants[ins.params[0]] = ins.params[1]
 
-        found = False
+                elif ins.name == Phi.name:
+                    assert len(ins.inputs) >= 2
+                    if all(inp == ins.params[1] for inp in ins.params[2:]):
+                        constants[ins.params[0]] = ins.params[1]
+                        block[i] = Instruction.set(ins.params[0], ins.params[1])
+                        found = True
+
         for block in blocks:
             for ins in block:
                 for i in ins.inputs:

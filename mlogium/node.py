@@ -563,9 +563,13 @@ class TupleValueNode(Node):
 class RangeValueNode(Node):
     start: Node
     end: Node
+    step: Node | None
 
     def __str__(self):
-        return f"{self.start}..{self.end}"
+        if self.step is None:
+            return f"{self.start}..{self.end}"
+        else:
+            return f"{self.start}..{self.end}..{self.step}"
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_range_value_node(self)

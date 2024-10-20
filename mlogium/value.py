@@ -58,6 +58,14 @@ class Value:
         val.getattr_req(ctx, False, "end").assign(ctx, end)
         return val
 
+    @classmethod
+    def of_range_with_step(cls, ctx: CompilationContext, start: Value, end: Value, step: Value) -> Value:
+        val = Value(RangeWithStepType(), ctx.tmp(), False)
+        val.getattr_req(ctx, False, "start").assign(ctx, start)
+        val.getattr_req(ctx, False, "end").assign(ctx, end)
+        val.getattr_req(ctx, False, "step").assign(ctx, step)
+        return val
+
     @contextlib.contextmanager
     def do_assignment(self, ctx: CompilationContext):
         if self.const:
@@ -366,6 +374,10 @@ class ValueIterator(ABC):
     def next_value(self, ctx: CompilationContext) -> Value:
         raise NotImplementedError
 
+    @abstractmethod
+    def end_loop(self, ctx: CompilationContext):
+        raise NotImplementedError
+
 
 class AnyType(Type):
     def __str__(self):
@@ -503,6 +515,9 @@ class TypeType(Type):
 
             elif name == "is_condition":
                 return Value.of_boolean(val.to_condition(ctx) is not None)
+
+            elif name == "is_tuple":
+                return Value.of_boolean(isinstance(self.type, TupleType))
 
             elif name == "from":
                 return Value(SpecialFunctionType(
@@ -1001,6 +1016,9 @@ class TupleType(Type):
         def next_value(self, ctx: CompilationContext) -> Value:
             return self.next_func.call(ctx, [])
 
+        def end_loop(self, ctx: CompilationContext):
+            pass
+
     types: list[Type]
 
     def __str__(self):
@@ -1210,9 +1228,10 @@ class RangeType(Type):
             return self.index.binary_op(ctx, "<", self.end)
 
         def next_value(self, ctx: CompilationContext) -> Value:
-            current = self.index.copy(ctx)
+            return self.index
+
+        def end_loop(self, ctx: CompilationContext):
             self.index.binary_op(ctx, "+=", Value.of_number(1))
-            return current
 
     def __str__(self):
         return f"Range"
@@ -1231,6 +1250,11 @@ class RangeType(Type):
     def assign_default(self, ctx: CompilationContext, value: Value):
         self._attr(value, "start", value.const).assign_default(ctx)
         self._attr(value, "end", value.const).assign_default(ctx)
+
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        if type_.contains(RangeWithStepType()):
+            return Value.of_range_with_step(ctx, self._attr(value, "start", True),
+                                            self._attr(value, "end", True), Value.of(1))
 
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
         return [ABI.attribute(value.value, "start"), "\"..\"", ABI.attribute(value.value, "end")]
@@ -1264,6 +1288,84 @@ class RangeType(Type):
     def memcell_read(self, ctx: CompilationContext, value: Value, values: list[str]):
         self._attr(value, "start", False).assign(ctx, Value.of_number(values[0]))
         self._attr(value, "end", False).assign(ctx, Value.of_number(values[1]))
+
+
+class RangeWithStepType(Type):
+    class ValueIterator(ValueIterator):
+        index: Value
+        end: Value
+        step: Value
+
+        def __init__(self, ctx: CompilationContext, start: Value, end: Value, step: Value):
+            self.index = start.copy(ctx)
+            self.end = end
+            self.step = step
+
+        def has_value(self, ctx: CompilationContext) -> Value:
+            return self.index.binary_op(ctx, "<", self.end)
+
+        def next_value(self, ctx: CompilationContext) -> Value:
+            return self.index
+
+        def end_loop(self, ctx: CompilationContext):
+            self.index.binary_op(ctx, "+=", self.step)
+
+    def __str__(self):
+        return f"RangeWithStep"
+
+    def __eq__(self, other):
+        return isinstance(other, RangeWithStepType)
+
+    @staticmethod
+    def _attr(value: Value, name: str, const: bool) -> Value:
+        return Value(NumberType(), ABI.attribute(value.value, name), const)
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        self._attr(value, "start", value.const).assign(ctx, other.getattr_req(ctx, False, "start"))
+        self._attr(value, "end", value.const).assign(ctx, other.getattr_req(ctx, False, "end"))
+        self._attr(value, "step", value.const).assign(ctx, other.getattr_req(ctx, False, "step"))
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        self._attr(value, "start", value.const).assign_default(ctx)
+        self._attr(value, "end", value.const).assign_default(ctx)
+        self._attr(value, "step", value.const).assign_default(ctx)
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [ABI.attribute(value.value, "start"), "\"..\"", ABI.attribute(value.value, "end"), "\"..\"",
+                ABI.attribute(value.value, "step")]
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
+        if not static:
+            if name in ("start", "end", "step"):
+                return self._attr(value, name, value.const)
+
+        return super(RangeWithStepType, self).getattr(ctx, value, static, name)
+
+    def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
+        return RangeWithStepType.ValueIterator(
+            ctx,
+            self._attr(value, "start", True),
+            self._attr(value, "end", True),
+            self._attr(value, "step", True)
+        )
+
+    def memcell_serializable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    def memcell_size(self, ctx: CompilationContext, value: Value) -> int:
+        return 3
+
+    def memcell_write(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [
+            self._attr(value, "start", True).value,
+            self._attr(value, "end", True).value,
+            self._attr(value, "step", True).value
+        ]
+
+    def memcell_read(self, ctx: CompilationContext, value: Value, values: list[str]):
+        self._attr(value, "start", False).assign(ctx, Value.of_number(values[0]))
+        self._attr(value, "end", False).assign(ctx, Value.of_number(values[1]))
+        self._attr(value, "step", False).assign(ctx, Value.of_number(values[2]))
 
 
 def _format_function_signature(params: list[Type | None], result: Type | None) -> str:
@@ -2001,6 +2103,86 @@ class NamespaceType(Type):
                 return val
 
         return super(NamespaceType, self).getattr(ctx, value, static, name)
+
+    def callable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    @staticmethod
+    def _get_call_func(ctx: CompilationContext, value: Value) -> Value:
+        return value.getattr(ctx, True, "@call")
+
+    def call_with_suggestion(self, ctx: CompilationContext, value: Value) -> list[Type | None] | None:
+        if (func := self._get_call_func(ctx, value)) is not None:
+            return func.call_with_suggestion(ctx)
+        return [t for _, t in self.fields]
+
+    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
+        if (func := self._get_call_func(ctx, value)) is not None:
+            return func.callable_with(ctx, param_types)
+        return len(self.fields) == len(param_types) and all(
+            f[1].contains(t) for f, t in zip(self.fields, param_types))
+
+    def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
+        if (func := self._get_call_func(ctx, value)) is not None:
+            return func.call(ctx, params)
+
+        value = Value(self._instance_type, ctx.tmp(), False)
+
+        for (field, _), param in zip(self.fields, params):
+            value.getattr_req(ctx, False, field).assign(ctx, param)
+
+        return value
+
+    @staticmethod
+    def _get_index_func(ctx: CompilationContext, value: Value) -> Value:
+        return value.getattr_req(ctx, True, "@index")
+
+    def indexable(self, ctx: CompilationContext, value: Value) -> bool:
+        return value.getattr(ctx, True, "@index") is not None
+
+    def validate_index_types(self, ctx: CompilationContext, value: Value, indices: list[Type]) -> None | list[Type]:
+        func = self._get_index_func(ctx, value)
+        if func.callable_with(ctx, indices):
+            return None
+        else:
+            if (suggested := func.call_with_suggestion(ctx)) is not None:
+                return suggested
+            else:
+                return [EllipsisType()]
+
+    def index(self, ctx: CompilationContext, value: Value, indices: list[Value]) -> Value:
+        return self._get_index_func(ctx, value).call(ctx, indices)
+
+    def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> Value | None:
+        if (name := StructBaseType.UNARY_OP_NAMES.get(op)) is not None:
+            if (func := value.getattr(ctx, True, name)) is not None:
+                if not func.callable_with(ctx, []):
+                    ctx.error(f"Value of type '{func.type}' does not have the correct function signature to implement \
+unary operator '{op}'")
+                return func.call(ctx, [])
+
+        return super(NamespaceType, self).unary_op(ctx, value, op)
+
+    def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
+        if (name := StructBaseType.BINARY_OP_NAMES.get(op)) is not None:
+            if (func := value.getattr(ctx, True, name)) is not None:
+                if not func.callable_with(ctx, [other.type]):
+                    ctx.error(f"Value of type '{func.type}' does not have the correct function signature to implement \
+binary operator '{op}' with other value of type '{other.type}'")
+                return func.call(ctx, [other])
+
+        return super(NamespaceType, self).binary_op(ctx, value, op, other)
+
+    def binary_op_r(self, ctx: CompilationContext, other: Value, op: str, value: Value) -> Value | None:
+        if (name := self.BINARY_OP_NAMES.get(op)) is not None:
+            name = f"@r_{name[1:]}"
+            if (func := value.getattr(ctx, True, name)) is not None:
+                if not func.callable_with(ctx, [other.type]):
+                    ctx.error(f"Value of type '{func.type}' does not have the correct function signature to implement \
+reversed binary operator '{op}' with other value of type '{other.type}'")
+                return func.call(ctx, [other])
+
+        return super(NamespaceType, self).binary_op_r(ctx, other, op, value)
 
 
 @dataclass(slots=True)

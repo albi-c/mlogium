@@ -339,6 +339,7 @@ class Compiler(AstVisitor[Value]):
             next_value = iterator.next_value(self.ctx)
             self._declare_target(node.target, next_value)
             self.visit(node.code)
+            iterator.end_loop(self.ctx)
         self.emit(
             Instruction.jump_always(name + "_continue"),
             Instruction.label(name + "_break")
@@ -440,7 +441,11 @@ class Compiler(AstVisitor[Value]):
         return Value.of_tuple(self.ctx, values)
 
     def visit_range_value_node(self, node: RangeValueNode) -> Value:
-        return Value.of_range(self.ctx, self.visit(node.start), self.visit(node.end))
+        if node.step is None:
+            return Value.of_range(self.ctx, self.visit(node.start), self.visit(node.end))
+        else:
+            return Value.of_range_with_step(self.ctx, self.visit(node.start),
+                                            self.visit(node.end), self.visit(node.step))
 
     def visit_tuple_type_node(self, node: TupleTypeNode) -> Value:
         return Value.of_type(TupleType([self.resolve_type(t) for t in node.types]))

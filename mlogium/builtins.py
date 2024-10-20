@@ -20,6 +20,7 @@ def _construct_builtin_types(builtins: dict[str, Value]):
         "num": Value.of_type(NumberType()),
         "str": Value.of_type(StringType()),
         "Range": Value.of_type(RangeType()),
+        "RangeWithStep": Value.of_type(RangeWithStepType()),
         "Block": Value.of_type(BlockType()),
         "Unit": Value.of_type(UnitType()),
         "Controller": Value.of_type(ControllerType()),

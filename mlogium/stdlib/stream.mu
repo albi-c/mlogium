@@ -111,13 +111,31 @@ namespace Stream {
         __new_stream(next, has)
     }
 
+    fn @call(&iterable) {
+        if const typeof(iterable).equals(Range) {
+            Stream::range2(iterable.start, iterable.end)
+        } else if const typeof(iterable).equals(RangeWithStep) {
+            Stream::range3(iterable.start, iterable.end, iterable.step)
+        } else {
+            Stream::new(iterable.@iter()...)
+        }
+    }
+
     fn range(&n: num) {
-        let i = 0;
-        Stream::new(||[&i] {
+        Stream::range2(0, n)
+    }
+
+    fn range2(&start: num, &end: num) {
+        Stream::range3(start, end, 1)
+    }
+
+    fn range3(&start: num, &end: num, &step) {
+        let i = start;
+        Stream::new(||[&i, &step] {
             let x = i;
-            i += 1;
+            i += step;
             x
-        }, ||[&i, &n] i < n)
+        }, ||[&i, &end] i < end)
     }
 
     fn generate(&f) {

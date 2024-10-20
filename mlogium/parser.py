@@ -212,7 +212,12 @@ class Parser(BaseParser[Node]):
 
         if self.lookahead(TokenType.DOUBLE_DOT):
             end = self.parse_logical_or()
-            return RangeValueNode(val.pos + end.pos, val, end)
+
+            if self.lookahead(TokenType.DOUBLE_DOT):
+                step = self.parse_logical_or()
+                return RangeValueNode(val.pos + step.pos, val, end, step)
+
+            return RangeValueNode(val.pos + end.pos, val, end, None)
 
         return val
 

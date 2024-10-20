@@ -59,5 +59,15 @@ fn Vec(&T, &N: num) {
         fn @index(i: num) {
             self.data[i]
         }
+
+        fn append(&other) {
+            if const typeof(other).is_tuple {
+                other.map(|x|[&self] self.push_back(x));
+            } else {
+                for x in other {
+                    self.push_back(x);
+                }
+            }
+        }
     }
 }
