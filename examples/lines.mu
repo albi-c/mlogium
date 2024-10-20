@@ -23,5 +23,5 @@ for i in 10..100 {
 
     draw.color(r * 255, g * 255, b * 255, 255);
     draw_line(i, 10, 100, 100);
-    drawflush(ExternBlock::display1);
+    drawflush(Block::display1);
 }

@@ -18,7 +18,7 @@ while true {
             draw.color((val * fg_color)..., 255);
             draw.rect(x * PM, y_offset, PM, PM);
         }
-        drawflush(ExternBlock::display1);
+        drawflush(Block::display1);
         draw.color((bg_color ++ (fade_speed,))...);
         draw.rect(0, 0, DS, DS);
     }

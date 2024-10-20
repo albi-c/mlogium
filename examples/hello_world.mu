@@ -1,2 +1,2 @@
 print("Hello, World!");
-printflush(ExternBlock::message1);
+printflush(Block::message1);

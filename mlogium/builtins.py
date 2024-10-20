@@ -21,7 +21,7 @@ def _construct_builtin_types(builtins: dict[str, Value]):
         "str": Value.of_type(StringType()),
         "Range": Value.of_type(RangeType()),
         "RangeWithStep": Value.of_type(RangeWithStepType()),
-        "Block": Value.of_type(BlockType()),
+        "Block": Value(BlockBaseType(), ""),
         "Unit": Value.of_type(UnitType()),
         "Controller": Value.of_type(ControllerType()),
         "Tuple": Value(TupleTypeSourceType(), "")
@@ -39,12 +39,6 @@ def _construct_builtin_enums(builtins: dict[str, Value]):
             builtins["BlockType"].type.wrapped_type(None),
             builtins["LiquidType"].type.wrapped_type(None)
         ]))
-    }
-
-
-def _construct_special_builtin_variables(builtins: dict[str, Value]):
-    builtins |= {
-        "ExternBlock": Value(BlockSourceType(), "")
     }
 
 
@@ -248,7 +242,6 @@ def construct_builtins() -> dict[str, Value]:
     builtins = {}
     _construct_builtin_types(builtins)
     _construct_builtin_enums(builtins)
-    _construct_special_builtin_variables(builtins)
     _construct_builtin_variables(builtins)
     _construct_special_builtin_functions(builtins)
     _construct_builtin_functions(builtins)

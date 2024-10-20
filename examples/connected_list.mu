@@ -3,4 +3,4 @@ for i in 0..@links {
     print("\n");
 }
 
-printflush(ExternBlock::message1);
+printflush(Block::message1);

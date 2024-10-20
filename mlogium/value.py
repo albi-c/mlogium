@@ -191,7 +191,7 @@ class Value:
         return self.type.bottom_scope()
 
     def iterable(self, ctx: CompilationContext) -> bool:
-        return self.type.iterable(ctx, self)
+        return self.iterate(ctx) is not None
 
     def iterate(self, ctx: CompilationContext) -> ValueIterator | None:
         return self.type.iterate(ctx, self)
@@ -598,26 +598,6 @@ class TupleTypeSourceType(Type):
         return Value.of_type(TupleType([params[0].type.wrapped_type(ctx)] * count))
 
 
-class BlockSourceType(Type):
-    def __str__(self):
-        return "ExternBlock"
-
-    def __eq__(self, other):
-        return isinstance(other, BlockSourceType)
-
-    def assign(self, ctx: CompilationContext, value: Value, other: Value):
-        pass
-
-    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
-        return [_stringify(str(self))]
-
-    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
-        if static:
-            return Value(BlockType(), name)
-
-        return super(BlockSourceType, self).getattr(ctx, value, static, name)
-
-
 class NullType(Type):
     def __str__(self):
         return "null"
@@ -707,6 +687,17 @@ class StringType(Type):
 
     def table_copyable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
+
+
+class BlockBaseType(TypeType):
+    def __init__(self):
+        super().__init__(BlockType())
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
+        if static:
+            return Value(BlockType(), name)
+
+        return super(BlockBaseType, self).getattr(ctx, value, static, name)
 
 
 class BlockType(Type):
