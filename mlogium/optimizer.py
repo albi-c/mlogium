@@ -771,13 +771,21 @@ class Optimizer:
 
         for i, ins in enumerate(code):
             if i >= 1 and ins.name == Instruction.set.name:
-                prev = code[i - 1]
-                if len(prev.outputs) == 1:
-                    out = prev.params[prev.outputs[0]]
-                    if ins.params[1] == out and inputs[out] == 1:
-                        prev.params[prev.outputs[0]] = ins.params[0]
-                        code.pop(i)
-                        return True
+                for j in range(i):
+                    prev = code[j]
+                    if len(prev.outputs) == 1:
+                        out = prev.params[prev.outputs[0]]
+                        if ins.params[1] == out and inputs[out] == 1:
+                            can_replace = True
+                            for k in range(j + 1, i):
+                                if out in code[k].params or ins.params[0] in code[k].params:
+                                    can_replace = False
+                                    break
+
+                            if can_replace:
+                                prev.params[prev.outputs[0]] = ins.params[0]
+                                code.pop(i)
+                                return True
 
         return False
 
