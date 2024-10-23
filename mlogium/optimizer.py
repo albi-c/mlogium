@@ -54,8 +54,7 @@ class Phi(InstructionInstance):
         return f"phi {self.output} = {self.variable} [{", ".join(map(str, self.input_blocks))}]"
 
     def translate_in_linker(self, _) -> list[InstructionInstance]:
-        return [self]
-        # raise RuntimeError("Phi instruction must be converted")
+        raise RuntimeError("Phi instruction must be converted")
 
     @classmethod
     def _find_variable_index(cls, block: Block, variable: str) -> int | None:
@@ -84,6 +83,7 @@ type ValueCopyGraph = list[ValueCopyGraph | str]
 
 
 class Optimizer:
+    # table for merging `op` with `jump` instructions
     JUMP_TRANSLATION: dict[str, str] = {
         "equal": "notEqual",
         "notEqual": "equal",
@@ -93,33 +93,66 @@ class Optimizer:
         "lessThanEq": "greaterThan"
     }
 
+    """
+    mathematical transformations
+    
+    list of tuples with elements:
+        1. tuple of possible `op` operations
+        2. tuple of transformations
+            - values:
+                - a: tuple
+                - b: tuple
+                - result: str|None
+            - two inputs (a, b), first match taken:
+                - empty tuple - match any value
+                - tuple with elements - match concrete value
+            - output:
+                - string - constant value
+                - None - value of the input which was not  
+    """
     OP_CONSTANTS: list[tuple[tuple[str, ...], tuple[tuple[tuple[str, ...], tuple[str, ...], str | None], ...]]] = [
         (("add", "or", "xor"), (
+            # inputs can be swapped
+            # x + 0 = x
             (("0",), ("0",), None),
         )),
         (("sub",), (
+            # x - 0 = x
+            # x - x = 0
             (tuple(), ("0",), None),
             (tuple(), tuple(), "0")
         )),
         (("mul",), (
+            # inputs can be swapped
+            # x * 0 = 0
+            # x * 1 = x
             (("0",), ("0",), "0"),
             (("1",), ("1",), None)
         )),
         (("div", "idiv"), (
+            # x / x = 1
+            # x / 1 = x
+            # 0 / x = 0
             (tuple(), tuple(), "1"),
             (tuple(), ("1",), None),
             (("0",), tuple(), "0")
         )),
         (("shr", "shl"), (
+            # x >> 0 = x
+            # 0 >> x = 0
             (tuple(), ("0",), None),
             (("0",), tuple(), "0")
         )),
         (("and", "land"), (
+            # inputs can be swapped
+            # x & 0 = 0
+            # x & x = x
             (("0",), ("0",), "0"),
             (tuple(), tuple(), None)
         ))
     ]
 
+    # functions for compile time calculation
     PRECALC: dict[str, Callable[[int | float, int | float | None], int | float]] = {
         "add": lambda a, b: a + b,
         "sub": lambda a, b: a - b,
@@ -161,6 +194,7 @@ class Optimizer:
         "atan": lambda a, _: math.degrees(math.atan(a))
     }
 
+    # functions for compile time calculation of jump conditions
     JUMP_PRECALC: dict[str, Callable[[int | float, int | float], bool]] = {
         "equal": lambda a, b: a == b,
         "notEqual": lambda a, b: a != b,
@@ -172,6 +206,10 @@ class Optimizer:
 
     @classmethod
     def optimize(cls, code: Instructions) -> Instructions:
+        """
+        Optimizer entry point. Calls other optimization functions.
+        """
+
         for i in range(2):
             cls._optimize_jumps(code)
             cls._remove_noops(code)
@@ -219,6 +257,10 @@ class Optimizer:
 
     @classmethod
     def _make_blocks(cls, code: Instructions) -> Blocks:
+        """
+        Convert flat list of instructions to blocks
+        """
+
         blocks: Blocks = [Block()]
         for ins in code:
             if cls._is_label(ins):
@@ -233,6 +275,10 @@ class Optimizer:
 
     @classmethod
     def _eval_block_jumps(cls, blocks: Blocks):
+        """
+        Find predecessors and successors of blocks
+        """
+
         if len(blocks) == 0:
             return
 
@@ -291,6 +337,10 @@ class Optimizer:
 
     @classmethod
     def _optimize_block_jumps(cls, blocks: Blocks):
+        """
+        Remove unnecessary jumps
+        """
+
         labels = {"$" + lab.params[0]: i for i, block in enumerate(blocks)
                   for lab in block if lab.name == Instruction.label.name}
         for i, block in enumerate(blocks):
@@ -299,6 +349,10 @@ class Optimizer:
 
     @classmethod
     def _make_ssa(cls, blocks: Blocks):
+        """
+        Convert code to SSA form
+        """
+
         if len(blocks) < 1:
             return
 
@@ -350,6 +404,10 @@ class Optimizer:
 
     @classmethod
     def _resolve_ssa(cls, blocks: Blocks):
+        """
+        Convert Phi instructions to assignments
+        """
+
         for block in blocks:
             for i, ins in enumerate(block):
                 if isinstance(ins, Phi):
@@ -368,6 +426,10 @@ class Optimizer:
 
     @classmethod
     def _propagate_constants(cls, blocks: Blocks) -> bool:
+        """
+        Propagate constants in assignments and Phi instructions
+        """
+
         constants: dict[str, str] = {}
         found = False
 
@@ -394,11 +456,19 @@ class Optimizer:
 
     @staticmethod
     def _list_unique_merge[T](a: list[T], b: list[T]) -> list[T]:
+        """
+        Perform set intersection on lists of possibly unhashable values
+        """
+
         return a + [x for x in b if x not in a]
 
     @classmethod
     def _build_value_copy_graph(cls, value: str, assignments: dict[str, InstructionInstance],
                                 graphs: dict[str, ValueCopyGraph | None]) -> ValueCopyGraph | None:
+        """
+        Build graph of possible variable values
+        """
+
         sentinel = object()
         if (graph := graphs.get(value, sentinel)) is not sentinel:
             return graph
@@ -435,6 +505,10 @@ class Optimizer:
 
     @classmethod
     def _value_copy_graph_find_constants(cls, graph: ValueCopyGraph | None, seen: list[ValueCopyGraph]) -> set[str]:
+        """
+        Find constants in a value copy graph
+        """
+
         if graph is None:
             return set()
         if any(g is graph for g in seen):
@@ -450,6 +524,10 @@ class Optimizer:
 
     @classmethod
     def _propagate_constants_rec(cls, blocks: Blocks) -> bool:
+        """
+        Currently unused. Propagates constants using a tree.
+        """
+
         assignments = {}
         for block in blocks:
             for ins in block:
@@ -480,6 +558,10 @@ class Optimizer:
 
     @classmethod
     def _find_all_dependencies(cls, dependencies: set[str], value: str, graph: dict[str, set[str]]):
+        """
+        Find dependencies of a value
+        """
+
         if value in dependencies:
             return
         dependencies.add(value)
@@ -489,6 +571,10 @@ class Optimizer:
 
     @classmethod
     def _optimize_unused_instructions(cls, blocks: Blocks):
+        """
+        Remove instructions without side effects whose outputs are not used
+        """
+
         graph = {}
         for block in blocks:
             for ins in block:
@@ -514,6 +600,10 @@ class Optimizer:
 
     @classmethod
     def _precalculate_op_jump_blocks(cls, blocks: Blocks) -> bool:
+        """
+        Attempt to perform calculations at compile time
+        """
+
         found = False
         for block in blocks:
             for i, ins in enumerate(block):
@@ -622,6 +712,10 @@ class Optimizer:
 
     @classmethod
     def _is_impossible_jump(cls, ins: InstructionInstance) -> bool:
+        """
+        Check if a jump never happens
+        """
+
         if ins.params[1] == "equal":
             return ((ins.params[2] in ("true", "1") and ins.params[3] in ("false", "0"))
                     or (ins.params[3] in ("true", "1") and ins.params[2] in ("false", "0")))
@@ -635,6 +729,10 @@ class Optimizer:
 
     @classmethod
     def _does_always_jump(cls, ins: InstructionInstance) -> bool:
+        """
+        Check if a jump always happens
+        """
+
         if ins.params[1] == "always":
             return True
 
@@ -651,6 +749,10 @@ class Optimizer:
 
     @classmethod
     def _optimize_jumps(cls, code: Instructions):
+        """
+        Remove unnecessary jumps
+        """
+
         used_labels = {label[1:] for ins in code for label in ins.params if label.startswith("$")}
         code[:] = [ins for ins in code if ins.name != Instruction.label.name or ins.params[0] in used_labels]
 
@@ -756,6 +858,17 @@ class Optimizer:
 
     @staticmethod
     def _merge_op_set(code: Instructions) -> bool:
+        """
+        Move assignments up
+
+        set __tmp1 12
+        print 16
+        set x __tmp1
+
+        set x 12
+        print 16
+        """
+
         inputs = defaultdict(int)
         outputs = defaultdict(int)
         first_writes = {}
@@ -776,13 +889,8 @@ class Optimizer:
                     if len(prev.outputs) == 1:
                         out = prev.params[prev.outputs[0]]
                         if ins.params[1] == out and inputs[out] == 1:
-                            can_replace = True
-                            for k in range(j + 1, i):
-                                if out in code[k].params or ins.params[0] in code[k].params:
-                                    can_replace = False
-                                    break
-
-                            if can_replace:
+                            # check if the value being assigned to in `ins` is used between the two affected instructions
+                            if not any(ins.params[0] in code[k].params for k in range(j + 1, i)):
                                 prev.params[prev.outputs[0]] = ins.params[0]
                                 code.pop(i)
                                 return True
@@ -790,24 +898,11 @@ class Optimizer:
         return False
 
     @classmethod
-    def _join_instructions_flush(cls, code: Instructions, prints: list[tuple[int, str]]) -> bool:
-        if len(prints) > 1:
-            buffer = "".join(p for _, p in prints)
-
-            if len(buffer) > 0:
-                code[prints[0][0]].params[0] = f"\"{buffer}\""
-            else:
-                code[prints[0][0]] = Instruction.noop()
-
-            for i, _ in prints[1:]:
-                code[i] = Instruction.noop()
-
-            return True
-
-        prints.clear()
-
-    @classmethod
     def _join_instructions(cls, code: Instructions) -> bool:
+        """
+        Join print instructions into one
+        """
+
         found = False
 
         prints: list[tuple[int, str]] = []
@@ -834,12 +929,31 @@ class Optimizer:
             else:
                 found = found or cls._join_instructions_flush(code, prints)
 
-        found = found or cls._join_instructions_flush(code, prints)
+        return found or cls._join_instructions_flush(code, prints)
 
-        return found
+    @classmethod
+    def _join_instructions_flush(cls, code: Instructions, prints: list[tuple[int, str]]) -> bool:
+        if len(prints) > 1:
+            buffer = "".join(p for _, p in prints)
+
+            if len(buffer) > 0:
+                code[prints[0][0]].params[0] = f"\"{buffer}\""
+            else:
+                code[prints[0][0]] = Instruction.noop()
+
+            for i, _ in prints[1:]:
+                code[i] = Instruction.noop()
+
+            return True
+
+        prints.clear()
 
     @classmethod
     def _precalculate_op_jump(cls, code: Instructions) -> bool:
+        """
+        Attempt to perform calculations at compile time
+        """
+
         found = False
         for i, ins in enumerate(code):
             if ins.name == Instruction.op.name:
@@ -925,6 +1039,10 @@ class Optimizer:
 
     @classmethod
     def _optimize_jump_tables(cls, code: Instructions) -> bool:
+        """
+        Optimize jump tables with compile time known indices
+        """
+
         found = True
         found_any = False
         while found:
