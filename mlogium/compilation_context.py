@@ -37,7 +37,7 @@ class CompilationContext(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def error(self, msg: str):
+    def error(self, msg: str, pos: Position | None = None):
         raise NotImplementedError
 
     @abstractmethod

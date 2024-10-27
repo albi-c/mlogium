@@ -205,12 +205,14 @@ class Optimizer:
     }
 
     @classmethod
-    def optimize(cls, code: Instructions) -> Instructions:
+    def optimize(cls, code: Instructions, level: int) -> Instructions:
         """
         Optimizer entry point. Calls other optimization functions.
         """
 
-        for i in range(2):
+        assert level >= 0
+
+        for i in range(level):
             cls._optimize_jumps(code)
             cls._remove_noops(code)
 

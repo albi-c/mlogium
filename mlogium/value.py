@@ -1576,7 +1576,10 @@ class FunctionType(Type):
             return_val = Value(self.result if self.result is not None else result.type,
                                ABI.return_value(ctx.scope.get_function()), False)
             if NullType().contains(result.type):
-                return_val.assign_default(ctx)
+                if self.result is not None and not self.result.contains(NullType()):
+                    ctx.error("Function code block doesn't return value", self.code.pos)
+                else:
+                    return_val.assign_default(ctx)
             else:
                 return_val.assign(ctx, result)
 
@@ -1639,7 +1642,10 @@ class LambdaType(Type):
             return_val = Value(self.result if self.result is not None else result.type,
                                ABI.return_value(ctx.scope.get_function()), False)
             if NullType().contains(result.type):
-                return_val.assign_default(ctx)
+                if self.result is not None and not self.result.contains(NullType()):
+                    ctx.error("Function code block doesn't return value", self.code.pos)
+                else:
+                    return_val.assign_default(ctx)
             else:
                 return_val.assign(ctx, result)
 
@@ -1704,7 +1710,10 @@ class StructMethodType(Type):
             return_val = Value(self.result if self.result is not None else result.type,
                                ABI.return_value(ctx.scope.get_function()), False)
             if NullType().contains(result.type):
-                return_val.assign_default(ctx)
+                if self.result is not None and not self.result.contains(NullType()):
+                    ctx.error("Function code block doesn't return value", self.code.pos)
+                else:
+                    return_val.assign_default(ctx)
             else:
                 return_val.assign(ctx, result)
 

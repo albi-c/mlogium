@@ -16,7 +16,7 @@ class ExamplesTestCast(unittest.TestCase):
                 compile_function(code, filename)
 
     def test_examples_compilation(self):
-        self._test_examples(".mu", compile_code)
+        self._test_examples(".mu", lambda code, filename: compile_code(code, filename, 2))
 
     def test_asm_examples_compilation(self):
         self._test_examples(".mua", compile_asm_code)

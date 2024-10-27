@@ -8,12 +8,12 @@ from .asm.parser import AsmParser
 from .asm.compiler import AsmCompiler
 
 
-def compile_code(code: str, filename: str) -> str:
+def compile_code(code: str, filename: str, opt_level: int) -> str:
     tokens = Lexer().lex(code, filename)
     ast = Parser(tokens).parse()
     compiler = Compiler()
     compiler.compile(ast)
-    instructions = Optimizer.optimize(compiler.ctx.get_instructions())
+    instructions = Optimizer.optimize(compiler.ctx.get_instructions(), opt_level + 1)
     result = Linker.link(instructions)
     return result
 

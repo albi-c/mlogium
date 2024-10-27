@@ -22,8 +22,8 @@ class Compiler(AstVisitor[Value]):
         def generate_node(self, node: Node) -> Value:
             return self.compiler.visit(node)
 
-        def error(self, msg: str):
-            self.compiler.error(msg)
+        def error(self, msg: str, pos: Position | None = None):
+            self.compiler.error(msg, pos)
 
         def current_pos(self) -> Position:
             return self.compiler.current_pos

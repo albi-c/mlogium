@@ -23,6 +23,8 @@ def main() -> int:
     parser.add_argument("-l", "--lines", help="print line numbers when output to stdout is selected",
                         action="store_true")
 
+    parser.add_argument("-O", "--opt", "--optimize", type=int, help="optimization level", default=2)
+
     parser.add_argument("--print-exceptions", help="print all exceptions from the compilation",
                         action="store_true")
 
@@ -35,6 +37,11 @@ def main() -> int:
 
     verbose = False
     lines = False
+
+    opt_level = args.opt
+    if opt_level < 0:
+        print("Optimization level must be at least 0")
+        exit(1)
 
     for k, v in vars(args).items():
         if v:
@@ -64,7 +71,7 @@ def main() -> int:
         if args.assembly:
             result = compile_asm_code(code, filename).strip()
         else:
-            result = compile_code(code, filename).strip()
+            result = compile_code(code, filename, opt_level).strip()
     except PositionedException as e:
         print(e.msg)
         e.pos.print()
