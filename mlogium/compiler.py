@@ -222,7 +222,7 @@ class Compiler(AstVisitor[Value]):
                          for p in method.params],
                         self.resolve_type_opt(method.result),
                         method.code,
-                        self.scope.get_global_closures()))
+                        self.scope.get_closure_variables()))
 
             for method in node.static_methods:
                 assert method.name is not None
@@ -234,7 +234,7 @@ class Compiler(AstVisitor[Value]):
                                                                 for p in method.params],
                                                                self.resolve_type_opt(method.result),
                                                                method.code,
-                                                               self.scope.get_global_closures())
+                                                               self.scope.get_closure_variables())
 
             base_type.methods = methods
             base_type.static_methods = static_methods

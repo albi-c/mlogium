@@ -5,10 +5,9 @@ fn Vec(&T, &N: num) {
 
         static const capacity = N;
         static const T = T;
-        static const _data_tuple_type = Tuple(T, N);
 
         static fn new() {
-            self(self::_data_tuple_type.default(), 0)
+            self(Tuple(T, self::capacity).default(), 0)
         }
 
         const fn capacity() -> num {
@@ -28,7 +27,7 @@ fn Vec(&T, &N: num) {
         }
 
         const fn get(i: num) -> T {
-            self.data[i] as self::T
+            self.data[i] as T
         }
 
         fn push_back(&value: T) {
@@ -38,7 +37,7 @@ fn Vec(&T, &N: num) {
 
         fn pop_back() -> T {
             self._index -= 1;
-            self.data[self._index] as self::T
+            self.data[self._index] as T
         }
 
         fn clear() {

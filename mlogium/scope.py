@@ -97,6 +97,12 @@ class ScopeStack:
             values |= closure
         return values
 
+    def get_closure_variables(self) -> list[dict[str, Value]]:
+        values = {}
+        for scope in self.scopes:
+            values |= scope.variables
+        return self.get_global_closures() + [values]
+
     def get(self, name: str) -> Value | None:
         for scope in reversed(self.scopes):
             if name in scope.variables:
