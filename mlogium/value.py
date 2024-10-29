@@ -1156,7 +1156,8 @@ class TupleIndexReferenceType(Type):
         return "TupleIndexRef"
 
     def __eq__(self, other):
-        return isinstance(other, TupleIndexReferenceType) and self.type == other.type and self.index == other.index and self.values == other.values
+        return (isinstance(other, TupleIndexReferenceType) and self.type == other.type and self.index == other.index
+                and self.values == other.values)
 
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
         return value.into_req(ctx, self.type).to_strings(ctx)
@@ -1245,7 +1246,7 @@ class RangeType(Type):
     def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
         if type_.contains(RangeWithStepType()):
             return Value.of_range_with_step(ctx, self._attr(value, "start", True),
-                                            self._attr(value, "end", True), Value.of(1))
+                                            self._attr(value, "end", True), Value.of_number(1))
 
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
         return [ABI.attribute(value.value, "start"), "\"..\"", ABI.attribute(value.value, "end")]
@@ -1567,7 +1568,7 @@ class FunctionType(Type):
         return FunctionType.check_callable_with(self.params, param_types)
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
-        with ctx.scope.function_call(ctx, f"$function_{self.name}:{ctx.tmp_num()}",
+        with ctx.scope.function_call(ctx, f"$function_{self.name}:{ctx.tmp_num()}", self.result,
                                      ctx.scope.combine_global_closures(self.global_closure)):
             FunctionType.declare_params(ctx, self.params, params)
 
@@ -1630,7 +1631,7 @@ class LambdaType(Type):
         return FunctionType.check_callable_with(self.params, param_types)
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
-        with ctx.scope.function_call(ctx, f"$lambda_{self.name}:{ctx.tmp_num()}",
+        with ctx.scope.function_call(ctx, f"$lambda_{self.name}:{ctx.tmp_num()}", self.result,
                                      ctx.scope.combine_global_closures(self.global_closure)):
             for capture in self.captures:
                 ctx.scope.declare_special(capture.name, capture.value)
@@ -1699,7 +1700,7 @@ class StructMethodType(Type):
         return FunctionType.check_callable_with(self.params, param_types)
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
-        with ctx.scope.function_call(ctx, f"$method_{self.name}:{ctx.tmp_num()}",
+        with ctx.scope.function_call(ctx, f"$method_{self.name}:{ctx.tmp_num()}", self.result,
                                      ctx.scope.combine_global_closures(self.global_closure)):
             ctx.scope.declare_special("self", self.self_value)
 
@@ -2132,24 +2133,17 @@ class NamespaceType(Type):
     def call_with_suggestion(self, ctx: CompilationContext, value: Value) -> list[Type | None] | None:
         if (func := self._get_call_func(ctx, value)) is not None:
             return func.call_with_suggestion(ctx)
-        return [t for _, t in self.fields]
 
     def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
         if (func := self._get_call_func(ctx, value)) is not None:
             return func.callable_with(ctx, param_types)
-        return len(self.fields) == len(param_types) and all(
-            f[1].contains(t) for f, t in zip(self.fields, param_types))
+
+        return False
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
-        if (func := self._get_call_func(ctx, value)) is not None:
-            return func.call(ctx, params)
-
-        value = Value(self._instance_type, ctx.tmp(), False)
-
-        for (field, _), param in zip(self.fields, params):
-            value.getattr_req(ctx, False, field).assign(ctx, param)
-
-        return value
+        func = self._get_call_func(ctx, value)
+        assert func is not None
+        return func.call(ctx, params)
 
     @staticmethod
     def _get_index_func(ctx: CompilationContext, value: Value) -> Value:
@@ -2192,7 +2186,7 @@ binary operator '{op}' with other value of type '{other.type}'")
         return super(NamespaceType, self).binary_op(ctx, value, op, other)
 
     def binary_op_r(self, ctx: CompilationContext, other: Value, op: str, value: Value) -> Value | None:
-        if (name := self.BINARY_OP_NAMES.get(op)) is not None:
+        if (name := StructBaseType.BINARY_OP_NAMES.get(op)) is not None:
             name = f"@r_{name[1:]}"
             if (func := value.getattr(ctx, True, name)) is not None:
                 if not func.callable_with(ctx, [other.type]):

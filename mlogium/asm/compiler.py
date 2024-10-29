@@ -1,6 +1,5 @@
 from .node import *
 from ..error import CompilerError
-from ..util import Position
 from ..instruction import Instruction, InstructionInstance
 from typing import Callable, Iterable
 

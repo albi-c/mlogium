@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 from .value_types import Types, BasicTypeRef, UnionTypeRef, TypeRef
 from . import enums
-from .abi import ABI
 from .linking_context import LinkingContext
 
 

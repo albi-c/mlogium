@@ -152,10 +152,13 @@ class Compiler(AstVisitor[Value]):
     def visit_return_node(self, node: ReturnNode) -> Value:
         if (func := self.scope.get_function()) is None:
             self.error(f"Return statement must be used inside a function")
+        name, return_type = func
         if node.value is not None:
             value = self.visit(node.value)
-            Value(value.type, ABI.return_value(func), False).assign(self.ctx, value)
-        self.emit(Instruction.jump_always(ABI.function_end(func)))
+            if return_type is None:
+                self.error(f"Cannot use return statement in function with inferred return type")
+            Value(return_type, ABI.return_value(name), False).assign(self.ctx, value)
+        self.emit(Instruction.jump_always(ABI.function_end(name)))
         return Value.null()
 
     def visit_struct_node(self, node: StructNode) -> Value:

@@ -3,8 +3,7 @@ from __future__ import annotations
 import contextlib
 
 from .abi import ABI
-from .value import Value
-from .value_types import Types
+from .value import Value, Type
 
 
 class ScopeStack:
@@ -17,7 +16,7 @@ class ScopeStack:
             self.variables = variables if variables is not None else {}
 
     scopes: list[Scope]
-    functions: list[str]
+    functions: list[tuple[str, Type | None]]
     loops: list[str]
     global_closures: list[dict[str, Value]]
 
@@ -27,7 +26,7 @@ class ScopeStack:
         self.loops = []
         self.global_closures = []
 
-    def get_function(self) -> str | None:
+    def get_function(self) -> tuple[str, Type | None] | None:
         return self.functions[-1] if len(self.functions) > 0 else None
 
     def get_loop(self) -> str | None:
@@ -66,11 +65,12 @@ class ScopeStack:
                 self.scopes.pop(0)
 
     @contextlib.contextmanager
-    def function_call(self, ctx, name: str, variables: dict[str, Value] = None):
+    def function_call(self, ctx, name: str, return_type: Type | None, variables: dict[str, Value] = None):
         self.scopes.append(ScopeStack.Scope(name, variables))
-        if name in self.functions:
-            ctx.error(f"Recursion is not allowed: '{name}'")
-        self.functions.append(name)
+        for n, _ in self.functions:
+            if n == name:
+                ctx.error(f"Recursion is not allowed: '{name}'")
+        self.functions.append((name, return_type))
         try:
             yield
         finally:
@@ -110,7 +110,7 @@ class ScopeStack:
 
         return None
 
-    def declare(self, name: str, type_: Types, const_on_write: bool) -> Value | None:
+    def declare(self, name: str, type_: Type, const_on_write: bool) -> Value | None:
         if name in self.scopes[-1].variables:
             return None
 
