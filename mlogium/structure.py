@@ -18,3 +18,21 @@ class CounterDict[K, V](dict[K, V]):
 
     def inc(self, key: K) -> V:
         return self.modify(key, lambda x: x + 1)
+
+
+class Cell[T]:
+    value: T
+
+    def __init__(self, value: T):
+        self.value = value
+
+    def get(self) -> T:
+        return self.value
+
+    def set(self, value: T):
+        self.value = value
+
+    def swap(self, value: T) -> T:
+        old = self.value
+        self.value = value
+        return old
