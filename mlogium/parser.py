@@ -260,7 +260,7 @@ class Parser(BaseParser[Node]):
         return self._parse_binary_op(("+", "-"), self.parse_term)
 
     def parse_term(self) -> Node:
-        return self._parse_binary_op(("*", "/", "%"), self.parse_factor)
+        return self._parse_binary_op(("*", "/", "/.", "%"), self.parse_factor)
 
     def parse_factor(self) -> Node:
         return self._parse_unary_op(("-", "~"), self.parse_power)

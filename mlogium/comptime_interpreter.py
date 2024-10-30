@@ -340,7 +340,16 @@ expected ({', '.join(f'\'{t}\'' for t in exp)})")
         return CValue.of_tuple(values)
 
     def visit_range_value_node(self, node: RangeValueNode) -> BaseCValue:
-        raise NotImplementedError
+        start = self.visit(node.start).deref().into_req(self.ctx, NumberCType())
+        end = self.visit(node.end).deref().into_req(self.ctx, NumberCType())
+        assert isinstance(start, NumberCValue)
+        assert isinstance(end, NumberCValue)
+        if node.step is not None:
+            step = self.visit(node.step).deref().into_req(self.ctx, NumberCType())
+            assert isinstance(step, NumberCValue)
+            return RangeWithStepCValue(start.as_int_or_float(), end.as_int_or_float(), step.as_int_or_float())
+        else:
+            return RangeCValue(start.as_int_or_float(), end.as_int_or_float())
 
     def visit_tuple_type_node(self, node: TupleTypeNode) -> BaseCValue:
         return TypeCValue(TupleCType([self._resolve_type(n) for n in node.types]))

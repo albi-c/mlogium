@@ -8,7 +8,7 @@ comptime {
     }
 
     fn range(n: num) {
-        _range(n, 0)
+        (0..n...,)
     }
 
     fn map(f: fn(?) -> ?, t) {

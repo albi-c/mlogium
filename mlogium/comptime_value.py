@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from decimal import DivisionByZero
+from logging import error
+from pty import slave_open
 from typing import Iterator
 from dataclasses import dataclass
 
@@ -351,6 +353,24 @@ class FunctionCType(CType):
         return OpaqueType()
 
 
+@dataclass(slots=True, eq=True)
+class RangeCType(CType):
+    def __str__(self):
+        return "Range"
+
+    def to_runtime(self) -> Type:
+        return RangeType()
+
+
+@dataclass(slots=True, eq=True)
+class RangeWithStepCType(CType):
+    def __str__(self):
+        return "RangeWithStep"
+
+    def to_runtime(self) -> Type:
+        return RangeWithStepType()
+
+
 @dataclass(slots=True)
 class TypeCValue(CValue):
     type: CType
@@ -566,14 +586,14 @@ class StringCValue(CValue):
         return StringCType()
 
     def to_runtime(self, ctx: CompilationContext, i_ctx: ComptimeInterpreterContext) -> Value:
-        return Value.of_string(self.value)
+        return Value.of_string(f"\"{self.value}\"")
 
     def is_true(self, ctx: ComptimeInterpreterContext) -> bool | None:
         return len(self.value) != 0
 
     def binary_op(self, ctx: ComptimeInterpreterContext, op: str, other: CValue) -> CValue | None:
         if op in ("==", "!=", "+") and StringCType().contains(other.type):
-            assert isinstance(other, StringCType)
+            assert isinstance(other, StringCValue)
             other_val = other.value
 
             if op == "==":
@@ -583,9 +603,16 @@ class StringCValue(CValue):
             elif op == "+":
                 return CValue.of_string(self.value + other_val)
 
+        elif op == "*" and NumberCType().contains(other.type):
+            assert isinstance(other, NumberCValue)
+            count = int(other.value)
+            if count < 0:
+                ctx.error("String repeat count cannot be negative")
+            return CValue.of_string(self.value * count)
+
     def binary_op_r(self, ctx: ComptimeInterpreterContext, other: CValue, op: str) -> CValue | None:
         if op == "+" and StringCType().contains(other.type):
-            assert isinstance(other, StringCType)
+            assert isinstance(other, StringCValue)
             return CValue.of_string(other.value + self.value)
 
         return self.binary_op(ctx, op, other)
@@ -686,6 +713,19 @@ class TupleCValue(CValue):
             else:
                 if 0 <= i < len(self.values):
                     return TupleElementCLValue(self, i)
+
+    def index(self, ctx: ComptimeInterpreterContext, indices: list[CValue]) -> BaseCValue | None:
+        if len(indices) != 1:
+            return
+        index = indices[0]
+        if not NumberCType().contains(index.type):
+            return
+        assert isinstance(index, NumberCValue)
+        i = int(index.value)
+        if 0 <= i < len(self.values):
+            return TupleElementCLValue(self, i)
+        else:
+            ctx.error(f"Tuple index out of range: {i}")
 
 
 @dataclass(slots=True)
@@ -885,3 +925,93 @@ class LambdaCValue(CValue):
                 elif self.result is None:
                     return LambdaCValue(params, self.param_names, self.captures, type_.result,
                                         lambda p: self.function(p).into_req(ctx, type_.result))
+
+
+@dataclass(slots=True)
+class RangeCValue(CValue):
+    start: int | float
+    end: int | float
+
+    def __str__(self):
+        return f"{self.start}..{self.end}"
+
+    def to_runtime(self, ctx: CompilationContext, i_ctx: ComptimeInterpreterContext) -> Value:
+        return Value.of_range(ctx, Value.of_number(self.start), Value.of_number(self.end))
+
+    @property
+    def type(self) -> CType:
+        return RangeCType()
+
+    def getattr(self, ctx: ComptimeInterpreterContext, name: str, static: bool) -> BaseCValue | None:
+        if not static:
+            if name == "start":
+                return CValue.of_number(self.start)
+            elif name == "end":
+                return CValue.of_number(self.end)
+
+    def iterable(self) -> bool:
+        return True
+
+    def iterate(self, ctx: ComptimeInterpreterContext) -> Iterator[CValue]:
+        i = self.start
+        while i < self.end:
+            yield CValue.of_number(i)
+            i += 1
+
+    def unpackable(self) -> bool:
+        return True
+
+    def unpack(self) -> list[CValue]:
+        values = []
+        i = self.start
+        while i < self.end:
+            values.append(CValue.of_number(i))
+            i += 1
+        return values
+
+
+@dataclass(slots=True)
+class RangeWithStepCValue(CValue):
+    start: int | float
+    end: int | float
+    step: int | float
+
+    def __str__(self):
+        return f"{self.start}..{self.end}..{self.step}"
+
+    def to_runtime(self, ctx: CompilationContext, i_ctx: ComptimeInterpreterContext) -> Value:
+        return Value.of_range_with_step(ctx, Value.of_number(self.start), Value.of_number(self.end),
+                                        Value.of_number(self.step))
+
+    @property
+    def type(self) -> CType:
+        return RangeCType()
+
+    def getattr(self, ctx: ComptimeInterpreterContext, name: str, static: bool) -> BaseCValue | None:
+        if not static:
+            if name == "start":
+                return CValue.of_number(self.start)
+            elif name == "end":
+                return CValue.of_number(self.end)
+            elif name == "step":
+                return CValue.of_number(self.step)
+
+    def iterable(self) -> bool:
+        return True
+
+    def iterate(self, ctx: ComptimeInterpreterContext) -> Iterator[CValue]:
+        i = self.start
+        while i < self.end:
+            yield CValue.of_number(i)
+            i += self.step
+
+    def unpackable(self) -> bool:
+        return True
+
+    def unpack(self) -> list[CValue]:
+        values = []
+        i = self.start
+        while i < self.end:
+            values.append(CValue.of_number(i))
+            i += self.step
+        return values
