@@ -16,14 +16,14 @@ def make_builtins() -> dict[str, VariableCLValue]:
     builtins = {}
 
     for name, type_ in BUILTIN_TYPES:
-        builtins[name] = VariableCLValue(TypeCValue(type_))
+        builtins[name] = VariableCLValue(TypeCValue(type_), True)
 
-    builtins["Tuple"] = VariableCLValue(TupleSourceCValue())
+    builtins["Tuple"] = VariableCLValue(TupleSourceCValue(), True)
 
     return builtins
 
 
-class ComptimeInterpreter(AstVisitor[CValue]):
+class ComptimeInterpreter(AstVisitor[BaseCValue]):
     class Context(ComptimeInterpreterContext):
         interpreter: ComptimeInterpreter
         tmp_num_provider: Callable[[], int]
@@ -89,19 +89,16 @@ class ComptimeInterpreter(AstVisitor[CValue]):
         InterpreterError.custom(self.current_pos if pos is None else pos, msg)
 
     def _var_get(self, name: str) -> BaseCValue:
-        if (var := self.scope.get(name)) is None:
-            self.error(f"Variable not found: '{name}'")
-        return var
+        return self._var_capture(name, True)
 
     def _var_set(self, name: str, value: CValue):
         var = self._var_capture(name, True)
         var.set(value.into_req(self.ctx, var.get().type))
 
     def _var_declare(self, name: str, value: CValue, type_: CType = None, const: bool = False) -> CValue:
-        # TODO: constants
         if type_ is not None:
             value = value.into_req(self.ctx, type_)
-        if not self.scope.declare(name, value):
+        if not self.scope.declare(name, value, const):
             self.error(f"Variable already defined: '{name}'")
         return value
 
@@ -146,7 +143,7 @@ class ComptimeInterpreter(AstVisitor[CValue]):
         return CValue.null()
 
     def visit_declaration_node(self, node: DeclarationNode) -> BaseCValue:
-        return self._declare_target(node.target, self.visit(node.value))
+        return self._declare_target(node.target, self.visit(node.value).deref())
 
     def visit_comptime_node(self, node: ComptimeNode) -> BaseCValue:
         return self.visit(node.value)
@@ -176,7 +173,7 @@ class ComptimeInterpreter(AstVisitor[CValue]):
         value = LambdaCValue(
             params, param_names,
             {
-                capture.name: VariableCLValue(self.visit(capture.value).deref())
+                capture.name: VariableCLValue(self.visit(capture.value).deref(), False)
                 if capture.value is not None else
                 self._var_capture(capture.name, capture.reference)
                 for capture in node.captures
@@ -261,16 +258,39 @@ class ComptimeInterpreter(AstVisitor[CValue]):
     def visit_cast_node(self, node: CastNode) -> BaseCValue:
         return self.visit(node.value).deref().into_req(self.ctx, self._resolve_type(node.type))
 
+    def _do_binary_op(self, left: CValue, op: str, right: CValue) -> CValue:
+        if (val := left.binary_op(self.ctx, op, right)) is None:
+            if (val_r := right.binary_op_r(self.ctx, left, op)) is None:
+                self.error(f"Operator {node.op} is not supported for types {left.type} and {right.type}")
+            return val_r
+        return val
+
     def visit_binary_op_node(self, node: BinaryOpNode) -> BaseCValue:
-        # TODO
-        raise NotImplementedError
+        left = self.visit(node.left)
+        right = self.visit(node.right).deref()
+
+        if node.op in ("=", ":="):
+            if not left.assign(self.ctx, right):
+                self.error(f"Assignment to constant of type {left.deref().type}")
+            return right
+
+        elif node.op.endswith("=") and node.op not in (">=", "<="):
+            if (result := left.deref().binary_op(self.ctx, node.op[:-1], right)) is None:
+                self.error(f"Operator {node.op} is not supported for values of types {left.deref().type} and {right.type}")
+            if not left.assign(self.ctx, result):
+                self.error(f"Assignment to constant of type {left.deref().type}")
+            return CValue.null()
+
+        return left.deref().do_binary_op(self.ctx, node.op, right)
 
     def visit_unary_op_node(self, node: UnaryOpNode) -> BaseCValue:
-        # TODO
-        raise NotImplementedError
+        value = self.visit(node.value).deref()
+        if (val := value.unary_op(self.ctx, node.op)) is None:
+            self.error(f"Operator {node.op} is not supported for value of type {value.type}")
+        return val
 
     def visit_call_node(self, node: CallNode) -> BaseCValue:
-        func = self.visit(node.value)
+        func = self.visit(node.value).deref()
         if not func.callable():
             self.error(f"Value of type '{func.type}' is not callable")
 

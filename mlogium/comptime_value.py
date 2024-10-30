@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import DivisionByZero
 from typing import Iterator
 from dataclasses import dataclass
 
@@ -35,23 +36,30 @@ class BaseCValue(ABC):
     def deref(self) -> CValue:
         raise NotImplementedError
 
+    @abstractmethod
+    def assign(self, ctx: ComptimeInterpreterContext, value: CValue) -> bool:
+        raise NotImplementedError
+
 
 @dataclass(slots=True)
 class CLValue(BaseCValue, ABC):
-    @abstractmethod
-    def assign(self, ctx: ComptimeInterpreterContext, value: CValue):
-        raise NotImplementedError
+    pass
 
 
 @dataclass(slots=True)
 class VariableCLValue(CLValue):
     value: CValue
+    constant: bool
 
     def deref(self) -> CValue:
-        return values
+        return self.value
 
-    def assign(self, ctx: ComptimeInterpreterContext, value: CValue):
+    def assign(self, ctx: ComptimeInterpreterContext, value: CValue) -> bool:
+        if self.constant:
+            return False
+
         self.value = value.into_req(ctx, self.value.type)
+        return True
 
 
 @dataclass(slots=True)
@@ -59,13 +67,12 @@ class CValue(BaseCValue, ABC):
     def deref(self) -> CValue:
         return self
 
+    def assign(self, ctx: ComptimeInterpreterContext, value: CValue) -> bool:
+        return False
+
     @classmethod
     def null(cls) -> CValue:
         return NullCValue()
-
-    @classmethod
-    def of_int(cls, value: int) -> CValue:
-        return NumberCValue(float(value))
 
     @classmethod
     def of_float(cls, value: float) -> CValue:
@@ -74,6 +81,10 @@ class CValue(BaseCValue, ABC):
     @classmethod
     def of_number(cls, value: int | float) -> CValue:
         return NumberCValue(float(value))
+
+    @classmethod
+    def of_boolean(cls, value: bool) -> CValue:
+        return BooleanCValue(value)
 
     @classmethod
     def of_string(cls, value: str) -> CValue:
@@ -153,7 +164,8 @@ class CValue(BaseCValue, ABC):
         return val
 
     def into_impl(self, ctx: ComptimeInterpreterContext, type_: CType) -> CValue | None:
-        return None
+        if (truthy := self.is_true(ctx)) is not None:
+            return CValue.of_boolean(truthy)
 
     def index(self, ctx: ComptimeInterpreterContext, indices: list[CValue]) -> BaseCValue | None:
         return None
@@ -162,6 +174,23 @@ class CValue(BaseCValue, ABC):
         if (val := self.index(ctx, indices)) is None:
             ctx.error(f"Value of type {self.type} is not indexable with indices of types [{', '.join(str(i.type) for i in indices)}]")
 
+        return val
+
+    def unary_op(self, ctx: ComptimeInterpreterContext, op: str) -> CValue | None:
+        if op == "!" and (truthy := self.is_true(ctx)) is not None:
+            return CValue.of_boolean(not truthy)
+
+    def binary_op(self, ctx: ComptimeInterpreterContext, op: str, other: CValue) -> CValue | None:
+        return None
+
+    def binary_op_r(self, ctx: ComptimeInterpreterContext, other: CValue, op: str) -> CValue | None:
+        return None
+
+    def do_binary_op(self, ctx: ComptimeInterpreterContext, op: str, other: CValue) -> CValue:
+        if (val := self.binary_op(ctx, op, other)) is None:
+            if (val_r := other.binary_op_r(ctx, self, op)) is None:
+                ctx.error(f"Operator {op} is not supported for values of types {self.type} and {other.type}")
+            return val_r
         return val
 
 
@@ -222,6 +251,15 @@ class NullCType(CType):
 class NumberCType(CType):
     def __str__(self):
         return "num"
+
+    def to_runtime(self) -> Type:
+        return NumberType()
+
+
+@dataclass(slots=True, eq=True)
+class BooleanCType(CType):
+    def __str__(self):
+        return "bool"
 
     def to_runtime(self) -> Type:
         return NumberType()
@@ -348,6 +386,34 @@ class NullCValue(CValue):
 
 @dataclass(slots=True)
 class NumberCValue(CValue):
+    BINARY_FLOAT_OPS = {
+        "+": lambda a, b: a + b,
+        "-": lambda a, b: a - b,
+        "*": lambda a, b: a * b,
+        "/": lambda a, b: a / b,
+        "//": lambda a, b: a // b,
+        "/.": lambda a, b: a // b,
+        "%": lambda a, b: a % b,
+        "**": lambda a, b: a ** b
+    }
+
+    BINARY_INT_OPS = {
+        "<<": lambda a, b: a << b,
+        ">>": lambda a, b: a >> b,
+        "|": lambda a, b: a | b,
+        "&": lambda a, b: a & b,
+        "^": lambda a, b: a ^ b
+    }
+
+    COMPARISON_OPS = {
+        "==": lambda a, b: a == b,
+        "!=": lambda a, b: a != b,
+        "<": lambda a, b: a < b,
+        "<=": lambda a, b: a <= b,
+        ">": lambda a, b: a > b,
+        ">=": lambda a, b: a >= b
+    }
+
     value: float
 
     def __str__(self):
@@ -373,6 +439,83 @@ class NumberCValue(CValue):
         if type_.contains(StringCType()):
             return CValue.of_string(str(self.as_int_or_float()))
 
+        elif type_.contains(BooleanCType()):
+            return CValue.of_boolean(self.value != 0)
+
+    def unary_op(self, ctx: ComptimeInterpreterContext, op: str) -> CValue | None:
+        if op == "-":
+            return CValue.of_float(-self.value)
+
+        elif op == "~":
+            return CValue.of_number(~int(self.value))
+
+        elif op == "!":
+            return CValue.of_boolean(self.value == 0)
+
+    @classmethod
+    def _binary_op(cls, ctx: ComptimeInterpreterContext, left: float, op: str, right: float) -> CValue | None:
+        if (func := cls.BINARY_FLOAT_OPS.get(op)) is not None:
+            try:
+                return CValue.of_number(func(left, right))
+            except ZeroDivisionError:
+                ctx.error("Division by zero")
+
+        elif (func := cls.BINARY_INT_OPS.get(op)) is not None:
+            return CValue.of_float(float(func(int(left), int(right))))
+
+        elif (func := cls.COMPARISON_OPS.get(op)) is not None:
+            return CValue.of_boolean(func(left, right))
+
+    def binary_op(self, ctx: ComptimeInterpreterContext, op: str, other: CValue) -> CValue | None:
+        if NumberCType().contains(other.type):
+            assert isinstance(other, NumberCValue)
+            other_val = other.value
+            return self._binary_op(ctx, self.value, op, other_val)
+
+    def binary_op_r(self, ctx: ComptimeInterpreterContext, other: CValue, op: str) -> CValue | None:
+        if NumberCType().contains(other.type):
+            assert isinstance(other, NumberCValue)
+            other_val = other.value
+            return self._binary_op(ctx, other_val, op, self.value)
+
+
+@dataclass(slots=True)
+class BooleanCValue(CValue):
+    value: bool
+
+    def __str__(self):
+        return "true" if self.value else "false"
+
+    @property
+    def type(self) -> CType:
+        return BooleanCType()
+
+    def to_runtime(self, ctx: CompilationContext) -> Value:
+        return Value.of_number(1 if self.value else 0)
+
+    def is_true(self, ctx: ComptimeInterpreterContext) -> bool | None:
+        return self.value
+
+    def into_impl(self, ctx: ComptimeInterpreterContext, type_: CType) -> CValue | None:
+        if type_.contains(NumberCType()):
+            return CValue.of_number(1 if self.value else 0)
+
+    def binary_op(self, ctx: ComptimeInterpreterContext, op: str, other: CValue) -> CValue | None:
+        if op in ("&&", "||", "^"):
+            other_val = other.is_true_req(ctx)
+
+            if op == "&&":
+                return CValue.of_boolean(self.value and other_val)
+
+            elif op == "||":
+                return CValue.of_boolean(self.value or other_val)
+
+            elif op == "^":
+                return CValue.of_boolean(self.value != other_val)
+
+    def binary_op_r(self, ctx: ComptimeInterpreterContext, other: CValue, op: str) -> CValue | None:
+        return self.binary_op(ctx, op, other)
+
 
 @dataclass(slots=True)
 class StringCValue(CValue):
@@ -390,6 +533,25 @@ class StringCValue(CValue):
 
     def is_true(self, ctx: ComptimeInterpreterContext) -> bool | None:
         return len(self.value) != 0
+
+    def binary_op(self, ctx: ComptimeInterpreterContext, op: str, other: CValue) -> CValue | None:
+        if op in ("==", "!=", "+") and StringCType().contains(other.type):
+            assert isinstance(other, StringCType)
+            other_val = other.value
+
+            if op == "==":
+                return CValue.of_boolean(self.value == other_val)
+            elif op == "!=":
+                return CValue.of_boolean(self.value != other_val)
+            elif op == "+":
+                return CValue.of_string(self.value + other_val)
+
+    def binary_op_r(self, ctx: ComptimeInterpreterContext, other: CValue, op: str) -> CValue | None:
+        if op == "+" and StringCType().contains(other.type):
+            assert isinstance(other, StringCType)
+            return CValue.of_string(other.value + self.value)
+
+        return self.binary_op(ctx, op, other)
 
 
 @dataclass(slots=True)
@@ -425,7 +587,44 @@ class TupleCValue(CValue):
                 values = []
                 for value, t, in zip(self.values, types):
                     values.append(value.into_req(ctx, t))
-                return TupleCValue(values)
+                return CValue.of_tuple(values)
+
+    def unary_op(self, ctx: ComptimeInterpreterContext, op: str) -> CValue | None:
+        results = []
+        for val in self.values:
+            if (result := val.unary_op(ctx, op)) is None:
+                ctx.error(f"Operator {op} is not supported for value of type {val.type}")
+            results.append(result)
+        return CValue.of_tuple(results)
+
+    @staticmethod
+    def _do_binary_op(ctx: ComptimeInterpreterContext, left: list[CValue], op: str, right: list[CValue]) -> CValue:
+        results = []
+        for a, b in zip(left, right):
+            results.append(a.do_binary_op(ctx, op, b))
+        return CValue.of_tuple(results)
+
+    def binary_op(self, ctx: ComptimeInterpreterContext, op: str, other: CValue) -> CValue | None:
+        if other.unpackable():
+            values = other.unpack_req(ctx)
+            if len(self.values) == len(values):
+                return self._do_binary_op(ctx, self.values, op, values)
+            else:
+                ctx.error(f"Element count mismatch: {len(self.values)} and {len(values)}")
+
+        else:
+            return self._do_binary_op(ctx, self.values, op, [other] * len(self.values))
+
+    def binary_op_r(self, ctx: ComptimeInterpreterContext, other: CValue, op: str) -> CValue | None:
+        if other.unpackable():
+            values = other.unpack_req(ctx)
+            if len(self.values) == len(values):
+                return self._do_binary_op(ctx, values, op, self.values)
+            else:
+                ctx.error(f"Element count mismatch: {len(values)} and {len(self.values)}")
+
+        else:
+            return self._do_binary_op(ctx, [other] * len(self.values), op, self.values)
 
 
 @dataclass(slots=True)
@@ -467,7 +666,7 @@ class FunctionCValue(CValue):
         # TODO: catch return
         with ctx.scope(ctx.tmp()):
             for name, type_, value in zip(self.param_names, self.params, values):
-                ctx.scope.declare(name, value if type_ is None else value.into_req(ctx, type_))
+                ctx.scope.declare(name, value if type_ is None else value.into_req(ctx, type_), False)
             result = self.function(values)
             result_type = self.result
             if result_type is not None:
@@ -531,7 +730,7 @@ class LambdaCValue(CValue):
         # TODO: catch return
         with ctx.scope(ctx.tmp()):
             for name, type_, value in zip(self.param_names, self.params, values):
-                ctx.scope.declare(name, value if type_ is None else value.into_req(ctx, type_))
+                ctx.scope.declare(name, value if type_ is None else value.into_req(ctx, type_), False)
             result = self.function(values)
             result_type = self.result
             if result_type is not None:

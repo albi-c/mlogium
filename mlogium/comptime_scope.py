@@ -56,11 +56,11 @@ class ComptimeScopeStack:
 
         return None
 
-    def declare(self, name: str, value: CValue) -> bool:
+    def declare(self, name: str, value: CValue, constant: bool) -> bool:
         if name in self.scopes[-1].variables:
             return False
 
-        self.scopes[-1].variables[name] = VariableCLValue(value)
+        self.scopes[-1].variables[name] = VariableCLValue(value, constant)
         return True
 
     def assign(self, name: str, value: CValue) -> bool:
@@ -76,6 +76,6 @@ class ComptimeScopeStack:
                 return var
 
             else:
-                return VariableCLValue(var.value)
+                return VariableCLValue(var.value, False)
 
         return None
