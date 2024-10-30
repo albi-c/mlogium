@@ -8,7 +8,8 @@ from .comptime_scope import ComptimeScopeStack
 
 BUILTIN_TYPES = [
     ("num", NumberCType()),
-    ("str", StringCType())
+    ("str", StringCType()),
+    ("Opaque", OpaqueCType())
 ]
 
 
@@ -19,6 +20,9 @@ def make_builtins() -> dict[str, VariableCLValue]:
         builtins[name] = VariableCLValue(TypeCValue(type_), True)
 
     builtins["Tuple"] = VariableCLValue(TupleSourceCValue(), True)
+
+    builtins["debug"] = VariableCLValue(FunctionCValue("name", [None], ["value"], NullCType(),
+                                                       lambda p: (print(p[0]), NullCValue())[1]), True)
 
     return builtins
 
@@ -34,22 +38,14 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
             self.interpreter = interpreter
             self.tmp_num_provider = tmp_num_provider
 
-        def error(self, msg: str):
-            self.interpreter.error(msg)
+        def error(self, msg: str, pos: Position | None = None):
+            self.interpreter.error(msg, pos)
 
         def interpret(self, node: Node) -> BaseCValue:
             return self.interpreter.visit(node)
 
         def tmp_num(self) -> int:
             return self.tmp_num_provider()
-
-    class Return(Exception):
-        pos: Position
-        value: CValue | None
-
-        def __init__(self, pos: Position, value: CValue | None):
-            self.pos = pos
-            self.value = value
 
     class Break(Exception):
         pos: Position
@@ -78,7 +74,7 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
     def interpret(self, node: Node) -> BaseCValue:
         try:
             return self.visit(node)
-        except self.Return as e:
+        except Return as e:
             self.error("Return statement used outside of function", e.pos)
         except self.Break as e:
             self.error("Break statement used outside of function", e.pos)
@@ -184,7 +180,7 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
         return value
 
     def visit_return_node(self, node: ReturnNode) -> BaseCValue:
-        raise self.Return(node.pos, self.visit(node.value).deref() if node.value is not None else None)
+        raise Return(node.pos, self.visit(node.value).deref() if node.value is not None else None)
 
     def visit_struct_node(self, node: StructNode) -> BaseCValue:
         raise NotImplementedError
@@ -222,7 +218,7 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
     def visit_for_node(self, node: ForNode) -> BaseCValue:
         value = self.visit(node.iterable).deref()
         if not value.iterable():
-            self.error(f"Value of type {value.type} is not iterable", node.iterable.pos)
+            self.error(f"Value of type '{value.type}' is not iterable", node.iterable.pos)
 
         for val in value.iterate(self.ctx):
             with self.scope(self.ctx.tmp()):
@@ -239,7 +235,7 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
     def visit_comprehension_node(self, node: ComprehensionNode) -> BaseCValue:
         value = self.visit(node.iterable).deref()
         if not value.iterable():
-            self.error(f"Value of type {value.type} is not iterable", node.iterable.pos)
+            self.error(f"Value of type '{value.type}' is not iterable", node.iterable.pos)
 
         values = []
         for val in value.iterate(self.ctx):
@@ -261,7 +257,7 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
     def _do_binary_op(self, left: CValue, op: str, right: CValue) -> CValue:
         if (val := left.binary_op(self.ctx, op, right)) is None:
             if (val_r := right.binary_op_r(self.ctx, left, op)) is None:
-                self.error(f"Operator {node.op} is not supported for types {left.type} and {right.type}")
+                self.error(f"Operator {node.op} is not supported for types '{left.type}' and '{right.type}'")
             return val_r
         return val
 
@@ -271,14 +267,14 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
 
         if node.op in ("=", ":="):
             if not left.assign(self.ctx, right):
-                self.error(f"Assignment to constant of type {left.deref().type}")
+                self.error(f"Assignment to constant of type '{left.deref().type}'")
             return right
 
-        elif node.op.endswith("=") and node.op not in (">=", "<="):
+        elif node.op.endswith("=") and node.op not in (">=", "<=", "=="):
             if (result := left.deref().binary_op(self.ctx, node.op[:-1], right)) is None:
-                self.error(f"Operator {node.op} is not supported for values of types {left.deref().type} and {right.type}")
+                self.error(f"Operator {node.op} is not supported for values of types '{left.deref().type}' and '{right.type}'")
             if not left.assign(self.ctx, result):
-                self.error(f"Assignment to constant of type {left.deref().type}")
+                self.error(f"Assignment to constant of type '{left.deref().type}'")
             return CValue.null()
 
         return left.deref().do_binary_op(self.ctx, node.op, right)
@@ -286,7 +282,7 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
     def visit_unary_op_node(self, node: UnaryOpNode) -> BaseCValue:
         value = self.visit(node.value).deref()
         if (val := value.unary_op(self.ctx, node.op)) is None:
-            self.error(f"Operator {node.op} is not supported for value of type {value.type}")
+            self.error(f"Operator {node.op} is not supported for value of type '{value.type}'")
         return val
 
     def visit_call_node(self, node: CallNode) -> BaseCValue:
@@ -315,12 +311,11 @@ expected ({', '.join(f'\'{t}\'' for t in exp)})")
         return func.call(self.ctx, params)
 
     def visit_index_node(self, node: IndexNode) -> BaseCValue:
-        # TODO
-        raise NotImplementedError
+        value = self.visit(node.value).deref()
+        return value.index_req(self.ctx, [self.visit(i).deref() for i in node.indices])
 
     def visit_attribute_node(self, node: AttributeNode) -> BaseCValue:
-        # TODO
-        raise NotImplementedError
+        return self.visit(node.value).deref().getattr_req(self.ctx, node.attr, node.static)
 
     def visit_number_value_node(self, node: NumberValueNode) -> BaseCValue:
         return CValue.of_number(node.value)

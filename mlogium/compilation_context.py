@@ -7,7 +7,13 @@ from .instruction import InstructionInstance
 from .util import Position
 
 
-class CompilationContext(ABC):
+class ErrorContext(ABC):
+    @abstractmethod
+    def error(self, msg: str, pos: Position | None = None):
+        raise NotImplementedError
+
+
+class CompilationContext(ErrorContext, ABC):
     scope: 'ScopeStack'
 
     _instructions: list[InstructionInstance]
@@ -34,10 +40,6 @@ class CompilationContext(ABC):
 
     @abstractmethod
     def generate_node(self, node: 'Node') -> 'Value':
-        raise NotImplementedError
-
-    @abstractmethod
-    def error(self, msg: str, pos: Position | None = None):
         raise NotImplementedError
 
     @abstractmethod

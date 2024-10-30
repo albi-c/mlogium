@@ -63,7 +63,7 @@ class Compiler(AstVisitor[Value]):
     def _var_get(self, name: str) -> Value:
         if (var := self.scope.get(name)) is None:
             if (var := self.interpreter.scope.get(name)) is not None:
-                return var.to_runtime(self.ctx)
+                return var.to_runtime(self.ctx, self.interpreter.ctx)
             self.error(f"Value not found: '{name}'")
         return var
 
@@ -113,7 +113,7 @@ class Compiler(AstVisitor[Value]):
         return self._declare_target(node.target, self.visit(node.value))
 
     def visit_comptime_node(self, node: ComptimeNode) -> Value:
-        return self.interpreter.interpret(node).deref().to_runtime(self.ctx)
+        return self.interpreter.interpret(node).deref().to_runtime(self.ctx, self.interpreter.ctx)
 
     def _build_function(self, func: FunctionDeclaration) -> Value:
         return Value(FunctionType(func.name if func.name is not None else self.ctx.tmp(),
