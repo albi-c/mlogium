@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from math import trunc
+
 from .node import *
 from .error import InterpreterError
 from .comptime_value import *
@@ -26,6 +28,10 @@ def make_builtins() -> dict[str, VariableCLValue]:
     builtins["debug"] = VariableCLValue(FunctionCValue("name", [None], ["value"], NullCType(),
                                                        lambda p: (print(p[0]), NullCValue())[1]), True)
 
+    builtins["true"] = VariableCLValue(BooleanCValue(True), True)
+    builtins["false"] = VariableCLValue(BooleanCValue(False), True)
+    builtins["null"] = VariableCLValue(NullCValue(), True)
+
     return builtins
 
 
@@ -42,6 +48,9 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
 
         def error(self, msg: str, pos: Position | None = None):
             self.interpreter.error(msg, pos)
+
+        def exc_guard[T](self, func: Callable[[], T]) -> T:
+            return self.interpreter.exc_guard(func)
 
         def interpret(self, node: Node) -> BaseCValue:
             return self.interpreter.visit(node)
@@ -73,15 +82,20 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
         self.scope.push("<builtins>", make_builtins())
         self.scope.push("<main>")
 
-    def interpret(self, node: Node) -> BaseCValue:
+    def exc_guard[T](self, func: Callable[[], T]) -> T:
         try:
-            return self.visit(node)
+            return func()
         except Return as e:
             self.error("Return statement used outside of function", e.pos)
         except self.Break as e:
             self.error("Break statement used outside of function", e.pos)
         except self.Continue as e:
             self.error("Continue statement used outside of function", e.pos)
+        except KeyboardInterrupt:
+            self.error("Comptime execution stopped", self.current_pos)
+
+    def interpret(self, node: Node) -> BaseCValue:
+        return self.exc_guard(lambda: self.visit(node))
 
     def error(self, msg: str, pos: Position = None):
         InterpreterError.custom(self.current_pos if pos is None else pos, msg)

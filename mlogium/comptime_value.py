@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from decimal import DivisionByZero
-from logging import error
-from pty import slave_open
 from typing import Iterator
 from dataclasses import dataclass
 
@@ -16,6 +13,10 @@ class ComptimeInterpreterContext(ErrorContext, ABC):
 
     def __init__(self, scope: 'ComptimeScopeStack'):
         self.scope = scope
+
+    @abstractmethod
+    def exc_guard[T](self, func: Callable[[], T]) -> T:
+        raise NotImplementedError
 
     @abstractmethod
     def interpret(self, node: Node) -> CValue:
@@ -827,7 +828,7 @@ class FunctionCValue(CValue):
             name,
             [t.to_runtime() if t is not None else None for t in params],
             result if result is not None else None,
-            func_wrapper
+            lambda c, p: i_ctx.exc_guard(lambda: func_wrapper(c, p))
         ), "", True)
 
     def to_runtime(self, ctx: CompilationContext, i_ctx: ComptimeInterpreterContext) -> Value:
