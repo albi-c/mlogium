@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 import contextlib
-from copy import deepcopy
 
-from .comptime_value import CValue
-from .structure import Cell
+from .comptime_value import VariableCLValue, CValue
 
 
 class ComptimeScopeStack:
     class Scope:
         name: str
-        variables: dict[str, Cell[CValue]]
+        variables: dict[str, VariableCLValue]
 
-        def __init__(self, name: str, variables: dict[str, Cell[CValue]] = None):
+        def __init__(self, name: str, variables: dict[str, VariableCLValue] = None):
             self.name = name
             self.variables = variables if variables is not None else {}
 
@@ -21,14 +19,14 @@ class ComptimeScopeStack:
     def __init__(self):
         self.scopes = []
 
-    def push(self, name: str, variables: dict[str, Cell[CValue]] = None):
+    def push(self, name: str, variables: dict[str, VariableCLValue] = None):
         self.scopes.append(ComptimeScopeStack.Scope(name, variables))
 
     def pop(self):
         self.scopes.pop(-1)
 
     @contextlib.contextmanager
-    def __call__(self, name: str, variables: dict[str, Cell[CValue]] = None):
+    def __call__(self, name: str, variables: dict[str, VariableCLValue] = None):
         self.scopes.append(ComptimeScopeStack.Scope(name, variables))
         try:
             yield
@@ -36,7 +34,7 @@ class ComptimeScopeStack:
             self.scopes.pop(-1)
 
     @contextlib.contextmanager
-    def bottom(self, name: str, variables: dict[str, Cell[CValue]] = None):
+    def bottom(self, name: str, variables: dict[str, VariableCLValue] = None):
         if variables is not None:
             self.scopes.insert(0, ComptimeScopeStack.Scope(name, variables))
         try:
@@ -45,7 +43,7 @@ class ComptimeScopeStack:
             if variables is not None:
                 self.scopes.pop(0)
 
-    def _find(self, name: str) -> Cell[CValue] | None:
+    def _find(self, name: str) -> VariableCLValue | None:
         for scope in reversed(self.scopes):
             if (var := scope.variables.get(name)) is not None:
                 return var
@@ -54,7 +52,7 @@ class ComptimeScopeStack:
 
     def get(self, name: str) -> CValue | None:
         if (var := self._find(name)) is not None:
-            return var.get()
+            return var.value
 
         return None
 
@@ -62,7 +60,7 @@ class ComptimeScopeStack:
         if name in self.scopes[-1].variables:
             return False
 
-        self.scopes[-1].variables[name] = Cell(value)
+        self.scopes[-1].variables[name] = VariableCLValue(value)
         return True
 
     def assign(self, name: str, value: CValue) -> bool:
@@ -72,12 +70,12 @@ class ComptimeScopeStack:
 
         return False
 
-    def capture(self, name: str, ref: bool) -> Cell[CValue] | None:
+    def capture(self, name: str, ref: bool) -> VariableCLValue | None:
         if (var := self._find(name)) is not None:
             if ref:
                 return var
 
             else:
-                return Cell(var.get())
+                return VariableCLValue(var.value)
 
         return None

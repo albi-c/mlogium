@@ -9,6 +9,7 @@ from typing import Callable
 
 class Parser(BaseParser[Node]):
     macro_reg: MacroRegistry
+    is_comptime: bool
 
     TMP_INDEX: int = 0
 
@@ -16,6 +17,7 @@ class Parser(BaseParser[Node]):
         super().__init__(tokens)
 
         self.macro_reg = macro_reg if macro_reg is not None else MacroRegistry()
+        self.is_comptime = False
 
     def parse(self) -> Node:
         return self.parse_block(False, False)
@@ -134,6 +136,18 @@ class Parser(BaseParser[Node]):
             self.next(TokenType.RBRACK)
             type_ = self.parse_type()
             return TupleTypeNode(tok.pos, [type_] * n)
+
+        elif self.is_comptime and (tok := self.lookahead(TokenType.KW_FN)):
+            params = self._parse_comma_separated(
+                lambda: None if self.lookahead(TokenType.QUESTION) else self.parse_type())
+            self.next(TokenType.ARROW)
+            if q_tok := self.lookahead(TokenType.QUESTION):
+                result = None
+                end_pos = q_tok.pos
+            else:
+                result = self.parse_type()
+                end_pos = result.pos
+            return FunctionTypeNode(tok.pos + end_pos, params, result)
 
         return self.parse_value()
 
@@ -354,7 +368,10 @@ class Parser(BaseParser[Node]):
             return FunctionNode(tok.pos, func.name, func.params, func.result, func.code)
 
         elif tok.type == TokenType.KW_COMPTIME:
+            old_is_comptime = self.is_comptime
+            self.is_comptime = True
             value = self.parse_value()
+            self.is_comptime = old_is_comptime
             return ComptimeNode(tok.pos + value.pos, value)
 
         elif tok.type == TokenType.KW_STRUCT:

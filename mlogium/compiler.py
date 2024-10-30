@@ -113,7 +113,7 @@ class Compiler(AstVisitor[Value]):
         return self._declare_target(node.target, self.visit(node.value))
 
     def visit_comptime_node(self, node: ComptimeNode) -> Value:
-        return self.interpreter.interpret(node).to_runtime(self.ctx)
+        return self.interpreter.interpret(node).deref().to_runtime(self.ctx)
 
     def _build_function(self, func: FunctionDeclaration) -> Value:
         return Value(FunctionType(func.name if func.name is not None else self.ctx.tmp(),
@@ -452,6 +452,9 @@ class Compiler(AstVisitor[Value]):
 
     def visit_tuple_type_node(self, node: TupleTypeNode) -> Value:
         return Value.of_type(TupleType([self.resolve_type(t) for t in node.types]))
+
+    def visit_function_type_node(self, node: FunctionTypeNode) -> Value:
+        raise ValueError("FunctionTypeNode in non-comptime AST")
 
     def visit_null_value_node(self, node: NullValueNode) -> Value:
         return Value.null()

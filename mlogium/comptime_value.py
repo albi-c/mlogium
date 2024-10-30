@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Iterator
 from dataclasses import dataclass
 
-from .value import *
 from .structure import Cell
+from .value import *
 
 
 class ComptimeInterpreterContext(ABC):
@@ -30,7 +30,35 @@ class ComptimeInterpreterContext(ABC):
 
 
 @dataclass(slots=True)
-class CValue(ABC):
+class BaseCValue(ABC):
+    @abstractmethod
+    def deref(self) -> CValue:
+        raise NotImplementedError
+
+
+@dataclass(slots=True)
+class CLValue(BaseCValue, ABC):
+    @abstractmethod
+    def assign(self, ctx: ComptimeInterpreterContext, value: CValue):
+        raise NotImplementedError
+
+
+@dataclass(slots=True)
+class VariableCLValue(CLValue):
+    value: CValue
+
+    def deref(self) -> CValue:
+        return values
+
+    def assign(self, ctx: ComptimeInterpreterContext, value: CValue):
+        self.value = value.into_req(ctx, self.value.type)
+
+
+@dataclass(slots=True)
+class CValue(BaseCValue, ABC):
+    def deref(self) -> CValue:
+        return self
+
     @classmethod
     def null(cls) -> CValue:
         return NullCValue()
@@ -116,11 +144,23 @@ class CValue(ABC):
         if type_.contains(self.type):
             return self
 
-        return None
+        return self.into_impl(ctx, type_)
 
     def into_req(self, ctx: ComptimeInterpreterContext, type_: CType) -> CValue:
         if (val := self.into(ctx, type_)) is None:
             ctx.error(f"Value of type {self.type} is not convertible to type {type_}")
+
+        return val
+
+    def into_impl(self, ctx: ComptimeInterpreterContext, type_: CType) -> CValue | None:
+        return None
+
+    def index(self, ctx: ComptimeInterpreterContext, indices: list[CValue]) -> BaseCValue | None:
+        return None
+
+    def index_req(self, ctx: ComptimeInterpreterContext, indices: list[CValue]) -> BaseCValue:
+        if (val := self.index(ctx, indices)) is None:
+            ctx.error(f"Value of type {self.type} is not indexable with indices of types [{', '.join(str(i.type) for i in indices)}]")
 
         return val
 
@@ -155,6 +195,15 @@ class CType(ABC):
 class TypeCType(CType):
     def __str__(self):
         return "Type"
+
+    def to_runtime(self) -> Type:
+        return OpaqueType()
+
+
+@dataclass(slots=True, eq=True)
+class TupleSourceCType(CType):
+    def __str__(self):
+        return "Tuple"
 
     def to_runtime(self) -> Type:
         return OpaqueType()
@@ -218,7 +267,6 @@ class UnionCType(CType):
 class FunctionCType(CType):
     params: list[CType | None]
     result: CType | None
-    code_hash: int
 
     def __str__(self):
         return f"comptime fn({', '.join(str(p) if p is not None else '?' for p in self.params)}) \
@@ -244,6 +292,42 @@ class TypeCValue(CValue):
 
     def get_wrapped_type(self, ctx: ComptimeInterpreterContext) -> CType | None:
         return self.type
+
+
+@dataclass(slots=True)
+class TupleSourceCValue(CValue):
+    def __str__(self):
+        return "Tuple"
+
+    @property
+    def type(self) -> CType:
+        return TupleSourceCType()
+
+    def to_runtime(self, ctx: CompilationContext) -> Value:
+        return Value.null()
+
+    def callable(self) -> bool:
+        return True
+
+    def callable_with(self, types: list[CType]) -> list[CType | None] | None:
+        return None if len(types) == 2 and isinstance(types[0], TypeCType) and isinstance(types[1], NumberCType) \
+            else [TypeCType(), NumberCType()]
+
+    def call(self, ctx: ComptimeInterpreterContext, values: list[CValue]) -> CValue:
+        type_ = values[0].get_wrapped_type_req(ctx)
+        count = values[1].into_req(ctx, NumberCType())
+        assert isinstance(count, NumberCValue)
+        count = count.value
+        if not count.is_integer():
+            ctx.error("Tuple count must be an integer")
+        count = int(count)
+        if count < 0:
+            ctx.error("Tuple count cannot be negative")
+        return TypeCValue(TupleCType([type_] * count))
+
+    def index(self, ctx: ComptimeInterpreterContext, indices: list[CValue]) -> BaseCValue | None:
+        types = [i.get_wrapped_type_req(ctx) for i in indices]
+        return TypeCValue(TupleCType(types))
 
 
 @dataclass(slots=True)
@@ -273,17 +357,21 @@ class NumberCValue(CValue):
     def type(self) -> CType:
         return NumberCType()
 
+    def as_int_or_float(self) -> int | float:
+        if self.value.is_integer():
+            return int(self.value)
+        else:
+            return self.value
+
     def to_runtime(self, ctx: CompilationContext) -> Value:
-        return Value.of_number(self.value)
+        return Value.of_number(self.as_int_or_float())
 
     def is_true(self, ctx: ComptimeInterpreterContext) -> bool | None:
         return self.value != 0
 
-    def into(self, ctx: ComptimeInterpreterContext, type_: CType) -> CValue | None:
+    def into_impl(self, ctx: ComptimeInterpreterContext, type_: CType) -> CValue | None:
         if type_.contains(StringCType()):
-            return CValue.of_string(str(self.value))
-
-        return super(NumberCValue).into(ctx, type_)
+            return CValue.of_string(str(self.as_int_or_float()))
 
 
 @dataclass(slots=True)
@@ -330,6 +418,15 @@ class TupleCValue(CValue):
     def iterate(self, ctx: ComptimeInterpreterContext) -> Iterator[CValue]:
         return iter(self.values)
 
+    def into_impl(self, ctx: ComptimeInterpreterContext, type_: CType) -> CValue | None:
+        if isinstance(type_, TupleCType):
+            types = type_.types
+            if len(types) == len(self.values):
+                values = []
+                for value, t, in zip(self.values, types):
+                    values.append(value.into_req(ctx, t))
+                return TupleCValue(values)
+
 
 @dataclass(slots=True)
 class FunctionCValue(CValue):
@@ -357,7 +454,7 @@ class FunctionCValue(CValue):
 
     @property
     def type(self) -> CType:
-        return FunctionCType(self.params, self.result, id(self.function))
+        return FunctionCType(self.params, self.result)
 
     def callable(self) -> bool:
         return True
@@ -367,16 +464,37 @@ class FunctionCValue(CValue):
             p is None or p.contains(t) for p, t in zip(self.params, types)) else self.params
 
     def call(self, ctx: ComptimeInterpreterContext, values: list[CValue]) -> CValue:
-        # TODO: add params to scope
+        # TODO: catch return
         with ctx.scope(ctx.tmp()):
-            return self.function(values)
+            for name, type_, value in zip(self.param_names, self.params, values):
+                ctx.scope.declare(name, value if type_ is None else value.into_req(ctx, type_))
+            result = self.function(values)
+            result_type = self.result
+            if result_type is not None:
+                result = result.into_req(ctx, result_type)
+            return result
+
+    def into_impl(self, ctx: ComptimeInterpreterContext, type_: CType) -> CValue | None:
+        if isinstance(type_, FunctionCType):
+            if len(self.params) == len(type_.params):
+                params = []
+                for a, b in zip(self.params, type_.params):
+                    if a is None or a.contains(b):
+                        params.append(b)
+                    else:
+                        return None
+                if type_.result is None or type_.result.contains(self.result):
+                    return FunctionCValue(self.name, params, self.param_names, type_.result, self.function)
+                elif self.result is None:
+                    return FunctionCValue(self.name, params, self.param_names, type_.result,
+                                          lambda p: self.function(p).into_req(ctx, type_.result))
 
 
 @dataclass
 class LambdaCValue(CValue):
     params: list[CType | None]
     param_names: list[str]
-    captures: dict[str, Cell[CValue]]
+    captures: dict[str, VariableCLValue]
     result: CType | None
     function: Callable[[list[CValue]], CValue]
 
@@ -400,7 +518,7 @@ class LambdaCValue(CValue):
 
     @property
     def type(self) -> CType:
-        return FunctionCType(self.params, self.result, id(self.function))
+        return FunctionCType(self.params, self.result)
 
     def callable(self) -> bool:
         return True
@@ -410,6 +528,27 @@ class LambdaCValue(CValue):
             p is None or p.contains(t) for p, t in zip(self.params, types)) else self.params
 
     def call(self, ctx: ComptimeInterpreterContext, values: list[CValue]) -> CValue:
-        # TODO: add params to scope
+        # TODO: catch return
         with ctx.scope(ctx.tmp()):
-            return self.function(values)
+            for name, type_, value in zip(self.param_names, self.params, values):
+                ctx.scope.declare(name, value if type_ is None else value.into_req(ctx, type_))
+            result = self.function(values)
+            result_type = self.result
+            if result_type is not None:
+                result = result.into_req(ctx, result_type)
+            return result
+
+    def into_impl(self, ctx: ComptimeInterpreterContext, type_: CType) -> CValue | None:
+        if isinstance(type_, FunctionCType):
+            if len(self.params) == len(type_.params):
+                params = []
+                for a, b in zip(self.params, type_.params):
+                    if a is None or a.contains(b):
+                        params.append(b)
+                    else:
+                        return None
+                if type_.result is None or type_.result.contains(self.result):
+                    return LambdaCValue(params, self.param_names, self.captures, type_.result, self.function)
+                elif self.result is None:
+                    return LambdaCValue(params, self.param_names, self.captures, type_.result,
+                                        lambda p: self.function(p).into_req(ctx, type_.result))

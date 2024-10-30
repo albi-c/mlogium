@@ -192,6 +192,10 @@ class AstVisitor[T](ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def visit_function_type_node(self, node: FunctionTypeNode) -> T:
+        raise NotImplementedError
+
+    @abstractmethod
     def visit_null_value_node(self, node: NullValueNode) -> T:
         raise NotImplementedError
 
@@ -586,6 +590,18 @@ class TupleTypeNode(Node):
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_tuple_type_node(self)
+
+
+@dataclass
+class FunctionTypeNode(Node):
+    params: list[Node | None]
+    result: Node | None
+
+    def __str__(self):
+        return f"fn({', '.join(str(p) if p is not None else '?' for p in self.params)}) -> {self.result if self.result is not None else '?'}"
+
+    def accept[T](self, visitor: AstVisitor[T]) -> T:
+        return visitor.visit_function_type_node(self)
 
 
 @dataclass
