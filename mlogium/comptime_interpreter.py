@@ -64,12 +64,13 @@ class ComptimeInterpreter(AstVisitor[CValue]):
         return var
 
     def _var_set(self, name: str, value: CValue):
-        # TODO: type checking
-        if not self.scope.assign(name, value):
-            self.error(f"Variable not found: '{name}'")
+        var = self._var_capture(name, True)
+        var.set(value.into_req(self.ctx, var.get().type))
 
     def _var_declare(self, name: str, value: CValue, type_: CType = None, const: bool = False) -> CValue:
-        # TODO: constants, type checking
+        # TODO: constants
+        if type_ is not None:
+            value = value.into_req(self.ctx, type_)
         if not self.scope.declare(name, value):
             self.error(f"Variable already defined: '{name}'")
         return value

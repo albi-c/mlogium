@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Iterator
+from dataclasses import dataclass
 
 from .value import *
 from .structure import Cell
@@ -36,17 +37,15 @@ class CValue(ABC):
 
     @classmethod
     def of_int(cls, value: int) -> CValue:
-        return IntCValue(value)
+        return NumberCValue(float(value))
 
     @classmethod
     def of_float(cls, value: float) -> CValue:
-        return FloatCValue(value)
+        return NumberCValue(value)
 
     @classmethod
     def of_number(cls, value: int | float) -> CValue:
-        if isinstance(value, int) or value.is_integer():
-            return IntCValue(value)
-        return FloatCValue(value)
+        return NumberCValue(float(value))
 
     @classmethod
     def of_string(cls, value: str) -> CValue:
@@ -229,6 +228,7 @@ class FunctionCType(CType):
         return OpaqueType()
 
 
+@dataclass(slots=True)
 class TypeCValue(CValue):
     type: CType
 
@@ -246,6 +246,7 @@ class TypeCValue(CValue):
         return self.type
 
 
+@dataclass(slots=True)
 class NullCValue(CValue):
     def __str__(self):
         return "null"
@@ -262,31 +263,7 @@ class NullCValue(CValue):
 
 
 @dataclass(slots=True)
-class IntCValue(CValue):
-    value: int
-
-    def __str__(self):
-        return str(self.value)
-
-    @property
-    def type(self) -> CType:
-        return NumberCType()
-
-    def to_runtime(self, ctx: CompilationContext) -> Value:
-        return Value.of_number(self.value)
-
-    def is_true(self, ctx: ComptimeInterpreterContext) -> bool | None:
-        return self.value != 0
-
-    def into(self, ctx: ComptimeInterpreterContext, type_: CType) -> CValue | None:
-        if type_.contains(StringCType()):
-            return CValue.of_string(str(self.value))
-
-        return super(IntCValue).into(ctx, type_)
-
-
-@dataclass(slots=True)
-class FloatCValue(CValue):
+class NumberCValue(CValue):
     value: float
 
     def __str__(self):
@@ -306,7 +283,7 @@ class FloatCValue(CValue):
         if type_.contains(StringCType()):
             return CValue.of_string(str(self.value))
 
-        return super(FloatCValue).into(ctx, type_)
+        return super(NumberCValue).into(ctx, type_)
 
 
 @dataclass(slots=True)
