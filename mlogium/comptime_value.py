@@ -227,7 +227,7 @@ class CValue(BaseCValue, ABC):
 @dataclass(slots=True)
 class OpaqueType(Type):
     def __str__(self):
-        return "[comptime]"
+        return "comptime[?]"
 
     def __eq__(self, other):
         return False
@@ -756,6 +756,12 @@ def from_runtime_type(ctx: ErrorContext, type_: Type) -> CType:
     elif isinstance(type_, TupleType):
         return TupleCType([from_runtime_type(ctx, t) for t in type_.types])
 
+    elif isinstance(type_, RangeType):
+        return RangeCType()
+
+    elif isinstance(type_, RangeWithStepType):
+        return RangeWithStepCType()
+
     ctx.error(f"Cannot convert type '{type_}' to compile time")
 
 
@@ -787,7 +793,7 @@ def from_runtime(ctx: CompilationContext, value: Value) -> CValue:
             return CValue.of_string(val.value[1:-1])
 
     else:
-        OpaqueCValue(value)
+        return OpaqueCValue(value)
 
 
 @dataclass(slots=True)
@@ -969,6 +975,10 @@ class RangeCValue(CValue):
             i += 1
         return values
 
+    def into_impl(self, ctx: ComptimeInterpreterContext, type_: CType) -> CValue | None:
+        if type_.contains(RangeWithStepCType()):
+            return RangeWithStepCValue(self.start, self.end, 1)
+
 
 @dataclass(slots=True)
 class RangeWithStepCValue(CValue):
@@ -985,7 +995,7 @@ class RangeWithStepCValue(CValue):
 
     @property
     def type(self) -> CType:
-        return RangeCType()
+        return RangeWithStepCType()
 
     def getattr(self, ctx: ComptimeInterpreterContext, name: str, static: bool) -> BaseCValue | None:
         if not static:

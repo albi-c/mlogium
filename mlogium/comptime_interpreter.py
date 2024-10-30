@@ -9,7 +9,9 @@ from .comptime_scope import ComptimeScopeStack
 BUILTIN_TYPES = [
     ("num", NumberCType()),
     ("str", StringCType()),
-    ("Opaque", OpaqueCType())
+    ("Opaque", OpaqueCType()),
+    ("Range", RangeCType()),
+    ("RangeWithStep", RangeWithStepCType())
 ]
 
 
