@@ -687,6 +687,22 @@ class Optimizer:
                         except (ArithmeticError, ValueError, TypeError):
                             pass
 
+                elif ins.name == Instruction.pack_color.name:
+                    params = []
+                    for param in ins.params[1:]:
+                        try:
+                            p = int(float(param) * 255)
+                            if p < 0 or p > 255:
+                                break
+                            else:
+                                params.append(p)
+                        except ValueError:
+                            break
+                    if len(params) == 4:
+                        r, g, b, a = params
+                        block[i] = Instruction.set(ins.params[0], f"%{r:02x}{g:02x}{b:02x}{a:02x}")
+                        found = True
+
         return found
 
     @classmethod
@@ -1036,6 +1052,22 @@ class Optimizer:
 
                     except (ArithmeticError, ValueError, TypeError):
                         pass
+
+            elif ins.name == Instruction.pack_color.name:
+                params = []
+                for param in ins.params[1:]:
+                    try:
+                        p = int(float(param) * 255)
+                        if p < 0 or p > 255:
+                            break
+                        else:
+                            params.append(p)
+                    except ValueError:
+                        break
+                if len(params) == 4:
+                    r, g, b, a = params
+                    code[i] = Instruction.set(ins.params[0], f"%{r:02x}{g:02x}{b:02x}{a:02x}")
+                    found = True
 
         return found
 

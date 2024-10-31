@@ -113,9 +113,9 @@ namespace Stream {
 
     fn @call(&iterable) {
         if const typeof(iterable).equals(Range) {
-            Stream::range2(iterable.start, iterable.end)
+            Stream::range(iterable.start, iterable.end)
         } else if const typeof(iterable).equals(RangeWithStep) {
-            Stream::range3(iterable.start, iterable.end, iterable.step)
+            Stream::range(iterable.start, iterable.end, iterable.step)
         } else {
             Stream::new(iterable.@iter()...)
         }
@@ -135,7 +135,7 @@ namespace Stream {
         }
     }
 
-    fn _range_create(&start: num, &end: num, &step) {
+    fn _range_create(&start: num, &end: num, &step: num) {
         let i = start;
         Stream::new(||[&i, &step] {
             let x = i;

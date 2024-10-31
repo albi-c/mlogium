@@ -284,13 +284,8 @@ class Lexer:
         if val == "%":
             if ch := self.lookahead(Lexer.CH_HEX_DIGIT):
                 val += ch
-                for _ in range(5):
-                    if ch := self.lookahead(Lexer.CH_HEX_DIGIT):
-                        val += ch
-                    else:
-                        break
-                if self.lookahead(Lexer.CH_HEX_DIGIT):
-                    LexerError.custom(self.make_pos(1), "Maximum length of color literal is 6 characters")
+                for _ in range(7):
+                    val += self.next(Lexer.CH_HEX_DIGIT)
                 return self.make_token(TokenType.COLOR, val)
 
         if val == "!" and self.lookahead("="):

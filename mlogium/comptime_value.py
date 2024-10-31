@@ -318,11 +318,27 @@ class TupleCType(CType):
 
 @dataclass(slots=True, eq=True)
 class OpaqueCType(CType):
+    class RTType(Type):
+        def __str__(self):
+            return "Opaque"
+
+        def __eq__(self, other):
+            return isinstance(other, OpaqueCType.RTType)
+
+        def contains(self, other: Type) -> bool:
+            return True
+
+        def assign(self, ctx: CompilationContext, value: Value, other: Value):
+            raise NotImplementedError
+
+        def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+            raise NotImplementedError
+
     def __str__(self):
         return "Opaque"
 
     def to_runtime(self) -> Type:
-        return OpaqueType()
+        return OpaqueCType.RTType()
 
 
 @dataclass(slots=True, eq=True)
