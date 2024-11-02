@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Iterator
 from dataclasses import dataclass
 
-from .structure import Cell
 from .value import *
+from .util import Position
 from .compilation_context import ErrorContext
 
 
@@ -837,7 +837,7 @@ class FunctionCValue(CValue):
             if (exp := self.callable_with([p.type for p in converted])) is None:
                 return self.call(i_ctx, converted).to_runtime(ctx_, i_ctx)
             else:
-                ctx.error(f"Cannot call function with parameters of types \
+                ctx_.error(f"Cannot call function with parameters of types \
 ({', '.join(f'\'{p.type}\'' for p in converted)}), expected ({', '.join(f'\'{t}\'' for t in exp)})")
 
         return Value(SpecialFunctionType(
@@ -1042,3 +1042,28 @@ class RangeWithStepCValue(CValue):
             values.append(CValue.of_number(i))
             i += self.step
         return values
+
+
+@dataclass(slots=True)
+class BlockSourceCValue(CValue):
+    @dataclass(slots=True, eq=True)
+    class Type(CType):
+        def __str__(self):
+            return "Block"
+
+        def to_runtime(self) -> Type:
+            return OpaqueType()
+
+    def __str__(self):
+        return "Block"
+
+    def to_runtime(self, ctx: CompilationContext, i_ctx: ComptimeInterpreterContext) -> Value:
+        return Value(BlockBaseType(), "")
+
+    @property
+    def type(self) -> CType:
+        return BlockSourceCValue.Type()
+
+    def getattr(self, ctx: ComptimeInterpreterContext, name: str, static: bool) -> BaseCValue | None:
+        if static:
+            return OpaqueCValue(Value(BlockType(), name))

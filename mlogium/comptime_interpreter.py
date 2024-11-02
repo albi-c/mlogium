@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from math import trunc
-
 from .node import *
 from .error import InterpreterError
 from .comptime_value import *
@@ -24,6 +22,7 @@ def make_builtins() -> dict[str, VariableCLValue]:
         builtins[name] = VariableCLValue(TypeCValue(type_), True)
 
     builtins["Tuple"] = VariableCLValue(TupleSourceCValue(), True)
+    builtins["Block"] = VariableCLValue(BlockSourceCValue(), True)
 
     builtins["debug"] = VariableCLValue(FunctionCValue("name", [None], ["value"], NullCType(),
                                                        lambda p: (print(p[0]), NullCValue())[1]), True)
@@ -104,8 +103,7 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
         return self._var_capture(name, True)
 
     def _var_set(self, name: str, value: CValue):
-        var = self._var_capture(name, True)
-        var.set(value.into_req(self.ctx, var.get().type))
+        self._var_capture(name, True).assign(self.ctx, value)
 
     def _var_declare(self, name: str, value: CValue, type_: CType = None, const: bool = False) -> CValue:
         if type_ is not None:
@@ -273,7 +271,7 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
     def _do_binary_op(self, left: CValue, op: str, right: CValue) -> CValue:
         if (val := left.binary_op(self.ctx, op, right)) is None:
             if (val_r := right.binary_op_r(self.ctx, left, op)) is None:
-                self.error(f"Operator {node.op} is not supported for types '{left.type}' and '{right.type}'")
+                self.error(f"Operator {op} is not supported for types '{left.type}' and '{right.type}'")
             return val_r
         return val
 
