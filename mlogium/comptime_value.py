@@ -809,8 +809,7 @@ def from_runtime(ctx: CompilationContext, value: Value) -> CValue:
         if val.value.startswith("\"") and val.value.endswith("\""):
             return CValue.of_string(val.value[1:-1])
 
-    else:
-        return OpaqueCValue(value)
+    return OpaqueCValue(value)
 
 
 @dataclass(slots=True)
