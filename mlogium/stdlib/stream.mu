@@ -121,6 +121,10 @@ namespace Stream {
         }
     }
 
+    fn @from(&iterable) {
+        Stream(iterable)
+    }
+
     fn range(n...: num) {
         if const #has_attr(n, "3") {
             #static_assert(false, "Stream::range expects 1 to 3 parameters, got >3")

@@ -307,6 +307,11 @@ class Type(ABC):
                 if (val := value.into(ctx, t)) is not None:
                     return val
 
+        return type_.construct_from(ctx, value)
+
+    def construct_from(self, ctx: CompilationContext, value: Value) -> Value | None:
+        return None
+
     def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
         if op in ("=", ":="):
             value.assign(ctx, other)
@@ -1248,6 +1253,8 @@ class RangeType(Type):
             return Value.of_range_with_step(ctx, self._attr(value, "start", True),
                                             self._attr(value, "end", True), Value.of_number(1))
 
+        return super(RangeType, self).into(ctx, value, type_)
+
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
         return [ABI.attribute(value.value, "start"), "\"..\"", ABI.attribute(value.value, "end")]
 
@@ -1806,6 +1813,15 @@ class StructBaseType(Type):
 
         return super(StructBaseType, self).into(ctx, value, type_)
 
+    def construct_from(self, ctx: CompilationContext, value: Value) -> Value | None:
+        if (func := Value(self, "").getattr(ctx, True, "@from")) is not None:
+            if not func.callable_with(ctx, [value.type]):
+                ctx.error(
+                    f"Value of type '{func.type}' does not have the correct function signature to implement type casts")
+            return func.call(ctx, [value])
+
+        return super(StructBaseType, self).construct_from(ctx, value)
+
     def callable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
 
@@ -2051,6 +2067,15 @@ reversed binary operator '{op}' with other value of type '{other.type}'")
 
         return super(StructInstanceType, self).into(ctx, value, type_)
 
+    def construct_from(self, ctx: CompilationContext, value: Value) -> Value | None:
+        if (func := Value(self, "").getattr(ctx, False, "@from")) is not None:
+            if not func.callable_with(ctx, [value.type]):
+                ctx.error(
+                    f"Value of type '{func.type}' does not have the correct function signature to implement type casts")
+            return func.call(ctx, [value])
+
+        return super(StructInstanceType, self).construct_from(ctx, value)
+
     def memcell_serializable(self, ctx: CompilationContext, value: Value) -> bool:
         return all(v.memcell_serializable(ctx) for v in self._fields(ctx, value))
 
@@ -2107,6 +2132,9 @@ class NamespaceType(Type):
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
         return [_stringify(str(self))]
 
+    def wrapped_type(self, ctx: CompilationContext) -> Type:
+        return self
+
     def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
         if static:
             if (val := self.variables.get(name)) is not None:
@@ -2122,6 +2150,15 @@ class NamespaceType(Type):
             return func.call(ctx, [Value.of_type(type_)])
 
         return super(NamespaceType, self).into(ctx, value, type_)
+
+    def construct_from(self, ctx: CompilationContext, value: Value) -> Value | None:
+        if (func := self.variables.get("@from")) is not None:
+            if not func.callable_with(ctx, [value.type]):
+                ctx.error(
+                    f"Value of type '{func.type}' does not have the correct function signature to implement type casts")
+            return func.call(ctx, [value])
+
+        return super(NamespaceType, self).construct_from(ctx, value)
 
     def callable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
