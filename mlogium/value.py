@@ -395,10 +395,33 @@ class AnyType(Type):
         return True
 
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
-        raise NotImplementedError
+        ctx.error("Cannot assign to value of unknown type")
 
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
-        raise NotImplementedError
+        ctx.error("Cannot print value of unknown type")
+        return []
+
+
+class AnyTrivialType(Type):
+    def __str__(self):
+        return "?"
+
+    def __eq__(self, other):
+        return isinstance(other, AnyTrivialType)
+
+    def contains(self, other: Type) -> bool:
+        return UnionType([NumberType(), StringType(), BlockType(),
+                          UnitType(), BlockType(), ControllerType()]).contains(other) \
+            or isinstance(other, EnumInstanceType) \
+            or (isinstance(other, BuiltinEnumInstanceType) and other.base.copyable)
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        ctx.emit(
+            Instruction.write(value.value, other.value)
+        )
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [value.value]
 
 
 class EllipsisType(Type):

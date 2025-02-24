@@ -190,6 +190,10 @@ ENUM_MARKER_TYPE = {
     "shapeText", "point", "shape", "text", "line", "texture", "quad"
 }
 
+ENUM_ALIGN = {
+    "center", "top", "bottom", "left", "right", "topLeft", "topRight", "bottomLeft", "bottomRight"
+}
+
 ALL_ENUMS: dict[str, tuple[set[str], bool, bool]] = {
     "BlockType": (ENUM_BLOCKS, True, False),
     "ItemType": (ENUM_ITEMS, True, False),
@@ -202,5 +206,6 @@ ALL_ENUMS: dict[str, tuple[set[str], bool, bool]] = {
     "Status": (ENUM_STATUS, False, True),
     "Property": (ENUM_PROPERTY, True, False),
     "Weather": (ENUM_WEATHER, True, False),
-    "MarkerType": (ENUM_MARKER_TYPE, False, True)
+    "MarkerType": (ENUM_MARKER_TYPE, False, True),
+    "Align": (ENUM_ALIGN, False, True)
 }

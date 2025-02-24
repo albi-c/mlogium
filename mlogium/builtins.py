@@ -190,7 +190,8 @@ _BASIC_TYPE_TRANSLATIONS = {
     "UNIT_TYPE": "UnitType",
     "LIQUID_TYPE": "LiquidType",
     "TEAM": "Team",
-    "CONTROLLER": "Controller"
+    "CONTROLLER": "Controller",
+    "ALIGN": "Align"
 }
 
 
@@ -199,6 +200,8 @@ def _resolve_type_ref(builtins: dict[str, Value], ref: TypeRef) -> Type:
         data = ref.data[1:] if ref.data.startswith("$") else ref.data
         if data == "ANY":
             return AnyType()
+        elif data == "ANY_TRIVIAL":
+            return AnyTrivialType()
         return builtins[_BASIC_TYPE_TRANSLATIONS.get(data, data)].type.wrapped_type(None)
     elif ref.type == "union":
         return UnionType([_resolve_type_ref(builtins, r) for r in ref.data])
@@ -220,8 +223,25 @@ def _construct_builtin_functions(builtins: dict[str, Value]):
         ))
         return Value.null()
 
+    def _proc_read_impl(ctx: CompilationContext, params_: list[Value]) -> Value:
+        res = ctx.tmp()
+        ctx.emit(
+            Instruction.p_read(res, params_[0].value, params_[1].value)
+        )
+        return Value(AnyTrivialType(), res)
+
+    def _proc_write_impl(ctx: CompilationContext, params_: list[Value]) -> Value:
+        ctx.emit(
+            Instruction.p_write(params_[2].value, params_[0].value, params_[1].value)
+        )
+        return Value.null()
+
     builtins |= {
-        "print": Value(SpecialFunctionType("print", [AnyType()], NullType(), _print_impl), "")
+        "print": Value(SpecialFunctionType("print", [AnyType()], NullType(), _print_impl), ""),
+        "proc_read": Value(SpecialFunctionType("proc_read", [BlockType(), StringType()],
+                                               AnyTrivialType(), _proc_read_impl), ""),
+        "proc_write": Value(SpecialFunctionType("proc_write", [BlockType(), StringType(), AnyTrivialType()],
+                                                NullType(), _proc_write_impl), "")
     }
 
     for base in ALL_INSTRUCTIONS_BASES:
@@ -232,17 +252,17 @@ def _construct_builtin_functions(builtins: dict[str, Value]):
             subcommands = {}
             for name, (params, outputs, side_effects, _) in base.subcommands().items():
                 subcommands[name] = Value(IntrinsicFunctionType(
-                    f"{base.name}.{name}",
+                    f"{base.func}.{name}",
                     [_resolve_type_ref(builtins, p) for p in params],
                     outputs,
                     lambda ctx, params_, base_=base, name_=name: ctx.emit(
                         base_.make_subcommand_with_constants(name_, *params_))
                 ), "")
-            builtins[base.name] = Value(IntrinsicSubcommandFunctionType(base.name, subcommands), "")
+            builtins[base.func] = Value(IntrinsicSubcommandFunctionType(base.func, subcommands), "")
 
         else:
-            builtins[base.name] = Value(IntrinsicFunctionType(
-                base.name,
+            builtins[base.func] = Value(IntrinsicFunctionType(
+                base.func,
                 [_resolve_type_ref(builtins, p) for p in base.params],
                 base.outputs,
                 lambda ctx, params_, base_=base: ctx.emit(base_.make_with_constants(*params_))

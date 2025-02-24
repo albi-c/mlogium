@@ -11,6 +11,7 @@ from .linking_context import LinkingContext
 @dataclass(frozen=True)
 class InstructionBase:
     name: str
+    func: str
     params: list[TypeRef]
     side_effects: bool
     outputs: list[int]
@@ -125,11 +126,12 @@ class Instruction:
 
     @staticmethod
     def _make(name: str, params: list[TypeRef], side_effects: bool, outputs: list[int] = None,
-              base: type[InstructionInstance] = None, constants: dict[int, str] = None, **base_params):
+              base: type[InstructionInstance] = None, constants: dict[int, str] = None, func: str = None, **base_params):
         outputs = outputs if outputs is not None else []
         base = base if base is not None else InstructionInstance
         constants = constants if constants is not None else {}
-        ib = DebugInstructionBase(name, params, side_effects, outputs, base, base_params, constants, None)
+        func = func if func is not None else name
+        ib = DebugInstructionBase(name, func, params, side_effects, outputs, base, base_params, constants, None)
         ALL_INSTRUCTIONS_BASES.append(ib)
         return ib
 
@@ -158,12 +160,17 @@ class Instruction:
             else:
                 raise ValueError(s)
 
-        ib = DebugInstructionBase(name, [], False, [], base, base_params, constants, subcommands_processed)
+        ib = DebugInstructionBase(name, name, [], False, [], base, base_params, constants, subcommands_processed)
         ALL_INSTRUCTIONS_BASES.append(ib)
         return ib
 
     read = _make("read", [Types.NUM, Types.BLOCK, Types.NUM], False, [0])
     write = _make("write", [Types.NUM, Types.BLOCK, Types.NUM], True)
+
+    p_read = _make("read", [Types.ANY_TRIVIAL, Types.BLOCK, Types.STR],
+                   False, [0], internal=True)
+    p_write = _make("write", [Types.ANY_TRIVIAL, Types.BLOCK, Types.STR], True, internal=True)
+
     draw = _make_with_subcommands("draw", True, [], [
         ("clear", [Types.NUM] * 3),
         ("color", [Types.NUM] * 4),
@@ -175,9 +182,17 @@ class Instruction:
         ("poly", [Types.NUM] * 5),
         ("linePoly", [Types.NUM] * 5),
         ("triangle", [Types.NUM] * 6),
-        ("image", [Types.NUM, Types.NUM, Types.CONTENT, Types.NUM, Types.BLOCK])
+        ("image", [Types.NUM, Types.NUM, Types.CONTENT, Types.NUM, Types.BLOCK]),
+        ("print", [Types.NUM, Types.NUM, Types.ALIGN]),
+        ("translate", [Types.NUM, Types.NUM]),
+        ("scale", [Types.NUM, Types.NUM]),
+        ("rotate", [Types.NUM]),
+        ("reset", [])
     ])
     print = _make("print", [Types.ANY], True, internal=True)
+    print_char = _make("printchar", [UnionTypeRef([Types.NUM, Types.ITEM_TYPE, Types.BLOCK_TYPE,
+                                                   Types.UNIT_TYPE, Types.LIQUID_TYPE])], True,
+                       func="printch")
     format = _make("format", [Types.ANY], True)
 
     draw_flush = _make("drawflush", [Types.BLOCK], True)
@@ -204,7 +219,8 @@ class Instruction:
         ("block", [Types.BLOCK_TYPE, Types.NUM]),
         ("unit", [Types.UNIT_TYPE, Types.NUM]),
         ("item", [Types.ITEM_TYPE, Types.NUM]),
-        ("liquid", [Types.LIQUID_TYPE, Types.NUM])
+        ("liquid", [Types.LIQUID_TYPE, Types.NUM]),
+        ("team", [Types.TEAM, Types.NUM])
     ])
     pack_color = _make("packcolor", [Types.NUM] * 5, False, [0])
 
