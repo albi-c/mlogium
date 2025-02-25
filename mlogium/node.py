@@ -128,6 +128,10 @@ class AstVisitor[T](ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def visit_unroll_node(self, node: UnrollNode) -> T:
+        raise NotImplementedError
+
+    @abstractmethod
     def visit_comprehension_node(self, node: ComprehensionNode) -> T:
         raise NotImplementedError
 
@@ -404,6 +408,20 @@ class ForNode(Node):
 
     def accept[T](self, visitor: AstVisitor[T]) -> T:
         return visitor.visit_for_node(self)
+
+
+@dataclass
+class UnrollNode(Node):
+    variable: str
+    range: tuple[int, int, int | None]
+    code: Node
+    range_obj: range
+
+    def __str__(self):
+        return f"unroll {self.variable} in {self.range} {self.code}"
+
+    def accept[T](self, visitor: AstVisitor[T]) -> T:
+        return visitor.visit_unroll_node(self)
 
 
 @dataclass

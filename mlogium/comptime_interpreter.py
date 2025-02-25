@@ -246,6 +246,10 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
 
         return CValue.null()
 
+    def visit_unroll_node(self, node: UnrollNode) -> BaseCValue:
+        self.error("Unrolled loops are not supported in comptime")
+        return CValue.null()
+
     def visit_comprehension_node(self, node: ComprehensionNode) -> BaseCValue:
         value = self.visit(node.iterable).deref()
         if not value.iterable():

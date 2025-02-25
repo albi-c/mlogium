@@ -44,7 +44,8 @@ class Lexer:
         "static": TokenType.KW_STATIC,
         "as": TokenType.KW_AS,
         "namespace": TokenType.KW_NAMESPACE,
-        "comptime": TokenType.KW_COMPTIME
+        "comptime": TokenType.KW_COMPTIME,
+        "unroll": TokenType.KW_UNROLL
     }
 
     KEYWORD_TOKEN_TYPES: set[TokenType] = set(KEYWORDS.values())

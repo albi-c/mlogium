@@ -356,6 +356,14 @@ class Compiler(AstVisitor[Value]):
 
         return Value.null()
 
+    def visit_unroll_node(self, node: UnrollNode) -> Value:
+        for i in node.range_obj:
+            with self.scope(self.ctx.tmp()):
+                self._var_declare_special(node.variable, Value.of_number(i))
+                self.visit(node.code)
+
+        return Value.null()
+
     def visit_comprehension_node(self, node: ComprehensionNode) -> Value:
         values = self.visit(node.iterable).unpack_req(self.ctx)
         results = []

@@ -53,6 +53,10 @@ class Parser(BaseParser[Node]):
         return BlockNode(self._current_pos() if not code else code[0].pos + code[-1].pos,
                          code, returns_last)
 
+    def _parse_int(self) -> int:
+        neg = -1 if self.lookahead(TokenType.OPERATOR, "-") else 1
+        return neg * int(self.next(TokenType.INTEGER).value)
+
     def parse_statement(self) -> Node:
         tok = self.lookahead()
 
@@ -71,6 +75,23 @@ class Parser(BaseParser[Node]):
             self.next(TokenType.LBRACE)
             code = self.parse_block(True, False)
             return ForNode(tok.pos, target, iterable, code)
+
+        elif tok.type == TokenType.KW_UNROLL:
+            self.next()
+            variable = self.next(TokenType.ID).value
+            self.next(TokenType.KW_IN)
+            start = self._parse_int()
+            self.next(TokenType.DOUBLE_DOT)
+            end = self._parse_int()
+            if self.lookahead(TokenType.DOUBLE_DOT):
+                step = self._parse_int()
+                range_obj = range(start, end, step)
+            else:
+                step = None
+                range_obj = range(start, end)
+            self.next(TokenType.LBRACE)
+            code = self.parse_block(True, False)
+            return UnrollNode(tok.pos, variable, (start, end, step), code, range_obj)
 
         elif tok.type == TokenType.KW_RETURN:
             self.next()

@@ -32,8 +32,10 @@ fn __new_stream(&next, &has) {
             self::new(||[&self, &f] { let v = self.next(); f(v); v }, self.has)
         }
 
-        fn [nodiscard] foreach(&f) {
-            self.peek(f).consume()
+        fn foreach(&f) {
+            for x in self {
+                f(x);
+            }
         }
 
         fn [nodiscard] reduce(&f, s) {
@@ -153,8 +155,18 @@ namespace Stream {
                     || true)
     }
 
+    fn generate_from(&f, &n: num) {
+        Stream::new(||[&f, i = n - 1] { i += 1; f(i) },
+                    || true)
+    }
+
     fn count() {
         Stream::new(||[i = -1] { i += 1; i },
+                    || true)
+    }
+
+    fn count_from(&n: num) {
+        Stream::new(||[i = n - 1] { i += 1; i },
                     || true)
     }
 
