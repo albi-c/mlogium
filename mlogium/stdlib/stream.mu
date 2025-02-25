@@ -7,47 +7,47 @@ fn __new_stream(&next, &has) {
             Stream::new(next, has)
         }
 
-        fn @iter() {
+        fn [nodiscard] @iter() {
             (self.next, self.has)
         }
 
-        fn map(&f) {
+        fn [nodiscard] map(&f) {
             self::new(||[&self, &f] f(self.next()), self.has)
         }
 
-        fn unpack_map(&f) {
+        fn [nodiscard] unpack_map(&f) {
             self::new(||[&self, &f] f(self.next()...), self.has)
         }
 
-        fn zip(&g) {
+        fn [nodiscard] zip(&g) {
             self::new(||[&self, &g] (self.next(), g.next()),
                       ||[&self, &g] self.has() && g.has())
         }
 
-        fn enumerate() {
+        fn [nodiscard] enumerate() {
             self::new(||[&self, i = -1] { i += 1; (i, self.next) }, self.has)
         }
 
-        fn peek(&f) {
+        fn [nodiscard] peek(&f) {
             self::new(||[&self, &f] { let v = self.next(); f(v); v }, self.has)
         }
 
-        fn foreach(&f) {
+        fn [nodiscard] foreach(&f) {
             self.peek(f).consume()
         }
 
-        fn reduce(&f, s) {
+        fn [nodiscard] reduce(&f, s) {
             for v in self {
                 s = f(s, v);
             }
             s
         }
 
-        fn sum() {
+        fn [nodiscard] sum() {
             self.reduce(|a, b| a + b, 0)
         }
 
-        fn prod() {
+        fn [nodiscard] prod() {
             self.reduce(|a, b| a * b, 1)
         }
 
@@ -55,7 +55,7 @@ fn __new_stream(&next, &has) {
             for _ in self {}
         }
 
-        fn count() {
+        fn [nodiscard] count() {
             let n = 0;
             for _ in self {
                 n += 1;
@@ -63,7 +63,7 @@ fn __new_stream(&next, &has) {
             n
         }
 
-        fn all() {
+        fn [nodiscard] all() {
             for v in self {
                 if !v {
                     return false;
@@ -72,7 +72,7 @@ fn __new_stream(&next, &has) {
             return true;
         }
 
-        fn any() {
+        fn [nodiscard] any() {
             for v in self {
                 if v {
                     return true;
@@ -81,7 +81,7 @@ fn __new_stream(&next, &has) {
             return false;
         }
 
-        fn limit(&n: num) {
+        fn [nodiscard] limit(&n: num) {
             let i = 0;
             self::new(||[&self, &i] { i += 1; self.next() },
                       ||[&self, &i, &n] { i < n && self.has() })

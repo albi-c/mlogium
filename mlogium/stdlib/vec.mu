@@ -18,7 +18,7 @@ fn Vec(&T, &N: num) {
             self._index
         }
 
-        const fn copy() {
+        const fn [nodiscard] copy() {
             typeof(self).base(self.data, self._index)
         }
 
@@ -26,7 +26,7 @@ fn Vec(&T, &N: num) {
             self.data[i] = value;
         }
 
-        const fn get(i: num) -> T {
+        const fn [nodiscard] get(i: num) -> T {
             self.data[i] as T
         }
 
@@ -44,7 +44,7 @@ fn Vec(&T, &N: num) {
             self._index = 0;
         }
 
-        const fn @iter() {
+        const fn [nodiscard] @iter() {
             let i = 0;
             (||[&self, &i] {
                 let v = self.data[i] as self::T;
@@ -55,7 +55,7 @@ fn Vec(&T, &N: num) {
             })
         }
 
-        fn @index(i: num) {
+        fn [nodiscard] @index(i: num) {
             self.data[i]
         }
 

@@ -35,8 +35,7 @@ def _construct_builtin_enums(builtins: dict[str, Value]):
         builtins[name] = Value(enum, "")
 
         if content and name != "Property":
-            if len(values & content_values) > 0:
-                assert False, values & content_values
+            assert len(values & content_values) == 0, values & content_values
             content_values |= values
             builtins |= {f"@{k.replace('-', '_')}": v for k, v in enum.values.items()}
 
@@ -232,11 +231,13 @@ def _construct_builtin_functions(builtins: dict[str, Value]):
         return Value.null()
 
     def _proc_read_impl(ctx: CompilationContext, params_: list[Value]) -> Value:
+        if not AnyTrivialType().contains(params_[2].type.wrapped_type(ctx)):
+            ctx.error("Output type must be trivial")
         res = ctx.tmp()
         ctx.emit(
             Instruction.p_read(res, params_[0].value, params_[1].value)
         )
-        return Value(AnyTrivialType(), res)
+        return Value(params_[2].type.wrapped_type(ctx), res)
 
     def _proc_write_impl(ctx: CompilationContext, params_: list[Value]) -> Value:
         ctx.emit(
@@ -246,8 +247,8 @@ def _construct_builtin_functions(builtins: dict[str, Value]):
 
     builtins |= {
         "print": Value(SpecialFunctionType("print", [AnyType()], NullType(), _print_impl), ""),
-        "proc_read": Value(SpecialFunctionType("proc_read", [BlockType(), StringType()],
-                                               AnyTrivialType(), _proc_read_impl), ""),
+        "proc_read": Value(SpecialFunctionType("proc_read", [BlockType(), StringType(), GenericTypeType()],
+                                               AnyType(), _proc_read_impl), ""),
         "proc_write": Value(SpecialFunctionType("proc_write", [BlockType(), StringType(), AnyTrivialType()],
                                                 NullType(), _proc_write_impl), "")
     }

@@ -322,6 +322,11 @@ class Parser(BaseParser[Node]):
         return params, type_
 
     def _parse_function_declaration(self, require_name: bool) -> FunctionDeclaration:
+        if self.lookahead(TokenType.LBRACK):
+            attributes = set(self._parse_comma_separated(
+                lambda: self.next(TokenType.ID).value, None, TokenType.RBRACK))
+        else:
+            attributes = set()
         if require_name:
             name = self.next(TokenType.ID).value
         else:
@@ -332,7 +337,7 @@ class Parser(BaseParser[Node]):
         params, result = self._parse_function_signature()
         self.next(TokenType.LBRACE)
         code = self.parse_block(True, True)
-        return FunctionDeclaration(name, params, result, code)
+        return FunctionDeclaration(name, params, result, code, attributes)
 
     def _parse_capture(self) -> LambdaCapture:
         ref = bool(self.lookahead(TokenType.OPERATOR, "&"))
@@ -365,7 +370,7 @@ class Parser(BaseParser[Node]):
 
         elif tok.type == TokenType.KW_FN:
             func = self._parse_function_declaration(False)
-            return FunctionNode(tok.pos, func.name, func.params, func.result, func.code)
+            return FunctionNode(tok.pos, func.name, func.params, func.result, func.code, func.attributes)
 
         elif tok.type == TokenType.KW_COMPTIME:
             old_is_comptime = self.is_comptime

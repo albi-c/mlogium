@@ -17,6 +17,10 @@ class Value:
     value: str
     const: bool = True
     const_on_write: bool = False
+    no_discard: bool = False
+
+    def with_no_discard(self, value: bool = True) -> Value:
+        return Value(self.type, self.value, self.const, self.const_on_write, value)
 
     @classmethod
     def null(cls) -> Value:
@@ -315,7 +319,7 @@ class Type(ABC):
     def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
         if op in ("=", ":="):
             value.assign(ctx, other)
-            return value
+            return value.with_no_discard(False)
 
         elif (operator := self.EQUALITY_OPS.get(op)) is not None:
             # TODO: properly implement for tuples and structs
@@ -328,7 +332,7 @@ class Type(ABC):
 
         elif op.endswith("=") and op not in ("<=", ">=", ":="):
             value.assign(ctx, value.binary_op(ctx, op[:-1], other))
-            return value
+            return value.with_no_discard(False)
 
         return other.binary_op_r(ctx, value, op)
 
@@ -1574,6 +1578,7 @@ class FunctionType(Type):
     result: Type | None
     code: Node
     global_closure: list[dict[str, Value]]
+    attributes: set[str]
 
     def __str__(self):
         return f"fn({', '.join(map(str, self.params))}){' -> ' + str(self.result) if self.result else ''}"
@@ -1615,6 +1620,9 @@ class FunctionType(Type):
                 return_val.assign(ctx, result)
 
             ctx.emit(Instruction.label(ABI.function_end(ctx.scope.get_function())))
+
+            if "nodiscard" in self.attributes:
+                return_val = return_val.with_no_discard()
 
             return return_val
 
@@ -1692,6 +1700,7 @@ class StructMethodData:
     result: Type | None
     code: Node
     global_closure: list[dict[str, Value]]
+    attributes: set[str]
 
 
 @dataclass(slots=True)
@@ -1702,10 +1711,12 @@ class StructMethodType(Type):
     result: Type | None
     code: Node
     global_closure: list[dict[str, Value]]
+    attributes: set[str]
 
     @classmethod
     def create_value(cls, self_value: Value, data: StructMethodData) -> Value:
-        return Value(cls(self_value, data.name, data.params, data.result, data.code, data.global_closure), "")
+        return Value(cls(self_value, data.name, data.params, data.result, data.code,
+                         data.global_closure, data.attributes), "")
 
     def __str__(self):
         return f"fn({', '.join(map(str, self.params))}){' -> ' + str(self.result) if self.result else ''}"
@@ -1749,6 +1760,9 @@ class StructMethodType(Type):
                 return_val.assign(ctx, result)
 
             ctx.emit(Instruction.label(ABI.function_end(ctx.scope.get_function())))
+
+            if "nodiscard" in self.attributes:
+                return_val = return_val.with_no_discard()
 
             return return_val
 

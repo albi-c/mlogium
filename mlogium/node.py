@@ -276,6 +276,7 @@ class FunctionDeclaration:
     params: list[FunctionParam]
     result: Node | None
     code: Node
+    attributes: set[str]
 
     def __str__(self):
         return f"fn {self.name if self.name is not None else ''}({', '.join(map(str, self.params))}){' -> ' + str(self.result) if self.result is not None else ''} {self.code}"

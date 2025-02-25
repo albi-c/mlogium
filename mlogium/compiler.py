@@ -103,14 +103,17 @@ class Compiler(AstVisitor[Value]):
     def visit_block_node(self, node: BlockNode) -> Value:
         # TODO: fix scopes
         last_value = Value.null()
-        for n in node.code:
+        for i, n in enumerate(node.code):
             last_value = self.visit(n)
+            if last_value.no_discard:
+                if not node.returns_last or i < len(node.code) - 1:
+                    self.error("Return value of function marked nodiscard is discarded", n.pos)
         if node.returns_last:
             return last_value
         return Value.null()
 
     def visit_declaration_node(self, node: DeclarationNode) -> Value:
-        return self._declare_target(node.target, self.visit(node.value))
+        return self._declare_target(node.target, self.visit(node.value).with_no_discard(False))
 
     def visit_comptime_node(self, node: ComptimeNode) -> Value:
         return self.interpreter.interpret(node).deref().to_runtime(self.ctx, self.interpreter.ctx)
@@ -121,7 +124,8 @@ class Compiler(AstVisitor[Value]):
                                    for p in func.params],
                                   self.resolve_type_opt(func.result),
                                   func.code,
-                                  self.scope.get_global_closures()), "")
+                                  self.scope.get_global_closures(),
+                                  func.attributes), "")
 
     def visit_function_node(self, node: FunctionNode) -> Value:
         value = self._build_function(node)
@@ -225,7 +229,8 @@ class Compiler(AstVisitor[Value]):
                          for p in method.params],
                         self.resolve_type_opt(method.result),
                         method.code,
-                        self.scope.get_closure_variables()))
+                        self.scope.get_closure_variables(),
+                        method.attributes))
 
             for method in node.static_methods:
                 assert method.name is not None
@@ -237,7 +242,8 @@ class Compiler(AstVisitor[Value]):
                                                                 for p in method.params],
                                                                self.resolve_type_opt(method.result),
                                                                method.code,
-                                                               self.scope.get_closure_variables())
+                                                               self.scope.get_closure_variables(),
+                                                               method.attributes)
 
             base_type.methods = methods
             base_type.static_methods = static_methods
