@@ -29,8 +29,16 @@ def _construct_builtin_types(builtins: dict[str, Value]):
 
 
 def _construct_builtin_enums(builtins: dict[str, Value]):
+    content_values = set()
     for name, (values, content, non_copyable) in ALL_ENUMS.items():
-        builtins[name] = Value(BuiltinEnumBaseType(name, values, content, not non_copyable), "")
+        enum = BuiltinEnumBaseType(name, values, content, not non_copyable)
+        builtins[name] = Value(enum, "")
+
+        if content and name != "Property":
+            if len(values & content_values) > 0:
+                assert False, values & content_values
+            content_values |= values
+            builtins |= {f"@{k.replace('-', '_')}": v for k, v in enum.values.items()}
 
     builtins |= {
         "Content": Value.of_type(UnionType([
