@@ -232,11 +232,26 @@ class Lexer:
         while ch := self.lookahead(Lexer.CH_INTEGER):
             val += ch
 
-        # is a float
+        if self.lookahead("e"):
+            val += "e"
+            if self.lookahead("-"):
+                val += "-"
+            while ch := self.lookahead(Lexer.CH_INTEGER):
+                val += ch
+
+            return self.make_token(TokenType.FLOAT, val)
+
         if self.lookahead(".", take_if_matches=False) and self.lookahead(Lexer.CH_INTEGER, 2, False):
             val += self.next()
             while ch := self.lookahead(Lexer.CH_INTEGER):
                 val += ch
+
+            if self.lookahead("e"):
+                val += "e"
+                if self.lookahead("-"):
+                    val += "-"
+                while ch := self.lookahead(Lexer.CH_INTEGER):
+                    val += ch
 
             return self.make_token(TokenType.FLOAT, val)
 

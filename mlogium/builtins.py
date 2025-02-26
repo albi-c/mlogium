@@ -1,3 +1,4 @@
+import math
 import os
 
 from .value import *
@@ -76,9 +77,15 @@ def _construct_builtin_variables(builtins: dict[str, Value]):
 
         "_": Value(UnderscoreType(), "_", False),
 
-        "true": Value(NumberType(), "1", True),
-        "false": Value(NumberType(), "0", True),
-        "null": Value(NullType(), "null", True)
+        "true": Value.of_number(1),
+        "false": Value.of_number(0),
+        "null": Value.null(),
+
+        "@pi": Value.of_number(math.pi),
+        "@tau": Value.of_number(math.tau),
+        "@e": Value.of_number(math.e),
+        "@degToRad": Value.of_number(math.pi / 180.0),
+        "@radToDeg": Value.of_number(180.0 / math.pi)
     }
 
 
@@ -245,12 +252,28 @@ def _construct_builtin_functions(builtins: dict[str, Value]):
         )
         return Value.null()
 
+    def _rad_to_deg(ctx: CompilationContext, params_: list[Value]) -> Value:
+        res = ctx.tmp()
+        ctx.emit(
+            Instruction.op("mul", res, params_[0].value, 180.0 / math.pi)
+        )
+        return Value(NumberType(), res)
+
+    def _deg_to_rad(ctx: CompilationContext, params_: list[Value]) -> Value:
+        res = ctx.tmp()
+        ctx.emit(
+            Instruction.op("mul", res, params_[0].value, math.pi / 180.0)
+        )
+        return Value(NumberType(), res)
+
     builtins |= {
         "print": Value(SpecialFunctionType("print", [AnyType()], NullType(), _print_impl), ""),
         "proc_read": Value(SpecialFunctionType("proc_read", [BlockType(), StringType(), GenericTypeType()],
                                                AnyType(), _proc_read_impl), ""),
         "proc_write": Value(SpecialFunctionType("proc_write", [BlockType(), StringType(), AnyTrivialType()],
-                                                NullType(), _proc_write_impl), "")
+                                                NullType(), _proc_write_impl), ""),
+        "@deg": Value(SpecialFunctionType("deg", [NumberType()], NumberType(), _rad_to_deg), ""),
+        "@rad": Value(SpecialFunctionType("rad", [NumberType()], NumberType(), _deg_to_rad), "")
     }
 
     for base in ALL_INSTRUCTIONS_BASES:
