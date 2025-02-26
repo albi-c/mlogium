@@ -85,7 +85,12 @@ def _construct_builtin_variables(builtins: dict[str, Value]):
         "@tau": Value.of_number(math.tau),
         "@e": Value.of_number(math.e),
         "@degToRad": Value.of_number(math.pi / 180.0),
-        "@radToDeg": Value.of_number(180.0 / math.pi)
+        "@radToDeg": Value.of_number(180.0 / math.pi),
+
+        "@blockCount": Value(NumberType(), "@blockCount", True),
+        "@unitCount": Value(NumberType(), "@unitCount", True),
+        "@itemCount": Value(NumberType(), "@itemCount", True),
+        "@liquidCount": Value(NumberType(), "@liquidCount", True)
     }
 
 

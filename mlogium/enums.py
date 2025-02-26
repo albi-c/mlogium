@@ -75,7 +75,7 @@ ENUM_UNITS: set[str] = {
 }
 
 ENUM_TEAMS: set[str] = {
-    "derelict", "sharded", "crux", "malis"
+    "derelict", "sharded", "crux", "malis", "green", "blue"
 }
 
 ENUM_SENSABLE: dict[str, Types] = {

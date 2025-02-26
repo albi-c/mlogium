@@ -43,7 +43,8 @@ class InstructionBase:
 
         types_, outputs, side_effects, constants = self._subcommands[name]
         assert len(params) == len(types_)
-        return self.base_class(self, outputs, side_effects, constants, self.name, name, *params, **self.base_params)
+        return self.base_class(self, [i + 1 for i in outputs], side_effects,
+                               constants, self.name, name, *params, **self.base_params)
 
     def make_subcommand_with_constants(self, name: str, *params: Any) -> InstructionInstance:
         assert self.has_subcommands()
@@ -380,7 +381,7 @@ class Instruction:
         ("flag", [Types.NUM]),
         ("build", [Types.NUM, Types.NUM, Types.BLOCK_TYPE, Types.NUM, UnionTypeRef([Types.CONTENT, Types.BLOCK])]),
         ("getBlock", ([Types.NUM, Types.NUM, Types.BLOCK_TYPE, Types.BLOCK, Types.NUM], [2, 3])),
-        ("within", ([Types.NUM] * 4, [3])),
+        ("within", ([Types.NUM] * 4, False, [3])),
         ("unbind", []),
     ])
     uradar = _make("uradar", [BasicTypeRef("$RadarFilter")] * 3 + [BasicTypeRef("$RadarSort"), Types.ANY, Types.NUM, Types.UNIT],

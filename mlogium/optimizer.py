@@ -1069,6 +1069,20 @@ class Optimizer:
                     code[i] = Instruction.set(ins.params[0], f"%{r:02x}{g:02x}{b:02x}{a:02x}")
                     found = True
 
+            elif ins.name == Instruction.lookup.name:
+                try:
+                    idx = int(ins.params[2])
+                    if idx < 0:
+                        continue
+                    content = ins.params[0]
+                    if content == "team":
+                        if idx < 6:
+                            code[i] = Instruction.set(ins.params[1], ["@derelict", "@sharded", "@crux",
+                                                                      "@malis", "@green", "@blue"][idx])
+                            found = True
+                except ValueError:
+                    pass
+
         return found
 
     @classmethod
