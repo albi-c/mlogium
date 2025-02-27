@@ -250,7 +250,8 @@ class Type(ABC):
     def contains(self, other: Type) -> bool:
         return self == other
 
-    def wrapped_type(self, ctx: CompilationContext) -> Type:
+    def wrapped_type(self, ctx: CompilationContext | None) -> Type:
+        assert ctx is not None, "Usage of non-type value during initialization"
         ctx.error(f"Value of type '{self}' is not a type")
         return NullType()
 
@@ -475,7 +476,7 @@ class TypeType(Type):
     def __eq__(self, other):
         return isinstance(other, TypeType) and self.type == other.type
 
-    def wrapped_type(self, ctx: CompilationContext) -> Type:
+    def wrapped_type(self, ctx: CompilationContext | None) -> Type:
         return self.type
 
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
@@ -719,6 +720,37 @@ class StringType(Type):
 
     def table_copyable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
+
+
+class SoundBaseType(TypeType):
+    def __init__(self):
+        super().__init__(SoundType())
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
+        if static:
+            return Value(SoundType(), "@sfx-" + name.replace("_", "-"))
+
+        return super(SoundBaseType, self).getattr(ctx, value, static, name)
+
+
+class SoundType(Type):
+    def __str__(self):
+        return "Sound"
+
+    def __eq__(self, other):
+        return isinstance(other, SoundType)
+
+    def to_condition(self, ctx: CompilationContext, value: Value) -> str | None:
+        return value.value
+
+    def memcell_size(self, ctx: CompilationContext, value: Value) -> int:
+        return 1
+
+    def table_copyable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    def table_size(self, ctx: CompilationContext, value: Value) -> int:
+        return 1
 
 
 class BlockBaseType(TypeType):
@@ -1818,7 +1850,7 @@ class StructBaseType(Type):
             self.static_fields == other.static_fields and self.methods == other.methods and \
             self.static_methods == other.static_methods
 
-    def wrapped_type(self, ctx: CompilationContext) -> Type:
+    def wrapped_type(self, ctx: CompilationContext | None) -> Type:
         return self._instance_type
 
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
@@ -2169,7 +2201,7 @@ class NamespaceType(Type):
     def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
         return [_stringify(str(self))]
 
-    def wrapped_type(self, ctx: CompilationContext) -> Type:
+    def wrapped_type(self, ctx: CompilationContext | None) -> Type:
         return self
 
     def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
@@ -2295,7 +2327,7 @@ class EnumBaseType(Type):
     def __eq__(self, other):
         return isinstance(other, EnumBaseType) and self.name == other.name and self.values_ == other.values_
 
-    def wrapped_type(self, ctx: CompilationContext) -> Type:
+    def wrapped_type(self, ctx: CompilationContext | None) -> Type:
         return self._instance_type
 
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
@@ -2404,7 +2436,7 @@ class BuiltinEnumBaseType(Type):
     def __eq__(self, other):
         return isinstance(other, BuiltinEnumBaseType) and self.name == other.name
 
-    def wrapped_type(self, ctx: CompilationContext) -> Type:
+    def wrapped_type(self, ctx: CompilationContext | None) -> Type:
         return self._instance_type
 
     def assign(self, ctx: CompilationContext, value: Value, other: Value):

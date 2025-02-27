@@ -25,7 +25,8 @@ def _construct_builtin_types(builtins: dict[str, Value]):
         "Block": Value(BlockBaseType(), ""),
         "Unit": Value.of_type(UnitType()),
         "Controller": Value.of_type(ControllerType()),
-        "Tuple": Value(TupleTypeSourceType(), "")
+        "Tuple": Value(TupleTypeSourceType(), ""),
+        "Sound": Value(SoundBaseType(), "")
     }
 
 
@@ -59,7 +60,7 @@ def _construct_builtin_variables(builtins: dict[str, Value]):
         "@timescale": Value(NumberType(), "@timescale", True),
         "@counter": Value(NumberType(), "@counter", True),
         "@links": Value(NumberType(), "@links", True),
-        "@unit": Value(NumberType(), "@unit", False),
+        "@unit": Value(UnitType(), "@unit", False),
         "@time": Value(NumberType(), "@time", True),
         "@tick": Value(NumberType(), "@tick", True),
         "@second": Value(NumberType(), "@second", True),
@@ -210,7 +211,8 @@ _BASIC_TYPE_TRANSLATIONS = {
     "LIQUID_TYPE": "LiquidType",
     "TEAM": "Team",
     "CONTROLLER": "Controller",
-    "ALIGN": "Align"
+    "ALIGN": "Align",
+    "SOUND": "Sound"
 }
 
 
@@ -278,7 +280,39 @@ def _construct_builtin_functions(builtins: dict[str, Value]):
         "proc_write": Value(SpecialFunctionType("proc_write", [BlockType(), StringType(), AnyTrivialType()],
                                                 NullType(), _proc_write_impl), ""),
         "@deg": Value(SpecialFunctionType("deg", [NumberType()], NumberType(), _rad_to_deg), ""),
-        "@rad": Value(SpecialFunctionType("rad", [NumberType()], NumberType(), _deg_to_rad), "")
+        "@rad": Value(SpecialFunctionType("rad", [NumberType()], NumberType(), _deg_to_rad), ""),
+
+        "status": Value(IntrinsicSubcommandFunctionType("status", {
+            "apply": Value(IntrinsicFunctionType(
+                "status.apply",
+                [builtins["Status"].type.wrapped_type(None), UnitType(), NumberType()],
+                [],
+                lambda ctx, params_: ctx.emit(Instruction.status("false", params_[0], params_[1], params_[2]))
+            ), ""),
+            "clear": Value(IntrinsicFunctionType(
+                "status.clear",
+                [builtins["Status"].type.wrapped_type(None), UnitType()],
+                [],
+                lambda ctx, params_: ctx.emit(Instruction.status("true", params_[0], params_[1], "0"))
+            ), "")
+        }), ""),
+
+        "playsound": Value(IntrinsicSubcommandFunctionType("playsound", {
+            "global": Value(IntrinsicFunctionType(
+                "playsound.global",
+                [builtins["Sound"].type.wrapped_type(None), NumberType(), NumberType(), NumberType(), NumberType()],
+                [],
+                lambda ctx, params_: ctx.emit(Instruction.play_sound("false", params_[0], params_[1], params_[2],
+                                                                     params_[3], "0", "0", params_[4]))
+            ), ""),
+            "positional": Value(IntrinsicFunctionType(
+                "playsound.positional",
+                [builtins["Sound"].type.wrapped_type(None)] + [NumberType()] * 5,
+                [],
+                lambda ctx, params_: ctx.emit(Instruction.play_sound("true", params_[0], params_[1], params_[2],
+                                                                     "0", params_[3], params_[4], "0", params_[5]))
+            ), "")
+        }), "")
     }
 
     for base in ALL_INSTRUCTIONS_BASES:

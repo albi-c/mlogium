@@ -419,10 +419,8 @@ class Instruction:
     ])
 
     spawn = _make("spawn", [Types.UNIT_TYPE, Types.NUM, Types.NUM, Types.NUM, Types.TEAM, Types.UNIT], True, [5])
-    status = _make_with_subcommands("status", True, [], [
-        ("apply", ([Types.ANY, BasicTypeRef("$Status"), Types.UNIT, Types.NUM], True, [], {0: "false"})),
-        ("clear", ([Types.ANY, BasicTypeRef("$Status"), Types.UNIT], True, [], {0: "true"}))
-    ])
+    status = _make("status", [Types.NUM, BasicTypeRef("$Status"), Types.UNIT, Types.NUM],
+                   True, [], internal=True)
 
     weather_sense = _make("weathersense", [Types.NUM, BasicTypeRef("Weather")], False, [0])
     weather_set = _make("weatherset", [BasicTypeRef("Weather"), Types.NUM], True)
@@ -476,6 +474,27 @@ class Instruction:
         UnionTypeRef([Types.BLOCK, Types.UNIT]),
         Types.NUM
     ], True)
+
+    play_sound = _make("playsound", [Types.SOUND, Types.NUM, Types.NUM, Types.NUM,
+                                     Types.NUM, Types.NUM, Types.NUM], True, [], internal=True)
+    # play_sound = _make_with_subcommands("playsound", True, [], [
+    #     ("global",
+    #      ([Types.SOUND, Types.NUM, Types.NUM, Types.NUM, Types.NUM, Types.NUM, Types.NUM], True, [], {
+    #          0: "0",
+    #          2: "0",
+    #          3: "0"
+    #      })),
+    #     ("positional",
+    #      ([Types.SOUND, Types.NUM, Types.NUM, Types.NUM, Types.NUM, Types.NUM, Types.NUM], True, [], {
+    #          0: "0",
+    #          4: "0"
+    #      })),
+    # ])
+
+    """
+    playsound false @sfx-pew 1 2 0 @thisx @thisy true
+    playsound true @sfx-pew 1 2 0 @thisx @thisy true
+    """
 
     make_marker = _make("makemarker", [BasicTypeRef("$MarkerType"), Types.NUM, Types.NUM, Types.NUM, Types.NUM],
                         True, [])
