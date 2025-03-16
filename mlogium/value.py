@@ -318,12 +318,15 @@ class Type(ABC):
         return None
 
     def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
+        if op in ("==", "!=", "===", "!==") and \
+                not (AnyTrivialType().contains(value.type) and AnyTrivialType().contains(other.type)):
+            return None
+
         if op in ("=", ":="):
             value.assign(ctx, other)
             return value.with_no_discard(False)
 
         elif (operator := self.EQUALITY_OPS.get(op)) is not None:
-            # TODO: properly implement for tuples and structs
             result = Value(NumberType(), ctx.tmp(), False)
             ctx.emit(Instruction.op(operator, result.value, value.value, other.value))
             return result

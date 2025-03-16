@@ -966,6 +966,8 @@ class Optimizer:
 
         prints.clear()
 
+        return False
+
     @classmethod
     def _precalculate_op_jump(cls, code: Instructions) -> bool:
         """
