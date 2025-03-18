@@ -119,36 +119,48 @@ class Optimizer:
         (("sub",), (
             # x - 0 = x
             # x - x = 0
-            (tuple(), ("0",), None),
-            (tuple(), tuple(), "0")
+            ((), ("0",), None),
+            ((), (), "0"),
         )),
         (("mul",), (
             # inputs can be swapped
             # x * 0 = 0
             # x * 1 = x
             (("0",), ("0",), "0"),
-            (("1",), ("1",), None)
+            (("1",), ("1",), None),
         )),
         (("div", "idiv"), (
             # x / x = 1
             # x / 1 = x
             # 0 / x = 0
-            (tuple(), tuple(), "1"),
-            (tuple(), ("1",), None),
-            (("0",), tuple(), "0")
+            ((), (), "1"),
+            ((), ("1",), None),
+            (("0",), (), "0"),
         )),
         (("shr", "shl"), (
             # x >> 0 = x
             # 0 >> x = 0
-            (tuple(), ("0",), None),
-            (("0",), tuple(), "0")
+            ((), ("0",), None),
+            (("0",), (), "0"),
         )),
         (("and", "land"), (
             # inputs can be swapped
             # x & 0 = 0
             # x & x = x
             (("0",), ("0",), "0"),
-            (tuple(), tuple(), None)
+            ((), (), None),
+        )),
+        (("max", "min"), (
+            # max(x, x) = x
+            ((), (), None),
+        )),
+        (("equal", "strictEqual", "lessThanEq", "greaterThanEq"), (
+            # x == x = 1
+            ((), (), "1"),
+        )),
+        (("notEqual", "lessThan", "greaterThan"), (
+            # x > x = 0
+            ((), (), "0"),
         ))
     ]
 
