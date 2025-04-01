@@ -126,9 +126,9 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
     def _resolve_type(self, node: Node) -> CType:
         return self.visit(node).deref().get_wrapped_type_req(self.ctx)
 
-    def _declare_target(self, target: AssignmentTarget, value: CValue) -> BaseCValue:
+    def _declare_target_inner(self, target: AssignmentTarget, value: CValue, const_override: bool) -> BaseCValue:
         if isinstance(target, SingleAssignmentTarget):
-            self._var_declare(target.name, value, self._resolve_type_opt(target.type), target.const)
+            self._var_declare(target.name, value, self._resolve_type_opt(target.type), target.const | const_override)
 
         elif isinstance(target, UnpackAssignmentTarget):
             values = value.unpack_req(self.ctx)
@@ -136,13 +136,15 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
                 self.error(
                     f"Value of type '{value.type}' unpacks into {len(values)} values, expected {len(target.values)}")
             for i, (dst, src) in enumerate(zip(target.values, values)):
-                type_ = self._resolve_type_opt(target.types[i] if target.types is not None else None)
-                self._var_declare(dst, src, type_, target.const)
+                self._declare_target_inner(dst, src, target.const | const_override)
 
         else:
             raise TypeError(f"Invalid assignment target: {target}")
 
         return value
+
+    def _declare_target(self, target: AssignmentTarget, value: CValue) -> BaseCValue:
+        return self._declare_target_inner(target, value, target.const)
 
     def visit_block_node(self, node: BlockNode) -> BaseCValue:
         last_value = CValue.null()

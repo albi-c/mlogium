@@ -48,14 +48,10 @@ class SingleAssignmentTarget(AssignmentTarget):
 
 @dataclass
 class UnpackAssignmentTarget(AssignmentTarget):
-    values: list[str]
-    types: list[Node] | None
+    values: list[AssignmentTarget]
 
     def __str__(self):
-        if self.types is None:
-            return f"({', '.join(self.values)})"
-        else:
-            return f"({', '.join(self.values)}): ({', '.join(map(str, self.types))})"
+        return f"({', '.join(map(str, self.values))})"
 
     def accept[T](self, visitor: AssignmentTargetVisitor[T]) -> T:
         return visitor.visit_unpack_assignment_target(self)

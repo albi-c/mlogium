@@ -82,9 +82,9 @@ class Compiler(AstVisitor[Value]):
             self.error(f"Already defined: '{name}'")
         return value
 
-    def _declare_target(self, target: AssignmentTarget, value: Value) -> Value:
+    def _declare_target_inner(self, target: AssignmentTarget, value: Value, const_override: bool) -> Value:
         if isinstance(target, SingleAssignmentTarget):
-            self._var_declare(target.name, target.type, value, target.const)
+            self._var_declare(target.name, target.type, value, target.const | const_override)
 
         elif isinstance(target, UnpackAssignmentTarget):
             values = value.unpack_req(self.ctx)
@@ -92,13 +92,15 @@ class Compiler(AstVisitor[Value]):
                 self.error(
                     f"Value of type '{value.type}' unpacks into {len(values)} values, expected {len(target.values)}")
             for i, (dst, src) in enumerate(zip(target.values, values)):
-                type_ = target.types[i] if target.types is not None else None
-                self._var_declare(dst, type_, src, target.const)
+                self._declare_target_inner(dst, src, target.const | const_override)
 
         else:
             raise TypeError(f"Invalid assignment target: {target}")
 
         return value
+
+    def _declare_target(self, target: AssignmentTarget, value: Value) -> Value:
+        return self._declare_target_inner(target, value, target.const)
 
     def visit_block_node(self, node: BlockNode) -> Value:
         # TODO: fix scopes

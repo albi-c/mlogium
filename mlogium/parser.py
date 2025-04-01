@@ -174,15 +174,8 @@ class Parser(BaseParser[Node]):
 
     def _parse_assignment_target(self, const: bool) -> AssignmentTarget:
         if self.lookahead(TokenType.LPAREN):
-            values = self._parse_comma_separated(lambda: self.next(TokenType.ID).value, None)
-            if self.lookahead(TokenType.COLON):
-                types = self._parse_comma_separated(self.parse_type)
-                if len(values) != len(types):
-                    ParserError.custom(self._current_pos(),
-                                       f"Provided {len(values)} values, but {len(types)} types")
-            else:
-                types = None
-            return UnpackAssignmentTarget(const, values, types)
+            values = self._parse_comma_separated(lambda: self._parse_assignment_target(const), None)
+            return UnpackAssignmentTarget(const, values)
 
         name = self.next(TokenType.ID).value
         if self.lookahead(TokenType.COLON):
