@@ -158,7 +158,7 @@ class Parser(BaseParser[Node]):
             type_ = self.parse_type()
             return TupleTypeNode(tok.pos, [type_] * n)
 
-        elif self.is_comptime and (tok := self.lookahead(TokenType.KW_FN)):
+        elif tok := self.lookahead(TokenType.KW_FN):
             params = self._parse_comma_separated(
                 lambda: None if self.lookahead(TokenType.QUESTION) else self.parse_type())
             self.next(TokenType.ARROW)
@@ -277,7 +277,7 @@ class Parser(BaseParser[Node]):
         return self._parse_binary_op(("*", "/", "/.", "%"), self.parse_factor)
 
     def parse_factor(self) -> Node:
-        return self._parse_unary_op(("-", "~"), self.parse_power)
+        return self._parse_unary_op(("*", "-", "~"), self.parse_power)
 
     def parse_power(self) -> Node:
         return self._parse_binary_op(("**",), self.parse_to_tuple)

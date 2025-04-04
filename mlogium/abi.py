@@ -16,8 +16,8 @@ class ABI:
         return f"%__func_ret_addr"
 
     @staticmethod
-    def function_return_value() -> str:
-        return f"%__func_ret_val"
+    def function_return_value(i: int) -> str:
+        return f"%__func_ret_val_{i}"
 
     @staticmethod
     def attribute(name: str, attrib: str | int) -> str:

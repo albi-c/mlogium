@@ -19,12 +19,14 @@ class ScopeStack:
     functions: list[tuple[str, Type | None]]
     loops: list[str]
     global_closures: list[dict[str, Value]]
+    num_global_scopes: int
 
-    def __init__(self):
+    def __init__(self, num_global_scopes: int):
         self.scopes = []
         self.functions = []
         self.loops = []
         self.global_closures = []
+        self.num_global_scopes = num_global_scopes
 
     def get_function(self) -> tuple[str, Type | None] | None:
         return self.functions[-1] if len(self.functions) > 0 else None
@@ -37,6 +39,11 @@ class ScopeStack:
 
     def pop(self):
         self.scopes.pop(-1)
+
+    def module(self) -> ScopeStack:
+        scope = ScopeStack(self.num_global_scopes)
+        scope.scopes = self.scopes[:self.num_global_scopes]
+        return scope
 
     @contextlib.contextmanager
     def __call__(self, name: str, variables: dict[str, Value] = None):

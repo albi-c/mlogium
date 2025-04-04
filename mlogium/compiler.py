@@ -28,6 +28,10 @@ class Compiler(AstVisitor[Value]):
         def current_pos(self) -> Position:
             return self.compiler.current_pos
 
+        def set_scope(self, scope: ScopeStack):
+            self.compiler.scope = scope
+            super().set_scope(scope)
+
     scope: ScopeStack
     ctx: CompilationContext
     interpreter: ComptimeInterpreter
@@ -35,7 +39,7 @@ class Compiler(AstVisitor[Value]):
     def __init__(self):
         super().__init__()
 
-        self.scope = ScopeStack()
+        self.scope = ScopeStack(1)
         self.ctx = Compiler.CompilationContext(self)
         self.interpreter = ComptimeInterpreter(self.ctx.tmp_num)
 
@@ -470,7 +474,14 @@ class Compiler(AstVisitor[Value]):
         return Value.of_type(TupleType([self.resolve_type(t) for t in node.types]))
 
     def visit_function_type_node(self, node: FunctionTypeNode) -> Value:
-        raise ValueError("FunctionTypeNode in non-comptime AST")
+        params = []
+        for param in node.params:
+            if param is None:
+                self.error(f"Parameter type of function reference cannot be unknown in non-comptime context")
+            params.append(self.resolve_type(param))
+        if node.result is None:
+            self.error(f"Result type of function reference cannot be unknown in non-comptime context")
+        return Value.of_type(FunctionRefType(params, self.resolve_type(node.result)))
 
     def visit_null_value_node(self, node: NullValueNode) -> Value:
         return Value.null()
