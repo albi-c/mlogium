@@ -9,9 +9,17 @@ from .util import Position
 
 
 class ErrorContext(ABC):
+    notes: list[tuple[str, Position | None]]
+
+    def __init__(self):
+        self.notes = []
+
     @abstractmethod
     def error(self, msg: str, pos: Position | None = None):
         raise NotImplementedError
+
+    def note(self, msg: str, pos: Position | None = None):
+        self.notes.append((msg, pos))
 
 
 class CompilationContext(ErrorContext, ABC):
@@ -22,11 +30,16 @@ class CompilationContext(ErrorContext, ABC):
     _modules: list[tuple[str, list[InstructionInstance]]]
 
     def __init__(self, scope: 'ScopeStack'):
+        super().__init__()
+
         self.scope = scope
 
         self._instructions = []
         self._tmp_index = 0
         self._modules = []
+
+    def note(self, msg: str, pos: Position | None = None):
+        ErrorContext.note(self, msg, pos if pos is not None else self.current_pos())
 
     def emit(self, *instructions: InstructionInstance):
         self._instructions += instructions

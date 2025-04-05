@@ -252,24 +252,19 @@ class Instruction:
         name = "$func_ref_call"
 
         num_params: int
-        num_results: int
 
-        def __init__(self, func: str, params: list[str], results: list[str]):
-            super().__init__(Instruction.noop, [i + 1 + len(params) for i in range(len(results))],
+        def __init__(self, func: str, params: list[str]):
+            super().__init__(Instruction.noop, [],
                              True, {}, Instruction.FuncRefCall.name,
-                             func, *params, *results, internal=True)
+                             func, *params, internal=True)
 
             self.num_params = len(params)
-            self.num_results = len(results)
 
         def get_params(self) -> list[str]:
             return self.params[1:1+self.num_params]
 
-        def get_results(self) -> list[str]:
-            return self.params[1+self.num_params:]
-
         def __str__(self):
-            return f"$func_ref_call {self.params[0]}{self.get_params()} -> {self.get_results()}"
+            return f"$func_ref_call ({self.params[0]}) {self.get_params()}"
 
         def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
             instructions = []
@@ -280,35 +275,64 @@ class Instruction:
             )
             instructions.append(Instruction.op("add", ABI.function_return_address(), "@counter", 1))
             instructions.append(Instruction.set("@counter", self.params[0]))
-            instructions.extend(
-                Instruction.set(r, ABI.function_return_value(i))
-                for i, r in enumerate(self.get_results())
-            )
 
             return instructions
+
+    class FuncRefLoadResult(InstructionInstance):
+        name = "$func_ref_load_result"
+
+        result_index: int
+
+        def __init__(self, result: str, result_index: int):
+            super().__init__(Instruction.noop, [0],
+                             False, {}, Instruction.FuncRefLoadResult.name,
+                             result, internal=True)
+
+            self.result_index = result_index
+
+        def __str__(self):
+            return f"$func_ref_load_param ({self.result_index}) -> {self.params[0]}"
+
+        def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
+            return [
+                Instruction.set(self.params[0], ABI.function_return_value(self.result_index))
+            ]
 
     class FuncRefBodyStart(InstructionInstance):
         name = "$func_ref_body_start"
 
-        def __init__(self, ret_addr: str, params: list[str]):
-            super().__init__(Instruction.noop, [i for i in range(len(params))],
+        def __init__(self, ret_addr: str):
+            super().__init__(Instruction.noop, [0],
                              True, {}, Instruction.FuncRefBodyStart.name,
-                             ret_addr, *params, internal=True)
+                             ret_addr, internal=True)
 
         def __str__(self):
-            return f"$func_ref_body_start {self.params[0]} {self.params[1:]}"
+            return f"$func_ref_body_start {self.params[0]}"
 
         def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
-            instructions = [
+            return [
                 Instruction.set(self.params[0], ABI.function_return_address())
             ]
 
-            instructions.extend(
-                Instruction.set(p, ABI.function_parameter(i))
-                for i, p in enumerate(self.params[1:])
-            )
+    class FuncRefLoadParam(InstructionInstance):
+        name = "$func_ref_load_param"
 
-            return instructions
+        param_index: int
+
+        def __init__(self, param: str, param_index: int):
+            super().__init__(Instruction.noop, [0],
+                             False, {}, Instruction.FuncRefLoadParam.name,
+                             param, internal=True)
+
+            self.param_index = param_index
+
+        def __str__(self):
+            return f"$func_ref_load_param ({self.param_index}) -> {self.params[0]}"
+
+        def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
+            return [
+                Instruction.set(self.params[0], ABI.function_parameter(self.param_index))
+            ]
 
     class FuncRefBodyEnd(InstructionInstance):
         name = "$func_ref_body_end"

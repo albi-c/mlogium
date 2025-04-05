@@ -170,7 +170,7 @@ class Parser(BaseParser[Node]):
                 end_pos = result.pos
             return FunctionTypeNode(tok.pos + end_pos, params, result)
 
-        return self.parse_value()
+        return self.parse_call_index_attr()
 
     def _parse_assignment_target(self, const: bool) -> AssignmentTarget:
         if self.lookahead(TokenType.LPAREN):

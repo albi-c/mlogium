@@ -41,7 +41,7 @@ class Compiler(AstVisitor[Value]):
 
         self.scope = ScopeStack(1)
         self.ctx = Compiler.CompilationContext(self)
-        self.interpreter = ComptimeInterpreter(self.ctx.tmp_num)
+        self.interpreter = ComptimeInterpreter(self.ctx.tmp_num, self.ctx)
 
         self.scope.push("<builtins>", construct_builtins())
         self.scope.push("<main>")

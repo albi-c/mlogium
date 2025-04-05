@@ -320,6 +320,7 @@ class Type(ABC):
     def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
         if op in ("==", "!=", "===", "!==") and \
                 not (AnyTrivialType().contains(value.type) and AnyTrivialType().contains(other.type)):
+            ctx.note("Equality comparison is only available for primitive types")
             return None
 
         if op in ("=", ":="):
@@ -1144,13 +1145,16 @@ class TupleType(Type):
 
     def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
         if len(self.types) != 2:
+            ctx.note("Only two element tuple is iterable")
             return None
 
         next_func, has_func = value.unpack_req(ctx)
 
         if not next_func.callable_with(ctx, []):
+            ctx.note("First value of tuple is not callable with no parameters, therefore the tuple is not iterable")
             return None
         if not has_func.callable_with(ctx, []):
+            ctx.note("Second value of tuple is not callable with no parameters, therefore the tuple is not iterable")
             return None
 
         return TupleType.ValueIterator(has_func, next_func)
@@ -1164,6 +1168,8 @@ class TupleType(Type):
             else:
                 if 0 <= idx < len(self.types):
                     return value.unpack_req(ctx)[idx]
+                else:
+                    ctx.note(f"Tuple index out of range [0, {len(self.types) - 1}]")
 
             if (val := _unpackable_getattr(ctx, value, name)) is not None:
                 return val
@@ -1616,7 +1622,9 @@ class FunctionRefType(Type):
 
         result_vars = result.table_variables(ctx)
 
-        ctx.emit(Instruction.FuncRefCall(value.value, param_vars, result_vars))
+        ctx.emit(Instruction.FuncRefCall(value.value, param_vars))
+        for i, var in enumerate(result_vars):
+            ctx.emit(Instruction.FuncRefLoadResult(var, i))
 
         return result
 
@@ -1736,7 +1744,9 @@ class FunctionType(Type):
                     ctx.scope.declare_special(name, param)
 
                 ret_addr = Value(NumberType(), ctx.tmp())
-                ctx.emit(Instruction.FuncRefBodyStart(ret_addr.value, param_vars))
+                ctx.emit(Instruction.FuncRefBodyStart(ret_addr.value))
+                for i, var in enumerate(param_vars):
+                    ctx.emit(Instruction.FuncRefLoadParam(var, i))
 
                 result = ctx.generate_node(code)
 
@@ -1756,9 +1766,11 @@ class FunctionType(Type):
         for (name, a), b in zip(params, type_.params):
             combined_params.append((name, b))
             if a is not None and not a.contains(b):
+                ctx.note(f"Types '{a}' and '{b}' are not compatible")
                 return None, None
 
-        if result is not None and not result.contains(type_.result):
+        if result is not None and not type_.result.contains(result):
+            ctx.note(f"Types '{type_.result}' and '{result}' are not compatible")
             return None, None
 
         if func_label is None:
@@ -1769,6 +1781,7 @@ class FunctionType(Type):
     def into_ref(self, ctx: CompilationContext, type_: FunctionRefType) -> Value | None:
         for param in self.params:
             if param.variadic or param.reference:
+                ctx.note("Variadic and reference parameters are not supported in function references")
                 return None
 
         label, result = self.to_function_ref([(p.name, p.type) for p in self.params], self.result,
@@ -1777,21 +1790,17 @@ class FunctionType(Type):
             self.func_label = label
         return result
 
-    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
-        if isinstance(type_, FunctionRefType):
-            return self.into_ref(ctx, type_)
-
-        return Type.into(self, ctx, value, type_)
-
     def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
         if not static and name == "ref":
             params = []
             for param in self.params:
                 if param is None or param.variadic or param.reference:
-                    ctx.error(f"Parameters in a function reference must have a known type and cannot be variadic or references")
+                    ctx.note("Variadic and reference parameters are not supported in function references")
+                    return None
                 params.append(param.type)
             if self.result is None:
-                ctx.error(f"Result type of a function reference must have a known type")
+                ctx.note(f"Return type of a function reference must have a known type")
+                return None
             return self.into_ref(ctx, FunctionRefType(params, self.result))
 
 
@@ -1864,10 +1873,12 @@ class LambdaType(Type):
 
     def into_ref(self, ctx: CompilationContext, type_: FunctionRefType) -> Value | None:
         if len(self.captures) > 0:
-            ctx.error(f"Cannot turn a closure into a function reference")
+            ctx.note(f"Cannot turn a closure into a function reference")
+            return None
 
         for param in self.params:
             if param.variadic or param.reference:
+                ctx.note("Variadic and reference parameters are not supported in function references")
                 return None
 
         label, result = FunctionType.to_function_ref([(p.name, p.type) for p in self.params], self.result,
@@ -1876,21 +1887,17 @@ class LambdaType(Type):
             self.func_label = label
         return result
 
-    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
-        if isinstance(type_, FunctionRefType):
-            return self.into_ref(ctx, type_)
-
-        return Type.into(self, ctx, value, type_)
-
     def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
         if not static and name == "ref":
             params = []
             for param in self.params:
                 if param is None or param.variadic or param.reference:
-                    ctx.error(f"Parameters in a function reference must have a known type and cannot be variadic or references")
+                    ctx.note("Variadic and reference parameters are not supported in function references")
+                    return None
                 params.append(param.type)
             if self.result is None:
-                ctx.error(f"Result type of a function reference must have a known type")
+                ctx.note(f"Return type of a function reference must have a known type")
+                return None
             return self.into_ref(ctx, FunctionRefType(params, self.result))
 
 
