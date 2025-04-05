@@ -165,6 +165,8 @@ class Value:
         return self.type.index(ctx, self, indices)
 
     def into(self, ctx: CompilationContext, type_: Type) -> Value | None:
+        if type_.contains(self.type):
+            return self
         return self.type.into(ctx, self, type_)
 
     def into_req(self, ctx: CompilationContext, type_: Type) -> Value:
@@ -707,6 +709,10 @@ class NumberType(Type):
 
     def memcell_serializable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
+
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        if isinstance(type_, FunctionRefType):
+            return Value(type_, value.value, True)
 
 
 class StringType(Type):
@@ -1628,6 +1634,10 @@ class FunctionRefType(Type):
 
         return result
 
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        if type_.contains(NumberType()):
+            return Value(NumberType(), value.value, True)
+
 
 @dataclass(slots=True)
 class FunctionType(Type):
@@ -1794,12 +1804,15 @@ class FunctionType(Type):
         if not static and name == "ref":
             params = []
             for param in self.params:
-                if param is None or param.variadic or param.reference:
+                if param.type is None:
+                    ctx.note(f"Parameter type of a function reference must be specified")
+                    return None
+                if param.variadic or param.reference:
                     ctx.note("Variadic and reference parameters are not supported in function references")
                     return None
                 params.append(param.type)
             if self.result is None:
-                ctx.note(f"Return type of a function reference must have a known type")
+                ctx.note(f"Return type of a function reference must be specified")
                 return None
             return self.into_ref(ctx, FunctionRefType(params, self.result))
 
@@ -1891,12 +1904,15 @@ class LambdaType(Type):
         if not static and name == "ref":
             params = []
             for param in self.params:
-                if param is None or param.variadic or param.reference:
+                if param.type is None:
+                    ctx.note(f"Parameter type of a function reference must be specified")
+                    return None
+                if param.variadic or param.reference:
                     ctx.note("Variadic and reference parameters are not supported in function references")
                     return None
                 params.append(param.type)
             if self.result is None:
-                ctx.note(f"Return type of a function reference must have a known type")
+                ctx.note(f"Return type of a function reference must be specified")
                 return None
             return self.into_ref(ctx, FunctionRefType(params, self.result))
 
