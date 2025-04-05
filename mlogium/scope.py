@@ -20,13 +20,15 @@ class ScopeStack:
     loops: list[str]
     global_closures: list[dict[str, Value]]
     num_global_scopes: int
+    is_module: bool
 
-    def __init__(self, num_global_scopes: int):
+    def __init__(self, num_global_scopes: int, is_module: bool = False):
         self.scopes = []
         self.functions = []
         self.loops = []
         self.global_closures = []
         self.num_global_scopes = num_global_scopes
+        self.is_module = is_module
 
     def get_function(self) -> tuple[str, Type | None] | None:
         return self.functions[-1] if len(self.functions) > 0 else None
@@ -41,7 +43,7 @@ class ScopeStack:
         self.scopes.pop(-1)
 
     def module(self) -> ScopeStack:
-        scope = ScopeStack(self.num_global_scopes)
+        scope = ScopeStack(self.num_global_scopes, True)
         scope.scopes = self.scopes[:self.num_global_scopes]
         return scope
 

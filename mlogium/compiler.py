@@ -68,6 +68,8 @@ class Compiler(AstVisitor[Value]):
         if (var := self.scope.get(name)) is None:
             if (var := self.interpreter.scope.get(name)) is not None:
                 return var.to_runtime(self.ctx, self.interpreter.ctx)
+            if self.scope.is_module:
+                self.ctx.note(f"Only builtin variables and functions are available in functions called by reference")
             self.error(f"Value not found: '{name}'")
         return var
 
