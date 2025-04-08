@@ -1496,6 +1496,15 @@ class SpecialFunctionType(Type):
 
 
 @dataclass(slots=True)
+class VariadicSpecialFunctionType(SpecialFunctionType):
+    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
+        last = self.params[-1]
+        return len(param_types) >= len(self.params) and \
+            all(e is None or e.contains(t) for e, t in zip(self.params, param_types)) and \
+            last is None or all(last.contains(t) for t in param_types[len(self.params):])
+
+
+@dataclass(slots=True)
 class IntrinsicFunctionType(Type):
     name: str
     params: list[Type]

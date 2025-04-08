@@ -226,6 +226,47 @@ class Instruction:
     ])
     pack_color = _make("packcolor", [Types.NUM] * 5, False, [0])
 
+    class Load(InstructionInstance):
+        name = "$load"
+
+        inp: str
+
+        def __init__(self, inp: str, out: str):
+            super().__init__(Instruction.noop, [0],
+                             False, {}, Instruction.Load.name,
+                             out, internal=True)
+
+            self.inp = inp
+
+        def __str__(self):
+            return f"$load {self.params[0]} = {self.inp}"
+
+        def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
+            return [
+                Instruction.set(self.params[0], self.inp)
+            ]
+
+    class Store(InstructionInstance):
+        name = "$store"
+
+        out: str
+
+        def __init__(self, inp: str, out: str):
+            super().__init__(Instruction.noop, [],
+                             True, {}, Instruction.Load.name,
+                             inp, internal=True)
+
+            self.out = out
+
+        def __str__(self):
+            return f"$store {self.out} = {self.params[0]}"
+
+        def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
+            return [
+                Instruction.set(self.out, self.params[0])
+            ]
+
+
     wait = _make("wait", [Types.NUM], True)
     stop = _make("stop", [], True)
     end = _make("end", [], True)

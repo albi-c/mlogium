@@ -273,6 +273,38 @@ def _construct_builtin_functions(builtins: dict[str, Value]):
         )
         return Value(NumberType(), res)
 
+    def _load_impl(ctx: CompilationContext, params_: list[Value]) -> Value:
+        var_name = params_[0].value
+        if not (var_name.startswith("\"") and var_name.endswith("\"")):
+            ctx.error(f"Name has to be an immediate string value")
+        var_name = var_name[1:-1]
+        if any(ch.isspace() for ch in var_name):
+            ctx.error("Variable names cannot contain whitespace")
+
+        type_ = params_[1].type.wrapped_type(ctx)
+        if not AnyTrivialType().contains(type_):
+            ctx.error("Type must be trivial")
+
+        result = Value(type_, ctx.tmp(), False)
+        ctx.emit(Instruction.Load(var_name, result.value))
+        return result
+
+    def _store_impl(ctx: CompilationContext, params_: list[Value]) -> Value:
+        var_name = params_[0].value
+        if not (var_name.startswith("\"") and var_name.endswith("\"")):
+            ctx.error(f"Name has to be an immediate string value")
+        var_name = var_name[1:-1]
+        if any(ch.isspace() for ch in var_name):
+            ctx.error("Variable names cannot contain whitespace")
+
+        value = params_[1]
+        if not AnyTrivialType().contains(value.type):
+            ctx.error("Type must be trivial")
+
+        ctx.emit(Instruction.Store(value.value, var_name))
+
+        return Value.null()
+
     builtins |= {
         "print": Value(SpecialFunctionType("print", [AnyType()], NullType(), _print_impl), ""),
         "proc_read": Value(SpecialFunctionType("proc_read", [BlockType(), StringType(), GenericTypeType()],
@@ -281,6 +313,10 @@ def _construct_builtin_functions(builtins: dict[str, Value]):
                                                 NullType(), _proc_write_impl), ""),
         "@deg": Value(SpecialFunctionType("deg", [NumberType()], NumberType(), _rad_to_deg), ""),
         "@rad": Value(SpecialFunctionType("rad", [NumberType()], NumberType(), _deg_to_rad), ""),
+        "@load": Value(SpecialFunctionType("load", [StringType(), GenericTypeType()], AnyType(),
+                                           _load_impl), ""),
+        "@store": Value(SpecialFunctionType("store", [StringType(), AnyType()], NullType(),
+                                            _store_impl), ""),
 
         "status": Value(IntrinsicSubcommandFunctionType("status", {
             "apply": Value(IntrinsicFunctionType(
