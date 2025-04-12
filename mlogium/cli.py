@@ -95,7 +95,8 @@ def main() -> int:
 
     if isinstance(result, PositionedException):
         print("Error:", result.msg)
-        result.pos.print()
+        if result.pos is not None:
+            result.pos.print()
         print_notes(notes)
         if args.print_exceptions:
             raise result

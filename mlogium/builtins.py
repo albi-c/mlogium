@@ -303,6 +303,52 @@ def _construct_builtin_functions(builtins: dict[str, Value]):
 
         return Value.null()
 
+    def _lookup_table_gen(start: int, integers: list[int], min_: int) -> tuple[str, int]:
+        string = "".join(chr(start + (n - min_)) for n in integers)
+        offset = start - min_
+        return string, offset
+
+    def _lookup_table_impl(ctx: CompilationContext, params_: list[Value]) -> Value:
+        values = params_[1:]
+        if len(values) == 0:
+            ctx.error(f"lookup_table requires at least one integer")
+        integers = []
+        for i, val in enumerate(values):
+            if not NumberType().contains(val.type):
+                ctx.error(f"Value at position {i} has type '{val.type}', expected number")
+            try:
+                integers.append(int(val.value))
+            except ValueError:
+                ctx.error(f"Value at position {i} is not a compile time known integer")
+
+        min_ = min(integers)
+        max_ = max(integers)
+        diff = max_ - min_
+
+        ascii_start = ord("#")
+        ascii_end = ord("~")
+        max_diff_ascii = ascii_end - ascii_start
+
+        unicode_start = ord("\u0100")
+        unicode_end = ord("\uffff")
+        max_diff_unicode = unicode_end - unicode_start
+
+        if diff > max_diff_ascii:
+            if diff > max_diff_unicode:
+                ctx.error(f"Difference between minimum and maximum value is too large ({diff} > {max_diff_unicode})")
+
+            string, offset = _lookup_table_gen(unicode_start, integers, min_)
+
+        else:
+            string, offset = _lookup_table_gen(ascii_start, integers, min_)
+
+        return Value.of_lookup_table(ctx, string, offset)
+
+        # result = Value.of_string(f"\"{string}\"").index(ctx, [params_[0]])
+        # if diff != 0:
+        #     result = result.binary_op_req(ctx, "-", Value.of_number(diff))
+        # return result
+
     builtins |= {
         "print": Value(SpecialFunctionType("print", [AnyType()], NullType(), _print_impl), ""),
         "proc_read": Value(SpecialFunctionType("proc_read", [BlockType(), StringType(), GenericTypeType()],
@@ -315,6 +361,8 @@ def _construct_builtin_functions(builtins: dict[str, Value]):
                                            _load_impl), ""),
         "@store": Value(SpecialFunctionType("store", [StringType(), AnyType()], NullType(),
                                             _store_impl), ""),
+        "@lookup_table": Value(VariadicSpecialFunctionType("lookup_table", [NumberType()], NullType(),
+                                                           _lookup_table_impl), ""),
 
         "status": Value(IntrinsicSubcommandFunctionType("status", {
             "apply": Value(IntrinsicFunctionType(
