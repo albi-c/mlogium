@@ -22,6 +22,7 @@ def _construct_builtin_types(builtins: dict[str, Value]):
         "str": Value.of_type(StringType()),
         "Range": Value.of_type(RangeType()),
         "RangeWithStep": Value.of_type(RangeWithStepType()),
+        "LookupTable": Value.of_type(LookupTableType()),
         "Block": Value(BlockBaseType(), ""),
         "Unit": Value.of_type(UnitType()),
         "Controller": Value.of_type(ControllerType()),
@@ -309,11 +310,10 @@ def _construct_builtin_functions(builtins: dict[str, Value]):
         return string, offset
 
     def _lookup_table_impl(ctx: CompilationContext, params_: list[Value]) -> Value:
-        values = params_[1:]
-        if len(values) == 0:
+        if len(params_) == 0:
             ctx.error(f"lookup_table requires at least one integer")
         integers = []
-        for i, val in enumerate(values):
+        for i, val in enumerate(params_):
             if not NumberType().contains(val.type):
                 ctx.error(f"Value at position {i} has type '{val.type}', expected number")
             try:
@@ -343,11 +343,6 @@ def _construct_builtin_functions(builtins: dict[str, Value]):
             string, offset = _lookup_table_gen(ascii_start, integers, min_)
 
         return Value.of_lookup_table(ctx, string, offset)
-
-        # result = Value.of_string(f"\"{string}\"").index(ctx, [params_[0]])
-        # if diff != 0:
-        #     result = result.binary_op_req(ctx, "-", Value.of_number(diff))
-        # return result
 
     builtins |= {
         "print": Value(SpecialFunctionType("print", [AnyType()], NullType(), _print_impl), ""),
