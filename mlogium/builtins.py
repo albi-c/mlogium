@@ -74,8 +74,6 @@ def _construct_builtin_variables(builtins: dict[str, Value]):
         "@ctrlPlayer": Value(ControllerType(), "@ctrlPlayer", True),
         "@ctrlCommand": Value(ControllerType(), "@ctrlCommand", True),
 
-        "@solid": Value(builtins["BlockType"].type, "@solid", True),
-
         "_": Value(UnderscoreType(), "_", False),
 
         "true": Value.of_number(1),

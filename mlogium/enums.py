@@ -120,9 +120,12 @@ ENUM_SENSABLE: dict[str, Types] = {
     "name": Types.NUM,
     "payloadCount": Types.NUM,
     "payloadType": UnionTypeRef([Types.BLOCK_TYPE, Types.UNIT_TYPE]),
+    "totalPayload": Types.NUM,
+    "payloadCapacity": Types.NUM,
     "enabled": Types.NUM,
     "config": Types.CONTENT,
-    "color": Types.NUM
+    "color": Types.NUM,
+    "solid": Types.NUM,
 } | {
     name: Types.NUM for name in ENUM_ITEMS | ENUM_LIQUIDS
 }
@@ -157,7 +160,7 @@ ENUM_RULES = {
 }
 
 ENUM_PROPERTY = {
-    "x", "y", "rotation", "flag", "health", "totalPower"
+    "x", "y", "rotation", "flag", "health", "totalPower", "shield"
 }
 
 ENUM_EFFECT = {

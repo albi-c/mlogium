@@ -709,6 +709,26 @@ class NumberType(Type):
 
 
 class StringType(Type):
+    class ValueIterator(ValueIterator):
+        string: Value
+        index: Value
+        length: Value
+
+        def __init__(self, ctx: CompilationContext, string: Value):
+            self.string = string
+            self.index = Value(NumberType(), ctx.tmp(), False)
+            self.index.assign(ctx, Value.of_number(0))
+            self.length = string.getattr_req(ctx, False, "len")
+
+        def has_value(self, ctx: CompilationContext) -> Value:
+            return self.index.binary_op(ctx, "<", self.length)
+
+        def next_value(self, ctx: CompilationContext) -> Value:
+            return self.string.index(ctx, [self.index])
+
+        def end_loop(self, ctx: CompilationContext):
+            self.index.binary_op(ctx, "+=", Value.of_number(1))
+
     def __str__(self):
         return "str"
 
@@ -723,6 +743,29 @@ class StringType(Type):
 
     def table_copyable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
+
+    def indexable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    def validate_index_types(self, ctx: CompilationContext, value: Value, indices: list[Type]) -> None | list[Type]:
+        return None if len(indices) == 1 and NumberType().contains(indices[0]) else [NumberType()]
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
+        if not static:
+            if name in ("len", "length", "size"):
+                result = Value(NumberType(), ctx.tmp())
+                ctx.emit(Instruction.sensor_asm(result.value, value.value, "@size"))
+                return result
+
+        return super(StringType, self).getattr(ctx, value, static, name)
+
+    def index(self, ctx: CompilationContext, value: Value, indices: list[Value]) -> Value:
+        result = Value(NumberType(), ctx.tmp())
+        ctx.emit(Instruction.read(result.value, value.value, indices[0].value))
+        return result
+
+    def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
+        return StringType.ValueIterator(ctx, value)
 
 
 class SoundBaseType(TypeType):
