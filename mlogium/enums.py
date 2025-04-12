@@ -126,6 +126,7 @@ ENUM_SENSABLE: dict[str, Types] = {
     "config": Types.CONTENT,
     "color": Types.NUM,
     "solid": Types.NUM,
+    "memoryCapacity": Types.NUM,
 } | {
     name: Types.NUM for name in ENUM_ITEMS | ENUM_LIQUIDS
 }
@@ -150,12 +151,13 @@ ENUM_STATUS = {
 ENUM_RULES = {
     rule: False for rule in (
         "currentWaveTimer", "waveTimer", "waves", "wave", "waveSpacing", "waveSending", "attackMode",
-        "enemyCoreBuildRadius", "dropZoneRadius", "unitCap", "lighting", "ambientLight", "solarMultiplier"
+        "enemyCoreBuildRadius", "dropZoneRadius", "unitCap", "lighting", "ambientLight", "solarMultiplier",
+        "canGameOver"
     )
 } | {
     rule: True for rule in (
         "buildSpeed", "unitHealth", "unitBuildSpeed", "unitCost", "unitDamage", "blockHealth", "blockDamage",
-        "rtsMinWeight", "rtsMinSquad"
+        "rtsMinWeight", "rtsMinSquad", "unitMineSpeed"
     )
 }
 
