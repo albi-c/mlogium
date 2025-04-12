@@ -10,9 +10,16 @@ from .compilation_context import ErrorContext
 
 class ComptimeInterpreterContext(ErrorContext, ABC):
     scope: 'ComptimeScopeStack'
+    note_context: ErrorContext
 
-    def __init__(self, scope: 'ComptimeScopeStack'):
+    def __init__(self, scope: 'ComptimeScopeStack', note_context: ErrorContext):
+        super().__init__()
+
         self.scope = scope
+        self.note_context = note_context
+
+    def note(self, msg: str, pos: Position | None = None):
+        self.note_context.note(msg, pos)
 
     @abstractmethod
     def exc_guard[T](self, func: Callable[[], T]) -> T:

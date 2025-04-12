@@ -165,6 +165,8 @@ class Value:
         return self.type.index(ctx, self, indices)
 
     def into(self, ctx: CompilationContext, type_: Type) -> Value | None:
+        if type_.contains(self.type):
+            return self
         return self.type.into(ctx, self, type_)
 
     def into_req(self, ctx: CompilationContext, type_: Type) -> Value:
@@ -320,6 +322,7 @@ class Type(ABC):
     def binary_op(self, ctx: CompilationContext, value: Value, op: str, other: Value) -> Value | None:
         if op in ("==", "!=", "===", "!==") and \
                 not (AnyTrivialType().contains(value.type) and AnyTrivialType().contains(other.type)):
+            ctx.note("Equality comparison is only available for primitive types")
             return None
 
         if op in ("=", ":="):
@@ -707,6 +710,10 @@ class NumberType(Type):
     def memcell_serializable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
 
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        if isinstance(type_, FunctionRefType):
+            return Value(type_, value.value, True)
+
 
 class StringType(Type):
     class ValueIterator(ValueIterator):
@@ -913,6 +920,12 @@ class MemoryCellReferenceType(Type):
             return val
 
         return super(MemoryCellReferenceType, self).into(ctx, value, type_)
+
+    def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> Value | None:
+        if op == "*":
+            val = Value(NumberType(), ctx.tmp())
+            ctx.emit(Instruction.read(val.value, self.cell.value, self.index.value))
+            return val
 
 
 class UnitType(Type):
@@ -1181,13 +1194,16 @@ class TupleType(Type):
 
     def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
         if len(self.types) != 2:
+            ctx.note("Only two element tuple is iterable")
             return None
 
         next_func, has_func = value.unpack_req(ctx)
 
         if not next_func.callable_with(ctx, []):
+            ctx.note("First value of tuple is not callable with no parameters, therefore the tuple is not iterable")
             return None
         if not has_func.callable_with(ctx, []):
+            ctx.note("Second value of tuple is not callable with no parameters, therefore the tuple is not iterable")
             return None
 
         return TupleType.ValueIterator(has_func, next_func)
@@ -1201,6 +1217,8 @@ class TupleType(Type):
             else:
                 if 0 <= idx < len(self.types):
                     return value.unpack_req(ctx)[idx]
+                else:
+                    ctx.note(f"Tuple index out of range [0, {len(self.types) - 1}]")
 
             if (val := _unpackable_getattr(ctx, value, name)) is not None:
                 return val
@@ -1284,17 +1302,24 @@ class TupleIndexReferenceType(Type):
     def assignable_type(self) -> Type:
         return UnionType([self.type, self])
 
+    def deref(self, ctx: CompilationContext) -> Value:
+        val = Value(self.type, ctx.tmp(), False)
+        ctx.emit(Instruction.TableRead(
+            val.table_variables(ctx),
+            [val.table_variables(ctx) for val in self.values],
+            self.index.value
+        ))
+        return val
+
     def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
         if type_.contains(self.type):
-            val = Value(self.type, ctx.tmp(), False)
-            ctx.emit(Instruction.TableRead(
-                val.table_variables(ctx),
-                [val.table_variables(ctx) for val in self.values],
-                self.index.value
-            ))
-            return val
+            return self.deref(ctx)
 
         return super(TupleIndexReferenceType, self).into(ctx, value, type_)
+
+    def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> Value | None:
+        if op == "*":
+            return self.deref(ctx)
 
 
 @dataclass(slots=True)
@@ -1514,6 +1539,15 @@ class SpecialFunctionType(Type):
 
 
 @dataclass(slots=True)
+class VariadicSpecialFunctionType(SpecialFunctionType):
+    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
+        last = self.params[-1]
+        return len(param_types) >= len(self.params) and \
+            all(e is None or e.contains(t) for e, t in zip(self.params, param_types)) and \
+            last is None or all(last.contains(t) for t in param_types[len(self.params):])
+
+
+@dataclass(slots=True)
 class IntrinsicFunctionType(Type):
     name: str
     params: list[Type]
@@ -1605,6 +1639,59 @@ class IntrinsicSubcommandFunctionType(Type):
 
 
 @dataclass(slots=True)
+class FunctionRefType(Type):
+    params: list[Type]
+    result: Type
+
+    def __str__(self):
+        return f"fn({', '.join(map(str, self.params))}) -> {self.result}"
+
+    def __eq__(self, other):
+        return isinstance(other, FunctionRefType) and self.params == other.params and self.result == other.result
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [_stringify(str(self))]
+
+    def memcell_serializable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    def callable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    def call_with_suggestion(self, ctx: CompilationContext, value: Value) -> list[Type | None] | None:
+        return self.params
+
+    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
+        return len(self.params) == len(param_types) and all(p.contains(t) for p, t in zip(self.params, param_types))
+
+    def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
+        for param in params:
+            if not param.table_copyable(ctx):
+                ctx.error(f"Parameter of type '{param.type}' is not usable with function references")
+
+        result = Value(self.result, ctx.tmp(), False)
+
+        if not self.result.table_copyable(ctx, result):
+            ctx.error(f"Result of type '{self.result}' is not usable with function references")
+
+        param_vars = []
+        for param in params:
+            param_vars += param.table_variables(ctx)
+
+        result_vars = result.table_variables(ctx)
+
+        ctx.emit(Instruction.FuncRefCall(value.value, param_vars))
+        for i, var in enumerate(result_vars):
+            ctx.emit(Instruction.FuncRefLoadResult(var, i))
+
+        return result
+
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        if type_.contains(NumberType()):
+            return Value(NumberType(), value.value, True)
+
+
+@dataclass(slots=True)
 class FunctionType(Type):
     @dataclass(slots=True)
     class Param:
@@ -1658,6 +1745,8 @@ class FunctionType(Type):
     global_closure: list[dict[str, Value]]
     attributes: set[str]
 
+    func_label: str | None = None
+
     def __str__(self):
         return f"fn({', '.join(map(str, self.params))}){' -> ' + str(self.result) if self.result else ''}"
 
@@ -1704,6 +1793,81 @@ class FunctionType(Type):
 
             return return_val
 
+    @staticmethod
+    def gen_body(params: list[tuple[str, Type]], result_type: Type, code: Node, ctx: CompilationContext) -> str:
+        func_name = ctx.tmp()
+
+        with ctx.module(ABI.function_label(func_name)):
+            with ctx.scope.function_call(ctx, f"$function__ref:{func_name}", result_type):
+                param_vars = []
+                for name, type_ in params:
+                    param = Value(type_, ctx.tmp())
+                    param_vars += param.table_variables(ctx)
+                    ctx.scope.declare_special(name, param)
+
+                ret_addr = Value(NumberType(), ctx.tmp())
+                ctx.emit(Instruction.FuncRefBodyStart(ret_addr.value))
+                for i, var in enumerate(param_vars):
+                    ctx.emit(Instruction.FuncRefLoadParam(var, i))
+
+                result = ctx.generate_node(code)
+
+                return_val = Value(result_type, ABI.return_value(func_name), False)
+                return_val.assign(ctx, result)
+
+                ctx.emit(Instruction.label(ABI.function_end(ctx.scope.get_function())))
+
+                ctx.emit(Instruction.FuncRefBodyEnd(ret_addr.value, return_val.table_variables(ctx)))
+
+        return func_name
+
+    @staticmethod
+    def to_function_ref(params: list[tuple[str, Type | None]], result: Type | None, code: Node, func_label: str | None,
+                        ctx: CompilationContext, type_: FunctionRefType) -> tuple[str | None, Value | None]:
+        combined_params = []
+        for (name, a), b in zip(params, type_.params):
+            combined_params.append((name, b))
+            if a is not None and not a.contains(b):
+                ctx.note(f"Types '{a}' and '{b}' are not compatible")
+                return None, None
+
+        if result is not None and not type_.result.contains(result):
+            ctx.note(f"Types '{type_.result}' and '{result}' are not compatible")
+            return None, None
+
+        if func_label is None:
+            func_label = FunctionType.gen_body(combined_params, type_.result, code, ctx)
+
+        return func_label, Value(type_, "$" + ABI.function_label(func_label))
+
+    def into_ref(self, ctx: CompilationContext, type_: FunctionRefType) -> Value | None:
+        for param in self.params:
+            if param.variadic or param.reference:
+                ctx.note("Variadic and reference parameters are not supported in function references")
+                return None
+
+        label, result = self.to_function_ref([(p.name, p.type) for p in self.params], self.result,
+                                             self.code, self.func_label, ctx, type_)
+        if label is not None:
+            self.func_label = label
+        return result
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
+        if not static and name == "ref":
+            params = []
+            for param in self.params:
+                if param.type is None:
+                    ctx.note(f"Parameter type of a function reference must be specified")
+                    return None
+                if param.variadic or param.reference:
+                    ctx.note("Variadic and reference parameters are not supported in function references")
+                    return None
+                params.append(param.type)
+            if self.result is None:
+                ctx.note(f"Return type of a function reference must be specified")
+                return None
+            return self.into_ref(ctx, FunctionRefType(params, self.result))
+
 
 @dataclass(slots=True)
 class LambdaType(Type):
@@ -1722,6 +1886,8 @@ class LambdaType(Type):
     result: Type | None
     code: Node
     global_closure: list[dict[str, Value]]
+
+    func_label: str | None = None
 
     def __str__(self):
         return f"|{', '.join(map(str, self.params))}|[{', '.join(map(str, self.captures))}]\
@@ -1769,6 +1935,38 @@ class LambdaType(Type):
             ctx.emit(Instruction.label(ABI.function_end(ctx.scope.get_function())))
 
             return return_val
+
+    def into_ref(self, ctx: CompilationContext, type_: FunctionRefType) -> Value | None:
+        if len(self.captures) > 0:
+            ctx.note(f"Cannot turn a closure into a function reference")
+            return None
+
+        for param in self.params:
+            if param.variadic or param.reference:
+                ctx.note("Variadic and reference parameters are not supported in function references")
+                return None
+
+        label, result = FunctionType.to_function_ref([(p.name, p.type) for p in self.params], self.result,
+                                                     self.code, self.func_label, ctx, type_)
+        if label is not None:
+            self.func_label = label
+        return result
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
+        if not static and name == "ref":
+            params = []
+            for param in self.params:
+                if param.type is None:
+                    ctx.note(f"Parameter type of a function reference must be specified")
+                    return None
+                if param.variadic or param.reference:
+                    ctx.note("Variadic and reference parameters are not supported in function references")
+                    return None
+                params.append(param.type)
+            if self.result is None:
+                ctx.note(f"Return type of a function reference must be specified")
+                return None
+            return self.into_ref(ctx, FunctionRefType(params, self.result))
 
 
 @dataclass(slots=True)

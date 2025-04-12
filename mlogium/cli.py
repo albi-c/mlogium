@@ -6,6 +6,19 @@ import pyperclip
 from . import __version__
 from .compile import compile_code, compile_asm_code
 from .error import PositionedException, NonPositionedException
+from .util import Position
+
+
+def print_notes(notes: list[tuple[str, Position | None]]):
+    if len(notes) == 0:
+        return
+
+    print()
+    for note in notes:
+        print("Note:", note[0])
+        if note[1] is not None:
+            note[1].print()
+        print()
 
 
 def main() -> int:
@@ -70,18 +83,28 @@ def main() -> int:
     try:
         if args.assembly:
             result = compile_asm_code(code, filename).strip()
+            notes = []
         else:
-            result = compile_code(code, filename, opt_level).strip()
+            result, notes = compile_code(code, filename, opt_level)
     except PositionedException as e:
-        print(e.msg)
-        e.pos.print()
-        if args.print_exceptions:
-            raise e
-        return 1
+        result = e
+        notes = []
     except NonPositionedException as e:
-        print(e.msg)
+        result = e
+        notes = []
+
+    if isinstance(result, PositionedException):
+        print("Error:", result.msg)
+        result.pos.print()
+        print_notes(notes)
         if args.print_exceptions:
-            raise e
+            raise result
+        return 1
+    elif isinstance(result, NonPositionedException):
+        print("Error:", result.msg)
+        print_notes(notes)
+        if args.print_exceptions:
+            raise result
         return 1
 
     if output_method == "file":

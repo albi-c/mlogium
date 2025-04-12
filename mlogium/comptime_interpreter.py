@@ -39,8 +39,8 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
         interpreter: ComptimeInterpreter
         tmp_num_provider: Callable[[], int]
 
-        def __init__(self, interpreter: ComptimeInterpreter, tmp_num_provider: Callable[[], int]):
-            super().__init__(interpreter.scope)
+        def __init__(self, interpreter: ComptimeInterpreter, tmp_num_provider: Callable[[], int], note_context: ErrorContext):
+            super().__init__(interpreter.scope, note_context)
 
             self.interpreter = interpreter
             self.tmp_num_provider = tmp_num_provider
@@ -72,11 +72,11 @@ class ComptimeInterpreter(AstVisitor[BaseCValue]):
     scope: ComptimeScopeStack
     ctx: ComptimeInterpreterContext
 
-    def __init__(self, tmp_num_provider: Callable[[], int]):
+    def __init__(self, tmp_num_provider: Callable[[], int], note_context: ErrorContext):
         super().__init__()
 
         self.scope = ComptimeScopeStack()
-        self.ctx = ComptimeInterpreter.Context(self, tmp_num_provider)
+        self.ctx = ComptimeInterpreter.Context(self, tmp_num_provider, note_context)
 
         self.scope.push("<builtins>", make_builtins())
         self.scope.push("<main>")

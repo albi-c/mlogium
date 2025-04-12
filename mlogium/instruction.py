@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from .value_types import Types, BasicTypeRef, UnionTypeRef, TypeRef
 from . import enums
 from .linking_context import LinkingContext
+from .abi import ABI
 
 
 @dataclass(frozen=True)
@@ -225,6 +226,47 @@ class Instruction:
     ])
     pack_color = _make("packcolor", [Types.NUM] * 5, False, [0])
 
+    class Load(InstructionInstance):
+        name = "$load"
+
+        inp: str
+
+        def __init__(self, inp: str, out: str):
+            super().__init__(Instruction.noop, [0],
+                             False, {}, Instruction.Load.name,
+                             out, internal=True)
+
+            self.inp = inp
+
+        def __str__(self):
+            return f"$load {self.params[0]} = {self.inp}"
+
+        def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
+            return [
+                Instruction.set(self.params[0], self.inp)
+            ]
+
+    class Store(InstructionInstance):
+        name = "$store"
+
+        out: str
+
+        def __init__(self, inp: str, out: str):
+            super().__init__(Instruction.noop, [],
+                             True, {}, Instruction.Load.name,
+                             inp, internal=True)
+
+            self.out = out
+
+        def __str__(self):
+            return f"$store {self.out} = {self.params[0]}"
+
+        def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
+            return [
+                Instruction.set(self.out, self.params[0])
+            ]
+
+
     wait = _make("wait", [Types.NUM], True)
     stop = _make("stop", [], True)
     end = _make("end", [], True)
@@ -238,6 +280,120 @@ class Instruction:
             return Instruction._jump_base("$" + label, cond, a, b)
 
     jump = _JumpWrapper()
+
+    class _JumpToStart:
+        name = "$jump_to_start"
+
+        def __call__(self):
+            return Instruction._jump_base("0", "always", "_", "_")
+
+    jump_to_start = _JumpToStart()
+
+    class FuncRefCall(InstructionInstance):
+        name = "$func_ref_call"
+
+        num_params: int
+
+        def __init__(self, func: str, params: list[str]):
+            super().__init__(Instruction.noop, [],
+                             True, {}, Instruction.FuncRefCall.name,
+                             func, *params, internal=True)
+
+            self.num_params = len(params)
+
+        def get_params(self) -> list[str]:
+            return self.params[1:1+self.num_params]
+
+        def __str__(self):
+            return f"$func_ref_call ({self.params[0]}) {self.get_params()}"
+
+        def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
+            instructions = []
+
+            instructions.extend(
+                Instruction.set(ABI.function_parameter(i), p)
+                for i, p in enumerate(self.get_params())
+            )
+            instructions.append(Instruction.op("add", ABI.function_return_address(), "@counter", 1))
+            instructions.append(Instruction.set("@counter", self.params[0]))
+
+            return instructions
+
+    class FuncRefLoadResult(InstructionInstance):
+        name = "$func_ref_load_result"
+
+        result_index: int
+
+        def __init__(self, result: str, result_index: int):
+            super().__init__(Instruction.noop, [0],
+                             False, {}, Instruction.FuncRefLoadResult.name,
+                             result, internal=True)
+
+            self.result_index = result_index
+
+        def __str__(self):
+            return f"$func_ref_load_param ({self.result_index}) -> {self.params[0]}"
+
+        def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
+            return [
+                Instruction.set(self.params[0], ABI.function_return_value(self.result_index))
+            ]
+
+    class FuncRefBodyStart(InstructionInstance):
+        name = "$func_ref_body_start"
+
+        def __init__(self, ret_addr: str):
+            super().__init__(Instruction.noop, [0],
+                             True, {}, Instruction.FuncRefBodyStart.name,
+                             ret_addr, internal=True)
+
+        def __str__(self):
+            return f"$func_ref_body_start {self.params[0]}"
+
+        def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
+            return [
+                Instruction.set(self.params[0], ABI.function_return_address())
+            ]
+
+    class FuncRefLoadParam(InstructionInstance):
+        name = "$func_ref_load_param"
+
+        param_index: int
+
+        def __init__(self, param: str, param_index: int):
+            super().__init__(Instruction.noop, [0],
+                             False, {}, Instruction.FuncRefLoadParam.name,
+                             param, internal=True)
+
+            self.param_index = param_index
+
+        def __str__(self):
+            return f"$func_ref_load_param ({self.param_index}) -> {self.params[0]}"
+
+        def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
+            return [
+                Instruction.set(self.params[0], ABI.function_parameter(self.param_index))
+            ]
+
+    class FuncRefBodyEnd(InstructionInstance):
+        name = "$func_ref_body_end"
+
+        def __init__(self, ret_addr: str, results: list[str]):
+            super().__init__(Instruction.noop, [],
+                             True, {}, Instruction.FuncRefBodyEnd.name,
+                             ret_addr, *results, internal=True)
+
+        def __str__(self):
+            return f"$func_ref_body_end {self.params[0]} {self.params[1:]}"
+
+        def translate_in_linker(self, ctx: LinkingContext) -> list[InstructionInstance]:
+            instructions = [
+                Instruction.set(ABI.function_return_value(i), r)
+                for i, r in enumerate(self.params[1:])
+            ]
+            instructions.append(Instruction.set("@counter", self.params[0]))
+
+            return instructions
 
     class TableRead(InstructionInstance):
         name = "$table_read"
