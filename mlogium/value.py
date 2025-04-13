@@ -70,6 +70,13 @@ class Value:
         val.getattr_req(ctx, False, "step").assign(ctx, step)
         return val
 
+    @classmethod
+    def of_lookup_table(cls, ctx: CompilationContext, string: str, offset: int) -> Value:
+        val = Value(LookupTableType(), ctx.tmp(), False)
+        Value(StringType(), ABI.attribute(val.value, "string"), False).assign(ctx, Value.of_string(f"\"{string}\""))
+        Value(NumberType(), ABI.attribute(val.value, "offset"), False).assign(ctx, Value.of_number(offset))
+        return val
+
     @contextlib.contextmanager
     def do_assignment(self, ctx: CompilationContext):
         if self.const:
@@ -688,6 +695,15 @@ class NumberType(Type):
 
     def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> Value | None:
         if op == "-":
+            try:
+                n = float(value.value)
+            except ValueError:
+                pass
+            else:
+                if n.is_integer():
+                    n = int(n)
+                return Value.of_number(-n)
+
             result = Value(NumberType(), ctx.tmp(), False)
             ctx.emit(Instruction.op("sub", result.value, "0", value.value))
             return result
@@ -716,6 +732,26 @@ class NumberType(Type):
 
 
 class StringType(Type):
+    class ValueIterator(ValueIterator):
+        string: Value
+        index: Value
+        length: Value
+
+        def __init__(self, ctx: CompilationContext, string: Value):
+            self.string = string
+            self.index = Value(NumberType(), ctx.tmp(), False)
+            self.index.assign(ctx, Value.of_number(0))
+            self.length = string.getattr_req(ctx, False, "len")
+
+        def has_value(self, ctx: CompilationContext) -> Value:
+            return self.index.binary_op(ctx, "<", self.length)
+
+        def next_value(self, ctx: CompilationContext) -> Value:
+            return self.string.index(ctx, [self.index])
+
+        def end_loop(self, ctx: CompilationContext):
+            self.index.binary_op(ctx, "+=", Value.of_number(1))
+
     def __str__(self):
         return "str"
 
@@ -730,6 +766,29 @@ class StringType(Type):
 
     def table_copyable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
+
+    def indexable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    def validate_index_types(self, ctx: CompilationContext, value: Value, indices: list[Type]) -> None | list[Type]:
+        return None if len(indices) == 1 and NumberType().contains(indices[0]) else [NumberType()]
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
+        if not static:
+            if name in ("len", "length", "size"):
+                result = Value(NumberType(), ctx.tmp())
+                ctx.emit(Instruction.sensor_asm(result.value, value.value, "@size"))
+                return result
+
+        return super(StringType, self).getattr(ctx, value, static, name)
+
+    def index(self, ctx: CompilationContext, value: Value, indices: list[Value]) -> Value:
+        result = Value(NumberType(), ctx.tmp(), False)
+        ctx.emit(Instruction.read(result.value, value.value, indices[0].value))
+        return result
+
+    def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
+        return StringType.ValueIterator(ctx, value)
 
 
 class SoundBaseType(TypeType):
@@ -1452,6 +1511,54 @@ class RangeWithStepType(Type):
         self._attr(value, "start", False).assign(ctx, Value.of_number(values[0]))
         self._attr(value, "end", False).assign(ctx, Value.of_number(values[1]))
         self._attr(value, "step", False).assign(ctx, Value.of_number(values[2]))
+
+
+class LookupTableType(Type):
+    def __str__(self):
+        return "LookupTable"
+
+    def __eq__(self, other):
+        return isinstance(other, LookupTableType)
+
+    @staticmethod
+    def _attr(type_: Type, value: Value, name: str) -> Value:
+        return Value(type_, ABI.attribute(value.value, name), False)
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        self._attr(StringType(), value, "string").assign(ctx, self._attr(StringType(), other, "string"))
+        self._attr(NumberType(), value, "offset").assign(ctx, self._attr(NumberType(), other, "offset"))
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        self._attr(StringType(), value, "string").assign(ctx, Value.of_string("\"\""))
+        self._attr(NumberType(), value, "offset").assign(ctx, Value.of_number(0))
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [_stringify(str(self))]
+
+    def table_copyable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    def table_size(self, ctx: CompilationContext, value: Value) -> int:
+        return 2
+
+    def table_variables(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [
+            ABI.attribute(value.value, "string"),
+            ABI.attribute(value.value, "offset")
+        ]
+
+    def indexable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    def validate_index_types(self, ctx: CompilationContext, value: Value, indices: list[Type]) -> None | list[Type]:
+        return None if len(indices) == 1 and NumberType().contains(indices[0]) else [NumberType()]
+
+    def index(self, ctx: CompilationContext, value: Value, indices: list[Value]) -> Value:
+        string = self._attr(StringType(), value, "string")
+        offset = self._attr(NumberType(), value, "offset")
+        result = string.index(ctx, [indices[0]])
+        result.binary_op_req(ctx, "-=", offset)
+        return result
 
 
 def _format_function_signature(params: list[Type | None], result: Type | None) -> str:

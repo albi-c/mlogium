@@ -1115,6 +1115,18 @@ class Optimizer:
                 except ValueError:
                     pass
 
+            elif ins.name == Instruction.read.name:
+                if ins.params[1].startswith("\"") and ins.params[1].endswith("\""):
+                    try:
+                        idx = int(ins.params[2])
+                    except ValueError:
+                        pass
+                    else:
+                        string = ins.params[1][1:-1]
+                        if 0 <= idx < len(string):
+                            code[i] = Instruction.set(ins.params[0], ord(string[idx]))
+                            found = True
+
         return found
 
     @classmethod

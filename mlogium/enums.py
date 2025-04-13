@@ -120,9 +120,13 @@ ENUM_SENSABLE: dict[str, Types] = {
     "name": Types.NUM,
     "payloadCount": Types.NUM,
     "payloadType": UnionTypeRef([Types.BLOCK_TYPE, Types.UNIT_TYPE]),
+    "totalPayload": Types.NUM,
+    "payloadCapacity": Types.NUM,
     "enabled": Types.NUM,
     "config": Types.CONTENT,
-    "color": Types.NUM
+    "color": Types.NUM,
+    "solid": Types.NUM,
+    "memoryCapacity": Types.NUM,
 } | {
     name: Types.NUM for name in ENUM_ITEMS | ENUM_LIQUIDS
 }
@@ -147,17 +151,18 @@ ENUM_STATUS = {
 ENUM_RULES = {
     rule: False for rule in (
         "currentWaveTimer", "waveTimer", "waves", "wave", "waveSpacing", "waveSending", "attackMode",
-        "enemyCoreBuildRadius", "dropZoneRadius", "unitCap", "lighting", "ambientLight", "solarMultiplier"
+        "enemyCoreBuildRadius", "dropZoneRadius", "unitCap", "lighting", "ambientLight", "solarMultiplier",
+        "canGameOver"
     )
 } | {
     rule: True for rule in (
         "buildSpeed", "unitHealth", "unitBuildSpeed", "unitCost", "unitDamage", "blockHealth", "blockDamage",
-        "rtsMinWeight", "rtsMinSquad"
+        "rtsMinWeight", "rtsMinSquad", "unitMineSpeed"
     )
 }
 
 ENUM_PROPERTY = {
-    "x", "y", "rotation", "flag", "health", "totalPower"
+    "x", "y", "rotation", "flag", "health", "totalPower", "shield"
 }
 
 ENUM_EFFECT = {
