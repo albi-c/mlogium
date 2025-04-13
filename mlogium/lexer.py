@@ -271,7 +271,10 @@ class Lexer:
             if ch == "\"" and prev != "\\" and (not triple_quotes or self.lookahead_str("\"\"")):
                 break
 
-            val += ch
+            if ch == "\n":
+                val += "\\n"
+            else:
+                val += ch
             prev = ch
 
         return self.make_token(TokenType.STRING, val)
