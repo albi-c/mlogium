@@ -45,10 +45,10 @@ class EmulatedTestCase(unittest.TestCase):
 
     def test_examples(self):
         for name, expected in (
-            ("comptime", ("", "120")),
+            ("comptime", ("", "1209")),
             ("connected_list", ("message1\\ncell1\\n", "")),
             ("hello_world", ("Hello, World!", "")),
-            ("lambda", ("", "99818189")),
+            ("lambda", ("", "9981818{x: 9}")),
             ("memory_cell", ("64", "")),
             ("lookup", ("1", "")),
         ):

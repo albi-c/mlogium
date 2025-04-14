@@ -1,13 +1,20 @@
+// defines a macro named "loop", which takes 3 parameters
 #def loop(counter, until, body) {
     counter = 0
+// the label gets a generated name
+// this syntax also works with variables
 $0:
+    // conditional jump
     -> $1 (counter >= until)
     body
     counter += 1
+    // the name previously assigned is now inserted
     -> $0
 $1:
 }
 
+// invokes the macro "loop"
+// macro parameters can be enclosed in braces
 #loop(i, @links, {
     building = getlink(-, i)
     print(building)
