@@ -13,6 +13,7 @@ class EmulatedTestCase(unittest.TestCase):
         ex = Executor(code)
         ex.end_on_wrap = True
         ex.add_device("message1", Device.Message())
+        ex.add_device("cell1", Device.Memory(64))
 
         res = ex.execute()
         assert isinstance(res, ExecutionResult.Success)
@@ -45,16 +46,18 @@ class EmulatedTestCase(unittest.TestCase):
     def test_examples(self):
         for name, expected in (
             ("comptime", ("", "120")),
-            ("connected_list", ("message1\\n", "")),
+            ("connected_list", ("message1\\ncell1\\n", "")),
             ("hello_world", ("Hello, World!", "")),
             ("lambda", ("", "99818189")),
+            ("memory_cell", ("64", "")),
+            ("lookup", ("1", "")),
         ):
             self._run_test("examples", f"{name}.mu", expected,
                            lambda code, filename: self._reraise(compile_code(code, filename, 2)[0]))
 
     def test_asm_examples(self):
         for name, expected in (
-            ("connected_list", ("message1\\n", "")),
+            ("connected_list", ("message1\\ncell1\\n", "")),
         ):
             self._run_test("examples", f"{name}.mua", expected,
                            lambda code, filename: self._reraise(compile_asm_code(code, filename)))
