@@ -428,7 +428,7 @@ class AnyTrivialType(Type):
         return isinstance(other, AnyTrivialType)
 
     def contains(self, other: Type) -> bool:
-        return UnionType([NumberType(), StringType(), BlockType(),
+        return UnionType([NullType(), NumberType(), StringType(), BlockType(),
                           UnitType(), BlockType(), ControllerType()]).contains(other) \
             or isinstance(other, EnumInstanceType) \
             or (isinstance(other, BuiltinEnumInstanceType) and other.base.copyable)
