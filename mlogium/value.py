@@ -493,11 +493,10 @@ class AnyTrivialType(Type):
         return "?"
 
     def contains(self, other: Type) -> bool:
-        raise NotImplementedError  # TODO
-        # return UnionType([NumberType(), StringType(), BlockType(),
-        #                   UnitType(), BlockType(), ControllerType()]).contains(other) \
-        #     or isinstance(other, EnumInstanceType) \
-        #     or (isinstance(other, BuiltinEnumInstanceType) and other.base.copyable)
+        return UnionType([NullType(), NumberType(), StringType(), BlockType(),
+                          UnitType(), BlockType(), ControllerType()]).contains(other) \
+            or isinstance(other, EnumInstanceType) \
+            or (isinstance(other, BuiltinEnumInstanceType) and other.base.copyable)
 
     def assign(self, ctx: CompilationContext, value: Value, other: Value):
         ctx.emit(
