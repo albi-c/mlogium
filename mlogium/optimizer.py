@@ -221,7 +221,8 @@ class Optimizer:
         "tan": lambda a, _: math.tan(math.radians(a)),
         "asin": lambda a, _: math.degrees(math.asin(a)),
         "acos": lambda a, _: math.degrees(math.acos(a)),
-        "atan": lambda a, _: math.degrees(math.atan(a))
+        "atan": lambda a, _: math.degrees(math.atan(a)),
+        "sign": lambda a, _: 1 if a > 0 else -1 if a < 0 else 0
     }
 
     # functions for compile time calculation of jump conditions

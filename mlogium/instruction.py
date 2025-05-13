@@ -225,6 +225,7 @@ class Instruction:
         ("team", [Types.TEAM, Types.NUM])
     ])
     pack_color = _make("packcolor", [Types.NUM] * 5, False, [0])
+    unpack_color = _make("unpackcolor", [Types.NUM] * 5, False, [0, 1, 2, 3])
 
     class Load(InstructionInstance):
         name = "$load"

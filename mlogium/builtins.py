@@ -231,7 +231,7 @@ def _resolve_type_ref(builtins: dict[str, Value], ref: TypeRef) -> Type:
 
 _MATH_FUNCTIONS = {
     "max": 2, "min": 2, "angle": 2, "len": 2, "noise": 2, "abs": 1, "log": 1, "log10": 1, "floor": 1, "ceil": 1,
-    "sqrt": 1, "rand": 1, "sin": 1, "cos": 1, "tan": 1, "asin": 1, "acos": 1, "atan": 1
+    "sqrt": 1, "rand": 1, "sin": 1, "cos": 1, "tan": 1, "asin": 1, "acos": 1, "atan": 1, "sign": 1
 }
 
 
