@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 from dataclasses import dataclass
 from abc import abstractmethod, ABC
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Optional
 
 from .compilation_context import CompilationContext
 from .instruction import Instruction
@@ -43,6 +43,7 @@ class BaseValue(ABC):
 class Value(BaseValue):
     type: Type
     value: str
+    const: bool = True
     no_discard: bool = False
 
     def __str__(self):
@@ -55,11 +56,10 @@ class Value(BaseValue):
         ctx.error(f"Assignment to constant value {self}")
 
     def with_no_discard(self, no_discard: bool = True) -> Value:
-        return Value(self.type, self.value, no_discard)
+        return Value(self.type, self.value, self.const, no_discard)
 
     def copy(self, ctx: CompilationContext, to: str | None = None) -> VariableLValue:
-        to = to if to is not None else ctx.tmp()
-        val = VariableLValue(self.type, to, False)
+        val = Value.var(ctx, self.type, to)
         val.assign(ctx, self)
         return val
 
@@ -68,12 +68,33 @@ class Value(BaseValue):
         return Value(NullType(), "null")
 
     @staticmethod
+    def of_number(val: int | float) -> Value:
+        return Value(NumberType(), str(val))
+
+    @staticmethod
+    def of_string(string: str) -> Value:
+        return Value(StringType(), string)
+
+    @staticmethod
+    def of_boolean(val: bool) -> Value:
+        return Value(NumberType(), "1" if val else "0")
+
+    @staticmethod
+    def of_type(type_: Type) -> Value:
+        return Value(TypeType(type_), "")
+
+    @staticmethod
     def tmp(ctx: CompilationContext, type_: Type) -> VariableLValue:
         return VariableLValue(type_, ctx.tmp())
 
     @staticmethod
     def tmp_v(ctx: CompilationContext, type_: Type) -> Value:
         return Value(type_, ctx.tmp())
+
+    @staticmethod
+    def var(ctx: CompilationContext, type_: Type, name: str | None = None, const: bool = False) -> VariableLValue:
+        name = name if name is not None else ctx.tmp()
+        return VariableLValue(type_, name, const)
 
     def wrapped_type(self, ctx: CompilationContext) -> Type | None:
         return self.type.wrapped_type(ctx)
@@ -93,7 +114,10 @@ class Value(BaseValue):
                 if (val := self.cast(ctx, t)) is not None:
                     return val
 
-        return self.type.cast(ctx, self.value, type_)
+        if val := self.type.cast(ctx, self, type_):
+            return val
+
+        return Value.cast_from(ctx, type_, self)
 
     def cast_req(self, ctx: CompilationContext, type_: Type) -> Value:
         val = self.cast(ctx, type_)
@@ -101,14 +125,18 @@ class Value(BaseValue):
             ctx.error(f"Value {self} cannot be cast to type '{type_}'")
         return val
 
-    def cast_from(self, ctx: CompilationContext, other: str) -> bool:
-        return self.type.cast_from(ctx, self.value, other)
+    @staticmethod
+    def cast_from(ctx: CompilationContext, type_: Type, other: Value, to: str | None = None) -> VariableLValue | None:
+        val = Value.var(ctx, type_, to)
+        if not type_.cast_from(ctx, val.value, other):
+            return None
+        return val
 
     def to_print(self, ctx: CompilationContext) -> list[str]:
-        return self.type.to_print(ctx, self.value)
+        return self.type.to_print(ctx, self)
 
     def to_condition(self, ctx: CompilationContext) -> str | None:
-        return self.type.to_condition(ctx, self.value)
+        return self.type.to_condition(ctx, self)
 
     def to_condition_req(self, ctx: CompilationContext) -> str:
         cond = self.to_condition(ctx)
@@ -117,16 +145,16 @@ class Value(BaseValue):
         return cond
 
     def unpackable(self, ctx: CompilationContext) -> bool:
-        return self.type.unpackable(ctx, self.value)
+        return self.type.unpackable(ctx, self)
 
     def unpack_count(self, ctx: CompilationContext) -> int:
-        return self.type.unpack_count(ctx, self.value)
+        return self.type.unpack_count(ctx, self)
 
     def unpack(self, ctx: CompilationContext) -> list[BaseValue]:
-        return self.type.unpack(ctx, self.value)
+        return self.type.unpack(ctx, self)
 
     def getattr(self, ctx: CompilationContext, static: bool, name: str) -> BaseValue | None:
-        return self.type.getattr(ctx, self.value, static, name)
+        return self.type.getattr(ctx, self, static, name)
 
     def getattr_req(self, ctx: CompilationContext, static: bool, name: str) -> BaseValue:
         attr = self.getattr(ctx, static, name)
@@ -135,43 +163,43 @@ class Value(BaseValue):
         return attr
 
     def callable(self, ctx: CompilationContext) -> bool:
-        return self.type.callable(ctx, self.value)
+        return self.type.callable(ctx, self)
 
     def call_signature(self, ctx: CompilationContext) -> FunctionSignature | None:
-        return self.type.call_signature(ctx, self.value)
+        return self.type.call_signature(ctx, self)
 
     def call_types(self, ctx: CompilationContext, param_count: int) -> list[Type] | None:
-        return self.type.call_types(ctx, self.value, param_count)
+        return self.type.call_types(ctx, self, param_count)
 
     def callable_with(self, ctx: CompilationContext, param_types: list[Type]) -> bool:
-        return self.type.callable_with(ctx, self.value, param_types)
+        return self.type.callable_with(ctx, self, param_types)
 
     def call(self, ctx: CompilationContext, params: list[BaseValue]) -> BaseValue:
-        return self.type.call(ctx, self.value, params)
+        return self.type.call(ctx, self, params)
 
     def index_signature(self, ctx: CompilationContext) -> FunctionSignature | None:
-        return self.type.index_signature(ctx, self.value)
+        return self.type.index_signature(ctx, self)
 
     def index_types(self, ctx: CompilationContext, param_count: int) -> list[Type] | None:
-        return self.type.index_types(ctx, self.value, param_count)
+        return self.type.index_types(ctx, self, param_count)
 
     def indexable_with(self, ctx: CompilationContext, param_types: list[Type]) -> bool:
-        return self.type.indexable_with(ctx, self.value, param_types)
+        return self.type.indexable_with(ctx, self, param_types)
 
     def index(self, ctx: CompilationContext, params: list[BaseValue]) -> BaseValue:
-        return self.type.index(ctx, self.value, params)
+        return self.type.index(ctx, self, params)
 
     def binary_op(self, ctx: CompilationContext, op: str, right: BaseValue) -> BaseValue | None:
-        return self.type.binary_op(ctx, self.value, op, right)
+        return self.type.binary_op(ctx, self, op, right)
 
     def binary_op_r(self, ctx: CompilationContext, left: BaseValue, op: str) -> BaseValue | None:
-        return self.type.binary_op_r(ctx, left, op, self.value)
+        return self.type.binary_op_r(ctx, left, op, self)
 
     def unary_op(self, ctx: CompilationContext, op: str) -> BaseValue | None:
-        return self.type.unary_op(ctx, self.value, op)
+        return self.type.unary_op(ctx, self, op)
 
     def iterate(self, ctx: CompilationContext) -> ValueIterator | None:
-        return self.type.iterate(ctx, self.value)
+        return self.type.iterate(ctx, self)
 
     def iterate_req(self, ctx: CompilationContext) -> ValueIterator:
         it = self.iterate(ctx)
@@ -180,19 +208,19 @@ class Value(BaseValue):
         return it
 
     def mem_support(self, ctx: CompilationContext) -> int:
-        return self.type.mem_support(ctx, self.value)
+        return self.type.mem_support(ctx, self)
 
     def memcell_support(self, ctx: CompilationContext) -> bool:
-        return self.type.memcell_support(ctx, self.value)
+        return self.type.memcell_support(ctx, self)
 
     def table_support(self, ctx: CompilationContext) -> bool:
-        return self.type.table_support(ctx, self.value)
+        return self.type.table_support(ctx, self)
 
     def mem_size(self, ctx: CompilationContext) -> int:
-        return self.type.mem_size(ctx, self.value)
+        return self.type.mem_size(ctx, self)
 
     def mem_variables(self, ctx: CompilationContext) -> list[str]:
-        return self.type.mem_variables(ctx, self.value)
+        return self.type.mem_variables(ctx, self)
 
 
 @dataclass(slots=True)
@@ -233,7 +261,7 @@ class UnderscoreLValue(LValue):
 
 @dataclass(slots=True)
 class MemcellRefLValue(LValue):
-    cell: Value
+    cell: str
     index: Value
 
     def __str__(self):
@@ -241,12 +269,12 @@ class MemcellRefLValue(LValue):
 
     def deref(self, ctx: CompilationContext) -> Value:
         result = Value.tmp_v(ctx, NumberType())
-        ctx.emit(Instruction.read(result.value, self.cell.value, self.index.value))
+        ctx.emit(Instruction.read(result.value, self.cell, self.index.value))
         return result
 
     def assign(self, ctx: CompilationContext, value: Value):
         value = value.cast_req(ctx, NumberType())
-        ctx.emit(Instruction.write(value.value, self.cell.value, self.index.value))
+        ctx.emit(Instruction.write(value.value, self.cell, self.index.value))
 
 
 @dataclass(slots=True)
@@ -280,7 +308,7 @@ class FunctionSignature:
     def index(cls, types: Iterable[Type], result: Type | None) -> FunctionSignature:
         return cls([cls.Param(None, t, False) for t in types], result, False)
 
-    def param_types(self) -> list[Type | None]:
+    def param_types(self) -> list[Optional[Type]]:
         raise NotImplementedError  # TODO
 
     def check_params(self, param_types: list[Type]) -> bool:
@@ -332,68 +360,65 @@ class Type:
     def assign(self, ctx: CompilationContext, to: str, value: Value):
         raise NotImplementedError
 
-    def assign_default(self, ctx: CompilationContext, to: str):
-        raise NotImplementedError
-
-    def cast(self, ctx: CompilationContext, value: str, type_: Type) -> Value:
-        raise NotImplementedError
-
-    def cast_from(self, ctx: CompilationContext, to: str, other: str) -> bool:
+    def cast(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
         return None
 
-    def to_print(self, ctx: CompilationContext, value: str) -> list[str]:
-        return [value]
-
-    def to_condition(self, ctx: CompilationContext, value: str) -> str | None:
-        return None
-
-    def unpackable(self, ctx: CompilationContext, value: str) -> bool:
+    def cast_from(self, ctx: CompilationContext, to: str, other: Value) -> bool:
         return False
 
-    def unpack_count(self, ctx: CompilationContext, value: str) -> int:
-        raise NotImplementedError
+    def to_print(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [value.value]
 
-    def unpack(self, ctx: CompilationContext, value: str) -> list[BaseValue]:
-        raise NotImplementedError
-
-    def getattr(self, ctx: CompilationContext, value: str, static: bool, name: str) -> BaseValue | None:
+    def to_condition(self, ctx: CompilationContext, value: Value) -> str | None:
         return None
 
-    def callable(self, ctx: CompilationContext, value: str) -> bool:
+    def unpackable(self, ctx: CompilationContext, value: Value) -> bool:
+        return False
+
+    def unpack_count(self, ctx: CompilationContext, value: Value) -> int:
+        raise NotImplementedError
+
+    def unpack(self, ctx: CompilationContext, value: Value) -> list[BaseValue]:
+        raise NotImplementedError
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> BaseValue | None:
+        return None
+
+    def callable(self, ctx: CompilationContext, value: Value) -> bool:
         return self.call_signature(ctx, value) is not None
 
-    def call_signature(self, ctx: CompilationContext, value: str) -> FunctionSignature | None:
+    def call_signature(self, ctx: CompilationContext, value: Value) -> FunctionSignature | None:
         return None
 
-    def call_types(self, ctx: CompilationContext, value: str, param_count: int) -> list[Type] | None:
+    def call_types(self, ctx: CompilationContext, value: Value, param_count: int) -> list[Type] | None:
         raise NotImplementedError  # TODO
 
-    def callable_with(self, ctx: CompilationContext, value: str, param_types: list[Type]) -> bool:
+    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
         if sig := self.call_signature(ctx, value):
             raise NotImplementedError  # TODO
         return False
 
-    def call(self, ctx: CompilationContext, value: str, params: list[BaseValue]) -> BaseValue:
+    def call(self, ctx: CompilationContext, value: Value, params: list[BaseValue]) -> BaseValue:
         raise NotImplementedError
 
-    def indexable(self, ctx: CompilationContext, value: str) -> bool:
+    def indexable(self, ctx: CompilationContext, value: Value) -> bool:
         return self.index_signature(ctx, value) is not None
 
-    def index_signature(self, ctx: CompilationContext, value: str) -> FunctionSignature | None:
+    def index_signature(self, ctx: CompilationContext, value: Value) -> FunctionSignature | None:
         return None
 
-    def index_types(self, ctx: CompilationContext, value: str, param_count: int) -> list[Type] | None:
+    def index_types(self, ctx: CompilationContext, value: Value, param_count: int) -> list[Type] | None:
         raise NotImplementedError  # TODO
 
-    def indexable_with(self, ctx: CompilationContext, value: str, param_types: list[Type]) -> bool:
+    def indexable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
         if sig := self.index_signature(ctx, value):
             raise NotImplementedError  # TODO
         return False
 
-    def index(self, ctx: CompilationContext, value: str, params: list[BaseValue]) -> BaseValue:
+    def index(self, ctx: CompilationContext, value: Value, params: list[BaseValue]) -> BaseValue:
         raise NotImplementedError
 
-    def binary_op(self, ctx: CompilationContext, value: str, op: str, right: BaseValue) -> BaseValue | None:
+    def binary_op(self, ctx: CompilationContext, value: Value, op: str, right: BaseValue) -> BaseValue | None:
         right = right.deref(ctx)
 
         if op == "!==":
@@ -404,24 +429,24 @@ class Type:
 
         # TODO: +=, ...
 
-        return right.type.binary_op_r(ctx, Value(self, value), op, right.value)
+        return right.type.binary_op_r(ctx, value, op, right)
 
-    def binary_op_r(self, ctx: CompilationContext, left: BaseValue, op: str, value: str) -> BaseValue | None:
+    def binary_op_r(self, ctx: CompilationContext, left: BaseValue, op: str, value: Value) -> BaseValue | None:
         return None
 
-    def unary_op(self, ctx: CompilationContext, value: str, op: str) -> BaseValue | None:
+    def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> BaseValue | None:
         if op == "!":
-            cond = Value(self, value).to_condition_req(ctx)
+            cond = value.to_condition_req(ctx)
             result = Value.tmp(ctx, NumberType())
             ctx.emit(Instruction.op("notEqual", result.value, cond, "0"))
             return result
 
         return None
 
-    def iterate(self, ctx: CompilationContext, value: str) -> ValueIterator | None:
+    def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
         return None
 
-    def mem_support(self, ctx: CompilationContext, value: str) -> int:
+    def mem_support(self, ctx: CompilationContext, value: Value) -> int:
         """
         0 - none
         1 - table
@@ -429,17 +454,17 @@ class Type:
         """
         return 0
 
-    def memcell_support(self, ctx: CompilationContext, value: str) -> bool:
+    def memcell_support(self, ctx: CompilationContext, value: Value) -> bool:
         return self.mem_support(ctx, value) >= 2
 
-    def table_support(self, ctx: CompilationContext, value: str) -> bool:
+    def table_support(self, ctx: CompilationContext, value: Value) -> bool:
         return self.mem_support(ctx, value) >= 1
 
-    def mem_size(self, ctx: CompilationContext, value: str) -> int:
+    def mem_size(self, ctx: CompilationContext, value: Value) -> int:
         return 1
 
-    def mem_variables(self, ctx: CompilationContext, value: str) -> list[str]:
-        return [value]
+    def mem_variables(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [value.value]
 
 
 @dataclass(slots=True, eq=True)
@@ -661,12 +686,11 @@ class TupleTypeSourceType(Type):
     def callable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
 
-    def callable_with(self, ctx: CompilationContext, value: Value, param_types: list[Type]) -> bool:
-        return len(param_types) == 2 and GenericTypeType().contains(param_types[0]) \
-            and NumberType().contains(param_types[1])
-
-    def call_with_suggestion(self, ctx: CompilationContext, value: Value) -> list[Type | None] | None:
-        return [GenericTypeType(), NumberType()]
+    def call_signature(self, ctx: CompilationContext, value: Value) -> FunctionSignature | None:
+        return FunctionSignature([
+            FunctionSignature.Param("type", GenericTypeType(), False),
+            FunctionSignature.Param("count", NumberType(), False)
+        ], GenericTypeType(), False)
 
     def call(self, ctx: CompilationContext, value: Value, params: list[Value]) -> Value:
         count = 0
@@ -776,16 +800,16 @@ class StringType(Type):
     def to_condition(self, ctx: CompilationContext, value: Value) -> str | None:
         return value.value
 
-    def mem_support(self, ctx: CompilationContext, value: str) -> int:
+    def mem_support(self, ctx: CompilationContext, value: Value) -> int:
         return 1
 
     def indexable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
 
-    def index_signature(self, ctx: CompilationContext, value: str) -> FunctionSignature | None:
+    def index_signature(self, ctx: CompilationContext, value: Value) -> FunctionSignature | None:
         return FunctionSignature.index([NumberType()], NumberType())
 
-    def getattr(self, ctx: CompilationContext, value: str, static: bool, name: str) -> Value | None:
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
         if not static:
             if name in ("len", "length", "size"):
                 result = Value(NumberType(), ctx.tmp())
@@ -823,7 +847,7 @@ class SoundType(Type):
     def to_condition(self, ctx: CompilationContext, value: Value) -> str | None:
         return value.value
 
-    def mem_support(self, ctx: CompilationContext, value: str) -> int:
+    def mem_support(self, ctx: CompilationContext, value: Value) -> int:
         return 1
 
 
@@ -850,14 +874,15 @@ class BlockType(Type):
     def indexable(self, ctx: CompilationContext, value: Value) -> bool:
         return True
 
-    def index_signature(self, ctx: CompilationContext, value: str) -> FunctionSignature | None:
+    def index_signature(self, ctx: CompilationContext, value: Value) -> FunctionSignature | None:
         return FunctionSignature.index([NumberType()], AnyType())
 
-    def index(self, ctx: CompilationContext, value: Value, indices: list[Value]) -> Value:
-        return Value(MemoryCellReferenceType(value, indices[0]), "", False)
+    def index(self, ctx: CompilationContext, value: Value, indices: list[BaseValue]) -> BaseValue:
+        # return Value(MemoryCellReferenceType(value, indices[0]), "", False)
+        return MemcellRefLValue(value, indices[0].deref(ctx))
 
     @staticmethod
-    def _memcell_write_impl(ctx: CompilationContext, params: list[BaseValue], value: str) -> Value:
+    def _memcell_write_impl(ctx: CompilationContext, params: list[BaseValue], value: Value) -> Value:
         val = params[1].deref(ctx)
         if not val.memcell_support(ctx):
             ctx.error(f"Value of type '{val.type}' is not serializable")
@@ -870,7 +895,7 @@ class BlockType(Type):
         return Value.null()
 
     @staticmethod
-    def _memcell_read_impl(ctx: CompilationContext, params: list[BaseValue], value: str) -> Value:
+    def _memcell_read_impl(ctx: CompilationContext, params: list[BaseValue], value: Value) -> Value:
         val = Value.tmp_v(ctx, params[1].deref(ctx).wrapped_type_req(ctx))
         if not val.memcell_support(ctx):
             ctx.error(f"Value of type '{val.type}' is not deserializable")
@@ -902,5 +927,171 @@ class BlockType(Type):
 
         return super(BlockType, self).getattr(ctx, value, static, name)
 
-    def mem_support(self, ctx: CompilationContext, value: str) -> int:
+    def mem_support(self, ctx: CompilationContext, value: Value) -> int:
         return 1
+
+
+@dataclass(slots=True, eq=True)
+class UnitType(Type):
+    def __str__(self):
+        return "Unit"
+
+    def to_condition(self, ctx: CompilationContext, value: Value) -> str | None:
+        return value.value
+
+    def mem_support(self, ctx: CompilationContext, value: Value) -> int:
+        return 1
+
+
+@dataclass(slots=True, eq=True)
+class ControllerType(Type):
+    def __str__(self):
+        return "Controller"
+
+    def mem_support(self, ctx: CompilationContext, value: Value) -> int:
+        return 1
+
+
+class RangeType(Type):
+    class ValueIterator(ValueIterator):
+        index: Value
+        end: Value
+
+        def __init__(self, ctx: CompilationContext, start: Value, end: Value):
+            self.index = start.copy(ctx)
+            self.end = end
+
+        def has_value(self, ctx: CompilationContext) -> Value:
+            return self.index.binary_op(ctx, "<", self.end)
+
+        def next_value(self, ctx: CompilationContext) -> Value:
+            return self.index
+
+        def end_loop(self, ctx: CompilationContext):
+            self.index.binary_op(ctx, "+=", Value.of_number(1))
+
+    def __str__(self):
+        return f"Range"
+
+    def __eq__(self, other):
+        return isinstance(other, RangeType)
+
+    @staticmethod
+    def _attr(value: Value, name: str, const: bool) -> Value:
+        return Value(NumberType(), ABI.attribute(value.value, name), const)
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        self._attr(value, "start", value.const).assign(ctx, other.getattr_req(ctx, False, "start"))
+        self._attr(value, "end", value.const).assign(ctx, other.getattr_req(ctx, False, "end"))
+
+    def assign_default(self, ctx: CompilationContext, value: Value):
+        self._attr(value, "start", value.const).assign_default(ctx)
+        self._attr(value, "end", value.const).assign_default(ctx)
+
+    def into(self, ctx: CompilationContext, value: Value, type_: Type) -> Value | None:
+        if type_.contains(RangeWithStepType()):
+            return Value.of_range_with_step(ctx, self._attr(value, "start", True),
+                                            self._attr(value, "end", True), Value.of_number(1))
+
+        return super(RangeType, self).into(ctx, value, type_)
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [ABI.attribute(value.value, "start"), "\"..\"", ABI.attribute(value.value, "end")]
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> Value | None:
+        if not static:
+            if name in ("start", "end"):
+                return self._attr(value, name, value.const)
+
+        return super(RangeType, self).getattr(ctx, value, static, name)
+
+    def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
+        return RangeType.ValueIterator(
+            ctx,
+            self._attr(value, "start", True),
+            self._attr(value, "end", True)
+        )
+
+    def memcell_serializable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    def memcell_size(self, ctx: CompilationContext, value: Value) -> int:
+        return 2
+
+    def memcell_write(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [
+            self._attr(value, "start", True).value,
+            self._attr(value, "end", True).value
+        ]
+
+    def memcell_read(self, ctx: CompilationContext, value: Value, values: list[str]):
+        self._attr(value, "start", False).assign(ctx, Value.of_number(values[0]))
+        self._attr(value, "end", False).assign(ctx, Value.of_number(values[1]))
+
+
+class RangeWithStepType(Type):
+    class ValueIterator(ValueIterator):
+        index: Value
+        end: Value
+        step: Value
+
+        def __init__(self, ctx: CompilationContext, start: Value, end: Value, step: Value):
+            self.index = start.copy(ctx)
+            self.end = end
+            self.step = step
+
+        def has_value(self, ctx: CompilationContext) -> Value:
+            return self.index.binary_op(ctx, "<", self.end)
+
+        def next_value(self, ctx: CompilationContext) -> Value:
+            return self.index
+
+        def end_loop(self, ctx: CompilationContext):
+            self.index.binary_op(ctx, "+=", self.step)
+
+    def __str__(self):
+        return f"RangeWithStep"
+
+    def __eq__(self, other):
+        return isinstance(other, RangeWithStepType)
+
+    @staticmethod
+    def _attr(value: Value, name: str, const: bool) -> Value:
+        return Value(NumberType(), ABI.attribute(value.value, name), const)
+
+    def assign(self, ctx: CompilationContext, value: Value, other: Value):
+        self._attr(value, "start", value.const).assign(ctx, other.getattr_req(ctx, False, "start"))
+        self._attr(value, "end", value.const).assign(ctx, other.getattr_req(ctx, False, "end"))
+        self._attr(value, "step", value.const).assign(ctx, other.getattr_req(ctx, False, "step"))
+
+    def to_strings(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [ABI.attribute(value.value, "start"), "\"..\"", ABI.attribute(value.value, "end"), "\"..\"",
+                ABI.attribute(value.value, "step")]
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> BaseValue | None:
+        if not static:
+            if name in ("start", "end", "step"):
+                return VariableLValue(NumberType(), ABI.attribute(value, name))
+
+        return super(RangeWithStepType, self).getattr(ctx, value, static, name)
+
+    def iterate(self, ctx: CompilationContext, value: Value) -> ValueIterator | None:
+        return RangeWithStepType.ValueIterator(
+            ctx,
+            self._attr(value, "start", True),
+            self._attr(value, "end", True),
+            self._attr(value, "step", True)
+        )
+
+    def mem_support(self, ctx: CompilationContext, value: Value) -> int:
+        return 2
+
+    def mem_size(self, ctx: CompilationContext, value: Value) -> int:
+        return 3
+
+    def mem_variables(self, ctx: CompilationContext, value: Value) -> list[str]:
+        return [
+            ABI.attribute(value, "start"),
+            ABI.attribute(value, "end"),
+            ABI.attribute(value, "step")
+        ]
