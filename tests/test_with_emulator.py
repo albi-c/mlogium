@@ -49,7 +49,7 @@ class EmulatedTestCase(unittest.TestCase):
             ("connected_list", ("message1\\ncell1\\n", "")),
             ("hello_world", ("Hello, World!", "")),
             ("lambda", ("", "9981818{x: 9}")),
-            ("memory_cell", ("64", "")),
+            ("memory_cell", ("64(1, 2)", "")),
             ("lookup", ("1", "")),
         ):
             self._run_test("examples", f"{name}.mu", expected,
