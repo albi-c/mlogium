@@ -127,6 +127,9 @@ ENUM_SENSABLE: dict[str, Types] = {
     "color": Types.NUM,
     "solid": Types.NUM,
     "memoryCapacity": Types.NUM,
+    "bufferUsage": Types.NUM,
+    "displayWidth": Types.NUM,
+    "displayHeight": Types.NUM,
 } | {
     name: Types.NUM for name in ENUM_ITEMS | ENUM_LIQUIDS
 }
