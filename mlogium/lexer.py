@@ -48,6 +48,14 @@ class Lexer:
         "unroll": TokenType.KW_UNROLL
     }
 
+    COLOR_NAMES: set[str] = {
+        "white", "lightGray", "gray", "darkGray", "black", "clear", "blue", "navy",
+        "royal", "slate", "sky", "cyan", "teal", "green", "acid", "lime", "forest",
+        "olive", "yellow", "gold", "goldenrod", "orange", "brown", "tan", "brick",
+        "red", "scarlet", "crimson", "coral", "salmon", "pink", "magenta", "purple",
+        "violet", "maroon",
+    }
+
     KEYWORD_TOKEN_TYPES: set[TokenType] = set(KEYWORDS.values())
 
     def _reset(self, code: str, filename: str, start_pos: tuple[int, int, list[str] | None] = (0, 0, None)):
@@ -305,6 +313,16 @@ class Lexer:
                 val += ch
                 for _ in range(7):
                     val += self.next(Lexer.CH_HEX_DIGIT)
+                return self.make_token(TokenType.COLOR, val)
+            elif ch := self.lookahead("["):
+                val += ch
+                name = ""
+                while ch := self.lookahead(string.ascii_letters):
+                    name += ch
+                if name not in Lexer.COLOR_NAMES:
+                    LexerError.custom(self.make_pos(len(name)), f"Undefined color: '{name}'")
+                self.next("]")
+                val += name + "]"
                 return self.make_token(TokenType.COLOR, val)
 
         if val == "!" and self.lookahead("="):
