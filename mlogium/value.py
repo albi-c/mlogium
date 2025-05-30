@@ -705,6 +705,62 @@ class TupleTypeSourceType(Type):
 
 
 @dataclass(slots=True, eq=True)
+class TupleType(Type):
+    types: list[Type]
+
+    def __str__(self):
+        return f"({', '.join(map(str, self.types))})"
+
+    def assign(self, ctx: CompilationContext, to: str, value: Value):
+        pass
+
+    def to_print(self, ctx: CompilationContext, value: Value) -> list[str]:
+        values = ["\"(\""]
+        for i, ty in enumerate(self.types):
+            values += Value(ty, ABI.attribute(value.value, str(i))).to_print(ctx)
+            if i != len(self.types) - 1:
+                values.append("\", \"")
+        values.append("\")\"")
+        return values
+
+    def unpackable(self, ctx: CompilationContext, value: Value) -> bool:
+        return True
+
+    def unpack_count(self, ctx: CompilationContext, value: Value) -> int:
+        return len(self.types)
+
+    def unpack(self, ctx: CompilationContext, value: Value) -> list[BaseValue]:
+        return [VariableLValue(ty, ABI.attribute(value.value, str(i))) for i, ty in enumerate(self.types)]
+
+    def getattr(self, ctx: CompilationContext, value: Value, static: bool, name: str) -> BaseValue | None:
+        if not static:
+            try:
+                index = int(name)
+            except ValueError:
+                pass
+            else:
+                if 0 <= index < len(self.types):
+                    return VariableLValue(self.types[index], ABI.attribute(value.value, str(index)))
+
+        return super(TupleType, self).getattr(ctx, value, static, name)
+
+    def index_signature(self, ctx: CompilationContext, value: Value) -> FunctionSignature | None:
+        raise NotImplementedError  # TODO
+
+    def binary_op(self, ctx: CompilationContext, value: Value, op: str, right: BaseValue) -> BaseValue | None:
+        raise NotImplementedError  # TODO
+
+    def binary_op_r(self, ctx: CompilationContext, left: BaseValue, op: str, value: Value) -> BaseValue | None:
+        raise NotImplementedError  # TODO
+
+    def unary_op(self, ctx: CompilationContext, value: Value, op: str) -> BaseValue | None:
+        raise NotImplementedError  # TODO
+
+    def mem_support(self, ctx: CompilationContext, value: Value) -> int:
+        raise NotImplementedError  # TODO
+
+
+@dataclass(slots=True, eq=True)
 class NumberType(Type):
     BINARY_OPS = {
         "+": "add",
